@@ -1,0 +1,36 @@
+[package]
+name = "local-video-intelligence"
+version = "0.1.0"
+description = "Local Video Intelligence - Open-source local AI video management tool"
+authors = ["Local Video Intelligence Team"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "local_video_intelligence_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.13", features = ["default-tls", "stream"] }
+tokio = { version = "1", features = ["fs", "io-util", "macros", "rt-multi-thread", "process", "sync"] }
+rusqlite = { version = "0.33", features = ["bundled"] }
+walkdir = "2"
+sha2 = "0.10"
+base64 = "0.22"
+
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
