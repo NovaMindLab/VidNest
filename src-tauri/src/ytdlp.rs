@@ -98,11 +98,14 @@ pub fn parse_ytdlp_update_output(output_text: &str) -> (Option<String>, Option<S
 /// Checks the latest available version from GitHub releases.
 pub async fn fetch_latest_release_version() -> Result<String, String> {
     // 1. Try HEAD request on the latest download redirect URL (fastest, no API rate limits)
-    let download_url = if cfg!(windows) {
-        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+    let asset_name = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else if cfg!(target_os = "macos") {
+        "yt-dlp_macos"
     } else {
-        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"
+        "yt-dlp_linux"
     };
+    let download_url = format!("https://github.com/yt-dlp/yt-dlp/releases/latest/download/{asset_name}");
 
     let client = reqwest::Client::builder()
         .user_agent("LocalVideoIntelligence/0.1.0")
@@ -225,34 +228,57 @@ pub async fn download_managed_binary(app_data_dir: &Path) -> Result<String, Stri
     let target_file = get_managed_binary_path(app_data_dir);
     let temp_file = bin_dir.join(format!(".yt-dlp_download_{}.tmp", std::process::id()));
 
-    let download_url = if cfg!(windows) {
-        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+    let asset_name = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else if cfg!(target_os = "macos") {
+        "yt-dlp_macos"
     } else {
-        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"
+        "yt-dlp_linux"
     };
+
+    let download_candidates = [
+        format!("https://github.com/yt-dlp/yt-dlp/releases/latest/download/{asset_name}"),
+        format!("https://ghfast.top/https://github.com/yt-dlp/yt-dlp/releases/latest/download/{asset_name}"),
+        format!("https://mirror.ghproxy.com/https://github.com/yt-dlp/yt-dlp/releases/latest/download/{asset_name}"),
+    ];
 
     let client = reqwest::Client::builder()
         .user_agent("LocalVideoIntelligence/0.1.0")
+        .timeout(std::time::Duration::from_secs(60))
         .build()
         .map_err(|e| format!("Failed to build download client: {}", e))?;
 
-    let response = client
-        .get(download_url)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to connect to yt-dlp download endpoint: {}", e))?;
+    let mut last_err = String::new();
+    let mut downloaded_bytes = None;
 
-    if !response.status().is_success() {
-        return Err(format!(
-            "Download failed with HTTP status: {}",
-            response.status()
-        ));
+    for url in &download_candidates {
+        match client.get(url).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                match resp.bytes().await {
+                    Ok(b) if !b.is_empty() => {
+                        downloaded_bytes = Some(b);
+                        break;
+                    }
+                    Ok(_) => {
+                        last_err = format!("Empty response from {}", url);
+                    }
+                    Err(e) => {
+                        last_err = format!("Failed reading bytes from {}: {}", url, e);
+                    }
+                }
+            }
+            Ok(resp) => {
+                last_err = format!("HTTP error {} from {}", resp.status(), url);
+            }
+            Err(e) => {
+                last_err = format!("Connection error for {}: {}", url, e);
+            }
+        }
     }
 
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| format!("Failed to download yt-dlp binary bytes: {}", e))?;
+    let bytes = downloaded_bytes.ok_or_else(|| {
+        format!("yt-dlp 下载失败（已尝试官方与国内加速节点）: {}", last_err)
+    })?;
 
     fs::write(&temp_file, &bytes)
         .map_err(|e| format!("Failed to write temporary binary: {}", e))?;

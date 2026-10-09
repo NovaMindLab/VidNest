@@ -63,6 +63,37 @@ pub async fn scan_video_directory(
 }
 
 #[tauri::command]
+pub async fn start_full_disk_scan(
+    min_size_mb: Option<u64>,
+    app: AppHandle,
+    db: State<'_, Database>,
+) -> Result<ScanSummary, String> {
+    let app_data_path = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir)
+            .join("LocalVideoIntelligence")
+    });
+
+    let min_bytes = min_size_mb
+        .map(|mb| mb * 1024 * 1024)
+        .unwrap_or(crate::scanner::DEFAULT_MIN_SIZE_BYTES);
+
+    let db_clone = (*db).clone();
+    let app_clone = app.clone();
+    tokio::task::spawn_blocking(move || {
+        crate::scanner::scan_full_disk(&app_clone, &db_clone, &app_data_path, min_bytes)
+    })
+    .await
+    .map_err(|e| format!("Full disk scan task error: {}", e))?
+}
+
+#[tauri::command]
+pub fn cancel_full_disk_scan() -> Result<bool, String> {
+    Ok(crate::scanner::cancel_scan())
+}
+
+#[tauri::command]
 pub fn list_videos(
     filter: Option<VideoFilter>,
     db: State<'_, Database>,

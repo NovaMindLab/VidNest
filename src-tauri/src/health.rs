@@ -133,24 +133,38 @@ pub fn run_health_check(app_data_path: Option<PathBuf>) -> HealthReport {
         ytdlp_status.path = Some(ytdlp_target);
     }
 
+    let managed_ffmpeg = app_data.join("bin").join(if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" });
+    let ffmpeg_target = if managed_ffmpeg.exists() {
+        managed_ffmpeg.to_string_lossy().to_string()
+    } else {
+        "ffmpeg".to_string()
+    };
     let mut ffmpeg_status = probe_external_tool(
-        "ffmpeg",
+        &ffmpeg_target,
         "-version",
         true,
         "FFmpeg 多媒体处理内核 (音视频编解码与缩略图抽帧)",
     );
+    ffmpeg_status.name = "ffmpeg".to_string();
     if ffmpeg_status.found {
-        ffmpeg_status.path = Some("ffmpeg (PATH)".to_string());
+        ffmpeg_status.path = Some(ffmpeg_target);
     }
 
+    let managed_ffprobe = app_data.join("bin").join(if cfg!(windows) { "ffprobe.exe" } else { "ffprobe" });
+    let ffprobe_target = if managed_ffprobe.exists() {
+        managed_ffprobe.to_string_lossy().to_string()
+    } else {
+        "ffprobe".to_string()
+    };
     let mut ffprobe_status = probe_external_tool(
-        "ffprobe",
+        &ffprobe_target,
         "-version",
         true,
         "FFprobe 媒体探测器 (流信息与元数据解析)",
     );
+    ffprobe_status.name = "ffprobe".to_string();
     if ffprobe_status.found {
-        ffprobe_status.path = Some("ffprobe (PATH)".to_string());
+        ffprobe_status.path = Some(ffprobe_target);
     }
 
     let tools = vec![ffmpeg_status, ffprobe_status, ytdlp_status];

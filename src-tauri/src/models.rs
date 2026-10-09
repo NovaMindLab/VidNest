@@ -104,6 +104,15 @@ pub struct ScanSummary {
     pub duration_ms: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanProgress {
+    pub phase: String, // "discovering" | "indexing" | "enriching" | "completed" | "cancelled"
+    pub message: String,
+    pub total_found: usize,
+    pub processed: usize,
+    pub current_file: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FormatOption {
     pub format_id: String,

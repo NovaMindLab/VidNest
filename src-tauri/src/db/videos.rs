@@ -99,9 +99,32 @@ pub fn insert_or_update_video(
     }
 }
 
+pub fn update_video_metadata(
+    conn: &Connection,
+    id: i64,
+    duration: Option<f64>,
+    width: Option<u32>,
+    height: Option<u32>,
+    codec: Option<&str>,
+    thumbnail_path: Option<&str>,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE videos SET
+            duration = COALESCE(?1, duration),
+            width = COALESCE(?2, width),
+            height = COALESCE(?3, height),
+            codec = COALESCE(?4, codec),
+            thumbnail_path = COALESCE(?5, thumbnail_path)
+         WHERE id = ?6",
+        params![duration, width, height, codec, thumbnail_path, id],
+    )
+    .map_err(|e| format!("Failed to update video metadata: {}", e))?;
+    Ok(())
+}
+
 pub fn list_videos(conn: &Connection, filter: VideoFilter) -> Result<VideoListResponse, String> {
     let page = filter.page.unwrap_or(1).max(1);
-    let page_size = filter.page_size.unwrap_or(24).clamp(1, 100);
+    let page_size = filter.page_size.unwrap_or(100).clamp(1, 5000);
     let offset = (page - 1) * page_size;
 
     let mut conditions = Vec::new();

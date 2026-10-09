@@ -92,6 +92,14 @@ export interface ScanSummary {
   duration_ms: number;
 }
 
+export interface ScanProgress {
+  phase: 'discovering' | 'indexing' | 'enriching' | 'completed' | 'cancelled';
+  message: string;
+  total_found: number;
+  processed: number;
+  current_file?: string | null;
+}
+
 export interface FormatOption {
   format_id: string;
   ext: string;
