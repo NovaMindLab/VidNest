@@ -24,9 +24,86 @@ pub enum DownloadOutcome {
     Failed { error: String },
 }
 
+/// Locates directory containing ffmpeg and ffprobe.
+pub fn resolve_ffmpeg_dir(app_data_dir: Option<&Path>) -> Option<PathBuf> {
+    if let Some(dir) = app_data_dir {
+        let bin_dir = dir.join("bin");
+        let ffmpeg_name = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+        if bin_dir.join(ffmpeg_name).exists() {
+            return Some(bin_dir);
+        }
+    }
+
+    #[cfg(unix)]
+    {
+        for p in &["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin", "/usr/bin"] {
+            let path = Path::new(p);
+            if path.join("ffmpeg").exists() {
+                return Some(path.to_path_buf());
+            }
+        }
+    }
+
+    if let Ok(path_var) = std::env::var("PATH") {
+        let sep = if cfg!(windows) { ';' } else { ':' };
+        for part in path_var.split(sep) {
+            let p = Path::new(part);
+            let ffmpeg_name = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+            if p.join(ffmpeg_name).exists() {
+                return Some(p.to_path_buf());
+            }
+        }
+    }
+
+    None
+}
+
+/// Locates a viable JavaScript runtime (Node.js or Deno) for yt-dlp.
+pub fn resolve_js_runtime() -> Option<String> {
+    #[cfg(unix)]
+    {
+        for p in &[
+            "/opt/homebrew/bin/node",
+            "/usr/local/bin/node",
+            "/usr/bin/node",
+            "/opt/homebrew/bin/deno",
+            "/usr/local/bin/deno",
+        ] {
+            let path = Path::new(p);
+            if path.exists() {
+                let kind = if p.ends_with("deno") { "deno" } else { "node" };
+                return Some(format!("{}:{}", kind, p));
+            }
+        }
+    }
+
+    if let Ok(path_var) = std::env::var("PATH") {
+        let sep = if cfg!(windows) { ';' } else { ':' };
+        for part in path_var.split(sep) {
+            let p = Path::new(part);
+            let node_name = if cfg!(windows) { "node.exe" } else { "node" };
+            if p.join(node_name).exists() {
+                return Some(format!("node:{}", p.join(node_name).to_string_lossy()));
+            }
+            let deno_name = if cfg!(windows) { "deno.exe" } else { "deno" };
+            if p.join(deno_name).exists() {
+                return Some(format!("deno:{}", p.join(deno_name).to_string_lossy()));
+            }
+        }
+    }
+
+    None
+}
+
 /// Builds the safe arguments array for yt-dlp download execution.
 /// Guarantees that arguments are passed as discrete vector elements without shell concatenation.
-pub fn build_download_args(url: &str, format_id: Option<&str>, output_template: &str) -> Vec<String> {
+pub fn build_download_args(
+    url: &str,
+    format_id: Option<&str>,
+    output_template: &str,
+    ffmpeg_location: Option<&Path>,
+    js_runtime: Option<&str>,
+) -> Vec<String> {
     let mut args = vec![
         "--newline".to_string(),
         "--no-colors".to_string(),
@@ -39,11 +116,28 @@ pub fn build_download_args(url: &str, format_id: Option<&str>, output_template: 
         output_template.to_string(),
     ];
 
+    if let Some(ff_loc) = ffmpeg_location {
+        args.push("--ffmpeg-location".to_string());
+        args.push(ff_loc.to_string_lossy().to_string());
+    }
+
+    if let Some(js_rt) = js_runtime {
+        let trimmed = js_rt.trim();
+        if !trimmed.is_empty() {
+            args.push("--js-runtimes".to_string());
+            args.push(trimmed.to_string());
+        }
+    }
+
     if let Some(fid) = format_id {
         let trimmed = fid.trim();
         if !trimmed.is_empty() {
             args.push("-f".to_string());
-            args.push(trimmed.to_string());
+            if !trimmed.contains('+') && !trimmed.contains('/') && !trimmed.starts_with("bestaudio") && !trimmed.starts_with("ba") {
+                args.push(format!("{}+bestaudio/best/{}", trimmed, trimmed));
+            } else {
+                args.push(trimmed.to_string());
+            }
         }
     }
 
@@ -59,15 +153,27 @@ pub async fn inspect_url(url: &str, app_data_dir: Option<&Path>) -> Result<UrlIn
     })?;
 
     let mut cmd = tokio::process::Command::new(&bin_path);
-    cmd.args([
-        "--dump-single-json",
-        "--no-playlist",
-        "--no-warnings",
-        "--no-update",
-        "--no-colors",
-        "--skip-download",
-        url,
-    ]);
+    let mut args = vec![
+        "--dump-single-json".to_string(),
+        "--no-playlist".to_string(),
+        "--no-warnings".to_string(),
+        "--no-update".to_string(),
+        "--no-colors".to_string(),
+        "--skip-download".to_string(),
+    ];
+
+    if let Some(ff_loc) = resolve_ffmpeg_dir(app_data_dir) {
+        args.push("--ffmpeg-location".to_string());
+        args.push(ff_loc.to_string_lossy().to_string());
+    }
+
+    if let Some(js_rt) = resolve_js_runtime() {
+        args.push("--js-runtimes".to_string());
+        args.push(js_rt);
+    }
+
+    args.push(url.to_string());
+    cmd.args(&args);
 
     #[cfg(windows)]
     {
@@ -218,6 +324,25 @@ where
         }
     };
 
+    let stderr = child.stderr.take();
+    let captured_stderr = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::<String>::new()));
+    let captured_stderr_clone = captured_stderr.clone();
+
+    if let Some(err_stream) = stderr {
+        tokio::spawn(async move {
+            let mut err_reader = tokio::io::BufReader::new(err_stream).lines();
+            while let Ok(Some(line)) = err_reader.next_line().await {
+                let trimmed = line.trim();
+                if !trimmed.is_empty() {
+                    let mut lock = captured_stderr_clone.lock().await;
+                    if lock.len() < 100 {
+                        lock.push(trimmed.to_string());
+                    }
+                }
+            }
+        });
+    }
+
     let mut reader = tokio::io::BufReader::new(stdout).lines();
     let mut captured_filepath: Option<PathBuf> = None;
     let mut is_paused = false;
@@ -304,17 +429,15 @@ where
             }
         }
         Ok(status) => {
-            let stderr_output = child.stderr.take();
+            let stderr_lines = captured_stderr.lock().await;
             let mut err_msg = format!("yt-dlp 退出码: {:?}", status.code());
-            if let Some(mut err_reader) = stderr_output {
-                use tokio::io::AsyncReadExt;
-                let mut buf = Vec::new();
-                if err_reader.read_to_end(&mut buf).await.is_ok() {
-                    let err_text = String::from_utf8_lossy(&buf);
-                    if !err_text.trim().is_empty() {
-                        err_msg = format!("{}: {}", err_msg, err_text.trim());
-                    }
-                }
+            if !stderr_lines.is_empty() {
+                let last_lines = if stderr_lines.len() > 6 {
+                    &stderr_lines[stderr_lines.len() - 6..]
+                } else {
+                    &stderr_lines[..]
+                };
+                err_msg = format!("{}: {}", err_msg, last_lines.join(" | "));
             }
             DownloadOutcome::Failed { error: err_msg }
         }
@@ -463,12 +586,18 @@ mod tests {
             "https://www.youtube.com/watch?v=123",
             Some("1080p"),
             "downloads/%(title)s.%(ext)s",
+            Some(Path::new("/dummy/bin")),
+            Some("node:/usr/bin/node"),
         );
         assert!(args.contains(&"--newline".to_string()));
+        assert!(args.contains(&"--ffmpeg-location".to_string()));
+        assert!(args.contains(&"/dummy/bin".to_string()));
+        assert!(args.contains(&"--js-runtimes".to_string()));
+        assert!(args.contains(&"node:/usr/bin/node".to_string()));
         assert!(args.contains(&"-o".to_string()));
         assert!(args.contains(&"downloads/%(title)s.%(ext)s".to_string()));
         assert!(args.contains(&"-f".to_string()));
-        assert!(args.contains(&"1080p".to_string()));
+        assert!(args.contains(&"1080p+bestaudio/best/1080p".to_string()));
         assert_eq!(args.last(), Some(&"https://www.youtube.com/watch?v=123".to_string()));
     }
 

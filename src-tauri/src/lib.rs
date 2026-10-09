@@ -8,13 +8,14 @@ pub mod scanner;
 pub mod ytdlp;
 
 use commands::{
-    cancel_download, cancel_download_task, check_ytdlp_update, clear_completed_tasks, delete_video, echo,
-    get_download_tasks, get_video_detail, inspect_url, inspect_video_url, list_videos, pause_download,
-    pause_download_task, ping, resume_download, resume_download_task, scan_video_directory, start_download,
-    system_health_check, update_ytdlp,
+    cancel_download, cancel_download_task, cancel_full_disk_scan, check_ytdlp_update, clear_completed_tasks,
+    delete_video, echo, get_download_tasks, get_video_detail, inspect_url, inspect_video_url, list_videos,
+    pause_download, pause_download_task, ping, resume_download, resume_download_task, scan_video_directory,
+    start_download, start_full_disk_scan, system_health_check, update_ytdlp,
 };
 use db::Database;
 use std::path::PathBuf;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -29,6 +30,26 @@ pub fn run() {
     let download_manager = downloader::DownloadManager::global();
 
     tauri::Builder::default()
+        .setup(|app| {
+            if let Ok(app_data) = app.path().app_data_dir() {
+                let bin_dir = app_data.join("bin");
+                let _ = std::fs::create_dir_all(&bin_dir);
+                let bin_str = bin_dir.to_string_lossy().to_string();
+                let current_path = std::env::var("PATH").unwrap_or_default();
+                let mut paths = vec![bin_str];
+                #[cfg(unix)]
+                {
+                    for p in &["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin"] {
+                        if std::path::Path::new(p).exists() {
+                            paths.push(p.to_string());
+                        }
+                    }
+                }
+                paths.push(current_path);
+                std::env::set_var("PATH", paths.join(":"));
+            }
+            Ok(())
+        })
         .manage(db)
         .manage(download_manager)
         .plugin(tauri_plugin_opener::init())
@@ -37,6 +58,8 @@ pub fn run() {
             check_ytdlp_update,
             update_ytdlp,
             scan_video_directory,
+            start_full_disk_scan,
+            cancel_full_disk_scan,
             list_videos,
             get_video_detail,
             delete_video,

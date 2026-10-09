@@ -339,8 +339,16 @@ impl DownloadManager {
                 .join("%(title).100s [%(id)s].%(ext)s")
                 .to_string_lossy()
                 .to_string();
+            let ffmpeg_location = crate::downloader::executor::resolve_ffmpeg_dir(Some(&app_data_dir));
+            let js_runtime = crate::downloader::executor::resolve_js_runtime();
 
-            let args = build_download_args(&url, format_id.as_deref(), &output_template);
+            let args = build_download_args(
+                &url,
+                format_id.as_deref(),
+                &output_template,
+                ffmpeg_location.as_deref(),
+                js_runtime.as_deref(),
+            );
 
             let tasks_for_progress = tasks_arc.clone();
             let tid = task_id.clone();
