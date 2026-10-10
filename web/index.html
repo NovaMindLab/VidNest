@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VidNest (巢视) - 本地 AI 视频智能中枢 | 毫秒级搜索 · 隐私安全 · 独立播放 · 全平台支持</title>
+  <meta name="description" content="VidNest (巢视) 是新一代开源本地 AI 视频管理与智能检索桌面工作台。基于 Tauri 2 + Rust 构建，100% 本地运行零云端泄露，具备全盘毫秒级 FTS5 检索、独立弹窗画中画播放器、yt-dlp 视频嗅探混流与一键差分升级。">
+  <meta name="keywords" content="VidNest,本地视频管理,AI视频分析,视频播放器,Tauri2,Rust,视频检索,yt-dlp,Eagle替代,开源视频管理">
+  
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="VidNest (巢视) - 本地 AI 视频智能中枢">
+  <meta property="og:description" content="100% Local-First，极速、私密、优雅的现代化本地视频管理与智能分析中枢。">
+  <meta property="og:image" content="https://raw.githubusercontent.com/NovaMindLab/VidNest/main/src-tauri/icons/icon.png">
+  <meta property="og:url" content="https://novamindlab.github.io/VidNest/">
+
+  <link rel="icon" type="image/png" href="icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: rgba(18, 24, 38, 0.7);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --accent: #6366f1;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --gradient-text: linear-gradient(135deg, #60a5fa 0%, #a855f7 50%, #ec4899 100%);
+      --glow: radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 70%);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text-main);
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow-x: hidden;
+      line-height: 1.6;
+    }
+
+    /* Glow Background */
+    .bg-glow {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100vw;
+      height: 900px;
+      background: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(59, 130, 246, 0.25), transparent);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Navigation */
+    header {
+      padding: 24px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgba(11, 15, 25, 0.8);
+    }
+
+    .nav-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: #fff;
+      text-decoration: none;
+      letter-spacing: -0.5px;
+    }
+
+    .brand img {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 28px;
+      align-items: center;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.95rem;
+      font-weight: 500;
+      transition: color 0.2s ease;
+    }
+
+    .nav-links a:hover {
+      color: #fff;
+    }
+
+    .nav-cta {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      padding: 8px 18px;
+      border-radius: 100px;
+      color: #fff !important;
+      font-weight: 600;
+      transition: all 0.2s ease;
+    }
+
+    .nav-cta:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    /* Hero Section */
+    .hero {
+      padding: 90px 0 60px;
+      text-align: center;
+    }
+
+    .badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      background: rgba(99, 102, 241, 0.1);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 100px;
+      color: #818cf8;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 24px;
+    }
+
+    .badge-dot {
+      width: 8px;
+      height: 8px;
+      background: #4ade80;
+      border-radius: 50%;
+      box-shadow: 0 0 10px #4ade80;
+    }
+
+    .hero-title {
+      font-size: clamp(2.5rem, 5vw, 4.2rem);
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -1.5px;
+      margin-bottom: 24px;
+    }
+
+    .gradient-text {
+      background: var(--gradient-text);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-desc {
+      font-size: clamp(1.05rem, 2vw, 1.25rem);
+      color: var(--text-muted);
+      max-width: 780px;
+      margin: 0 auto 40px;
+      font-weight: 400;
+    }
+
+    /* Action Buttons */
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 36px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 14px 28px;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #2563eb, #4f46e5);
+      color: #fff;
+      box-shadow: 0 8px 24px -6px rgba(37, 99, 235, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 32px -4px rgba(37, 99, 235, 0.7);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      color: #e2e8f0;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-2px);
+    }
+
+    .system-detect {
+      color: #64748b;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    /* Mockup Preview */
+    .preview-wrapper {
+      margin-top: 50px;
+      position: relative;
+    }
+
+    .preview-card {
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 20px;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7), 0 0 40px rgba(59, 130, 246, 0.15);
+      overflow: hidden;
+      backdrop-filter: blur(20px);
+    }
+
+    .window-header {
+      background: rgba(0, 0, 0, 0.4);
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .window-dots {
+      display: flex;
+      gap: 8px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+    .dot-red { background: #ff5f56; }
+    .dot-yellow { background: #ffbd2e; }
+    .dot-green { background: #27c93f; }
+
+    .window-title {
+      font-size: 0.8rem;
+      color: #64748b;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .mockup-body {
+      padding: 32px;
+      min-height: 400px;
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 24px;
+    }
+
+    .mock-sidebar {
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 12px;
+      padding: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .mock-nav-item {
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .mock-nav-item.active {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      font-weight: 600;
+    }
+
+    .mock-content {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .mock-searchbar {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 12px 18px;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.95rem;
+    }
+
+    .mock-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px;
+    }
+
+    .video-card-demo {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      overflow: hidden;
+      transition: all 0.2s ease;
+    }
+
+    .video-card-demo:hover {
+      border-color: rgba(59, 130, 246, 0.4);
+      transform: translateY(-2px);
+    }
+
+    .card-thumb {
+      height: 120px;
+      background: linear-gradient(135deg, #1e293b, #0f172a);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .thumb-badge {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .card-info {
+      padding: 12px;
+    }
+
+    .card-title {
+      font-size: 0.88rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 6px;
+    }
+
+    .card-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    /* Core Features */
+    .section {
+      padding: 100px 0;
+    }
+
+    .section-header {
+      text-align: center;
+      max-width: 680px;
+      margin: 0 auto 60px;
+    }
+
+    .section-title {
+      font-size: 2.25rem;
+      font-weight: 800;
+      letter-spacing: -1px;
+      margin-bottom: 16px;
+    }
+
+    .section-subtitle {
+      color: var(--text-muted);
+      font-size: 1.05rem;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 24px;
+    }
+
+    .feature-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      padding: 32px;
+      backdrop-filter: blur(16px);
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .feature-card:hover {
+      border-color: rgba(99, 102, 241, 0.3);
+      transform: translateY(-4px);
+      box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.5);
+    }
+
+    .feature-icon {
+      width: 52px;
+      height: 52px;
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(99, 102, 241, 0.2));
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      margin-bottom: 22px;
+    }
+
+    .feature-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .feature-desc {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.65;
+    }
+
+    /* Comparison Table */
+    .comparison-wrapper {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      overflow: hidden;
+      margin-top: 40px;
+      backdrop-filter: blur(16px);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    th, td {
+      padding: 18px 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    th {
+      background: rgba(0, 0, 0, 0.3);
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #cbd5e1;
+    }
+
+    td {
+      font-size: 0.92rem;
+      color: var(--text-muted);
+    }
+
+    td.highlight {
+      color: #60a5fa;
+      font-weight: 600;
+      background: rgba(59, 130, 246, 0.03);
+    }
+
+    /* Architecture Section */
+    .tech-stack {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 16px;
+      margin-top: 40px;
+    }
+
+    .tech-badge {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 10px 20px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.92rem;
+      font-weight: 500;
+    }
+
+    /* Download Center */
+    .download-section {
+      background: linear-gradient(180deg, transparent, rgba(59, 130, 246, 0.05), transparent);
+      padding: 120px 0;
+      text-align: center;
+    }
+
+    .platform-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+      margin-top: 50px;
+      text-align: left;
+    }
+
+    .platform-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 26px;
+      position: relative;
+      transition: all 0.2s ease;
+    }
+
+    .platform-card:hover {
+      border-color: rgba(59, 130, 246, 0.4);
+      transform: translateY(-3px);
+    }
+
+    .platform-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .platform-sub {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      margin-bottom: 20px;
+    }
+
+    .platform-btn {
+      width: 100%;
+      padding: 10px 16px;
+      border-radius: 8px;
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      color: #60a5fa;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-align: center;
+      text-decoration: none;
+      display: block;
+      transition: all 0.2s ease;
+    }
+
+    .platform-btn:hover {
+      background: #2563eb;
+      color: #fff;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      padding: 60px 0 40px;
+      color: #64748b;
+      font-size: 0.9rem;
+    }
+
+    .footer-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 24px;
+    }
+
+    .footer-links a {
+      color: #64748b;
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+
+    .footer-links a:hover {
+      color: #fff;
+    }
+
+    @media (max-width: 768px) {
+      .mockup-body {
+        grid-template-columns: 1fr;
+      }
+      .mock-sidebar {
+        display: none;
+      }
+      .hero-title {
+        font-size: 2.2rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="bg-glow"></div>
+
+  <!-- Header -->
+  <header>
+    <div class="container nav-inner">
+      <a href="#" class="brand">
+        <img src="icon.png" alt="VidNest Logo">
+        <span>VidNest <span style="font-size: 0.85rem; font-weight: 500; opacity: 0.7;">巢视</span></span>
+      </a>
+      <nav class="nav-links">
+        <a href="#features">功能亮点</a>
+        <a href="#comparison">对比评测</a>
+        <a href="#architecture">架构与开源</a>
+        <a href="#download" class="nav-cta">免费下载</a>
+        <a href="https://github.com/NovaMindLab/VidNest" target="_blank" rel="noopener">GitHub ⭐️</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container">
+      <div class="badge-pill">
+        <span class="badge-dot"></span>
+        <span>VidNest v0.1.0 现已全平台开源发布</span>
+      </div>
+
+      <h1 class="hero-title">
+        重新定义你的<br>
+        <span class="gradient-text">本地 AI 视频智能中枢</span>
+      </h1>
+
+      <p class="hero-desc">
+        100% 离线隐私架构，基于 Tauri 2 + Rust 强悍内核驱动。毫秒级全盘智能索引、独立弹窗画中画播放器、多线程视频嗅探与静默差分升级，为创作者打造的终极媒体资产库。
+      </p>
+
+      <div class="hero-actions">
+        <a href="#download" class="btn btn-primary" id="primary-dl-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span id="dl-text">立即下载客户端 (免费开源)</span>
+        </a>
+        <a href="https://github.com/NovaMindLab/VidNest" target="_blank" rel="noopener" class="btn btn-secondary">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          查看 GitHub 源码
+        </a>
+      </div>
+
+      <div class="system-detect" id="os-indicator">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m10 15 5-3-5-3v6z"/></svg>
+        <span>已自动识别系统：支持 macOS (Apple Silicon & Intel) / Windows / Linux</span>
+      </div>
+
+      <!-- App Mockup UI -->
+      <div class="preview-wrapper">
+        <div class="preview-card">
+          <div class="window-header">
+            <div class="window-dots">
+              <div class="dot dot-red"></div>
+              <div class="dot dot-yellow"></div>
+              <div class="dot dot-green"></div>
+            </div>
+            <div class="window-title">VidNest - Local Video Intelligence Console</div>
+          </div>
+          <div class="mockup-body">
+            <div class="mock-sidebar">
+              <div class="mock-nav-item active">📁 媒体资产库 (Library)</div>
+              <div class="mock-nav-item">⚡ 极速全盘扫描 (Scanner)</div>
+              <div class="mock-nav-item">📥 嗅探下载中心 (Downloader)</div>
+              <div class="mock-nav-item">⚙️ 系统设置与升级</div>
+            </div>
+            <div class="mock-content">
+              <div class="mock-searchbar">
+                <span>🔍 搜索 4K, 教程, 航拍素材, 分辨率 &gt; 1080p ...</span>
+                <span style="font-family: 'JetBrains Mono'; font-size: 0.75rem; background: rgba(255,255,255,0.08); padding: 2px 8px; border-radius: 4px;">⌘ K</span>
+              </div>
+              <div class="mock-cards">
+                <div class="video-card-demo">
+                  <div class="card-thumb">
+                    <span style="font-size: 2rem;">🎬</span>
+                    <span class="thumb-badge">08:24 · 4K</span>
+                  </div>
+                  <div class="card-info">
+                    <div class="card-title">城市日落延时摄影_4K_ProRes.mov</div>
+                    <div class="card-meta"><span>1.42 GB</span><span>H.264 / 60fps</span></div>
+                  </div>
+                </div>
+                <div class="video-card-demo">
+                  <div class="card-thumb">
+                    <span style="font-size: 2rem;">⚡</span>
+                    <span class="thumb-badge">12:15 · 1080P</span>
+                  </div>
+                  <div class="card-info">
+                    <div class="card-title">Tauri2与Rust全栈桌面实战教程.mp4</div>
+                    <div class="card-meta"><span>348 MB</span><span>AV1 / 30fps</span></div>
+                  </div>
+                </div>
+                <div class="video-card-demo">
+                  <div class="card-thumb">
+                    <span style="font-size: 2rem;">🎙️</span>
+                    <span class="thumb-badge">45:00 · 2K</span>
+                  </div>
+                  <div class="card-info">
+                    <div class="card-title">播客访谈第32期_AI剪辑革命.mp4</div>
+                    <div class="card-meta"><span>890 MB</span><span>HEVC / 24fps</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Core Features -->
+  <section class="section" id="features">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">为现代内容创作者精心打磨</h2>
+        <p class="section-subtitle">摆脱繁重卡顿的旧式管理器与云端数据泄露风险，尽享原生级轻巧极速体验。</p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">⚡</div>
+          <h3 class="feature-title">全盘毫秒级 FTS5 智能索引</h3>
+          <p class="feature-desc">内置 SQLite 强劲引擎与全文索引 (FTS5)，无需上传任何元数据，十万级视频素材瞬间就地扫描完成，支持按时长、分辨率、视频编码与自定义标签复合检索。</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🪟</div>
+          <h3 class="feature-title">独立原生弹窗画中画播放器</h3>
+          <p class="feature-desc">专为专业剪辑对照打造，支持一键分离为主应用外的独立系统级原生 WebviewWindow，置顶悬浮、平滑时间轴精确定位、无黑屏本地流直读。</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🛡️</div>
+          <h3 class="feature-title">100% 本地隐私 零云端依赖</h3>
+          <p class="feature-desc">坚持 Local-First 设计信条。您的工程素材、私密视频、商业机密数据永不离机，无需登录账号，杜绝云端服务商扫描窥探与版权风险。</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">📥</div>
+          <h3 class="feature-title">yt-dlp 多线程视频混流中心</h3>
+          <p class="feature-desc">开箱即用的音视频嗅探下载器，集成最新 yt-dlp 与 FFmpeg 后端，支持海量主流平台视频无损抓取、自动合成与标签智能归档。</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🔄</div>
+          <h3 class="feature-title">应用内毫秒级差分增量升级</h3>
+          <p class="feature-desc">基于 Tauri Updater 与 GitHub Release 双通道，更新包仅下载变动二进制补丁（KB级别），无需重新下载完整安装包，一键优雅重启更新。</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🦀</div>
+          <h3 class="feature-title">Rust + Tauri 2 极低资源开销</h3>
+          <p class="feature-desc">相比传统 Electron 动辄 1GB 内存占用，VidNest 运行常驻内存仅需 ~60MB，冷启动毫秒级响应，即便运行在老旧机器上依然行云流水。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Competitor Comparison -->
+  <section class="section" id="comparison">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">全面对比：为什么选择 VidNest？</h2>
+        <p class="section-subtitle">专为视频流与创作者优化，超越传统文件管理器与高额商业软件。</p>
+      </div>
+
+      <div class="comparison-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 25%;">特性维度</th>
+              <th style="width: 35%; color: #60a5fa;">VidNest (巢视)</th>
+              <th style="width: 20%;">Eagle 等素材软件</th>
+              <th style="width: 20%;">剪映/CapCut 媒体库</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>开源协议与价格</strong></td>
+              <td class="highlight">✅ 100% 永久开源免费</td>
+              <td>❌ 单设备买断 $29.95</td>
+              <td>⚠️ 绑定云会员 / 付费增值</td>
+            </tr>
+            <tr>
+              <td><strong>文件管理机制</strong></td>
+              <td class="highlight">✅ 原地就地挂载 (不重复占盘)</td>
+              <td>❌ 必须拷贝进专有 .library 库</td>
+              <td>⚠️ 依赖工程草稿缓存</td>
+            </tr>
+            <tr>
+              <td><strong>架构与常驻内存</strong></td>
+              <td class="highlight">✅ Tauri 2 + Rust (~60MB)</td>
+              <td>❌ Electron 框架 (~600MB+)</td>
+              <td>⚠️ 剪辑宿主捆绑 (~1GB+)</td>
+            </tr>
+            <tr>
+              <td><strong>独立窗口画中画播放</strong></td>
+              <td class="highlight">✅ 原生 Webview 独立悬浮置顶</td>
+              <td>⚠️ 仅支持软件内预览面板</td>
+              <td>❌ 无独立浮窗</td>
+            </tr>
+            <tr>
+              <td><strong>隐私安全性</strong></td>
+              <td class="highlight">✅ 100% 纯本地离线运作</td>
+              <td>⚠️ 本地存储但需三方同步</td>
+              <td>❌ 强制云端同步与内容合规</td>
+            </tr>
+            <tr>
+              <td><strong>全盘全文检索响应</strong></td>
+              <td class="highlight">✅ SQLite FTS5 &lt; 10ms</td>
+              <td>⚠️ 大文件库时有卡顿延迟</td>
+              <td>❌ 仅支持工程内简单文件名</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tech Architecture -->
+  <section class="section" id="architecture">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">现代化原生工程栈</h2>
+        <p class="section-subtitle">拥抱严苛的内存安全与顶尖开源生态基建。</p>
+      </div>
+
+      <div class="tech-stack">
+        <div class="tech-badge">🦀 Rust 2021 (内核)</div>
+        <div class="tech-badge">⚡ Tauri 2.0 (原生桥接)</div>
+        <div class="tech-badge">💚 Vue 3 + TypeScript</div>
+        <div class="tech-badge">🗄️ SQLite + FTS5 全文索引</div>
+        <div class="tech-badge">🎬 FFmpeg / FFprobe</div>
+        <div class="tech-badge">📥 yt-dlp 多源解析</div>
+        <div class="tech-badge">🚀 GitHub Actions 多架构 CI/CD</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Download Center -->
+  <section class="section download-section" id="download">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">立即下载 VidNest 开启智能体验</h2>
+        <p class="section-subtitle">支持 Windows、macOS 与 Linux 主流平台，永久免费开源。</p>
+      </div>
+
+      <div class="platform-cards">
+        <div class="platform-card" id="card-mac-arm">
+          <div class="platform-title">🍏 macOS (Apple Silicon)</div>
+          <div class="platform-sub">适用于 M1 / M2 / M3 / M4 系列 Mac</div>
+          <a href="https://github.com/NovaMindLab/VidNest/releases/latest" class="platform-btn">下载 .dmg (arm64)</a>
+        </div>
+
+        <div class="platform-card" id="card-mac-intel">
+          <div class="platform-title">🍏 macOS (Intel)</div>
+          <div class="platform-sub">适用于 Intel x86_64 处理器 Mac</div>
+          <a href="https://github.com/NovaMindLab/VidNest/releases/latest" class="platform-btn">下载 .dmg (x64)</a>
+        </div>
+
+        <div class="platform-card" id="card-windows">
+          <div class="platform-title">🪟 Windows</div>
+          <div class="platform-sub">适用于 Windows 10 / 11 64 位系统</div>
+          <a href="https://github.com/NovaMindLab/VidNest/releases/latest" class="platform-btn">下载安装包 (.exe)</a>
+        </div>
+
+        <div class="platform-card" id="card-linux">
+          <div class="platform-title">🐧 Linux</div>
+          <div class="platform-sub">适用于 Ubuntu / Debian / Fedora 等发行版</div>
+          <a href="https://github.com/NovaMindLab/VidNest/releases/latest" class="platform-btn">下载 AppImage / .deb</a>
+        </div>
+      </div>
+
+      <div style="margin-top: 40px; font-size: 0.9rem; color: #94a3b8;">
+        或者使用包管理器（即将支持）：
+        <code style="background: rgba(255,255,255,0.06); padding: 4px 10px; border-radius: 6px; font-family: 'JetBrains Mono'; margin-left: 6px;">brew install --cask vidnest</code>
+        <code style="background: rgba(255,255,255,0.06); padding: 4px 10px; border-radius: 6px; font-family: 'JetBrains Mono'; margin-left: 6px;">winget install NovaMindLab.VidNest</code>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container footer-inner">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <img src="icon.png" alt="logo" style="width: 24px; height: 24px; border-radius: 6px;">
+        <span>© 2026 VidNest Project (NovaMindLab). Released under MIT License.</span>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/NovaMindLab/VidNest" target="_blank" rel="noopener">GitHub 仓库</a>
+        <a href="https://github.com/NovaMindLab/VidNest/releases" target="_blank" rel="noopener">Release 历史</a>
+        <a href="https://github.com/NovaMindLab/VidNest/issues" target="_blank" rel="noopener">提交反馈</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Intelligent OS Detection for Primary Button Highlighting
+    (function detectPlatform() {
+      const ua = navigator.userAgent.toLowerCase();
+      const dlBtn = document.getElementById('primary-dl-btn');
+      const dlText = document.getElementById('dl-text');
+      const osIndicator = document.getElementById('os-indicator');
+      
+      let platform = 'macOS';
+      let cardToHighlight = 'card-mac-arm';
+
+      if (ua.includes('win')) {
+        platform = 'Windows (x64)';
+        cardToHighlight = 'card-windows';
+        dlText.innerText = '下载 Windows 版 (.exe)';
+      } else if (ua.includes('mac')) {
+        platform = 'macOS';
+        cardToHighlight = 'card-mac-arm';
+        dlText.innerText = '下载 macOS 版 (.dmg)';
+      } else if (ua.includes('linux')) {
+        platform = 'Linux (AppImage/deb)';
+        cardToHighlight = 'card-linux';
+        dlText.innerText = '下载 Linux 版';
+      }
+
+      const card = document.getElementById(cardToHighlight);
+      if (card) {
+        card.style.borderColor = '#3b82f6';
+        card.style.background = 'rgba(59, 130, 246, 0.08)';
+      }
+    })();
+  </script>
+</body>
+</html>
