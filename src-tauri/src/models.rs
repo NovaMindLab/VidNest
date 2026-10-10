@@ -201,4 +201,32 @@ pub struct UpdateInstallResult {
     pub requires_restart: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DuplicateGroup {
+    pub group_id: String,
+    pub match_reason: String, // "exact_hash" | "metadata" | "fuzzy_name"
+    pub match_label: String,
+    pub total_size: u64,
+    pub reclaimable_size: u64,
+    pub videos: Vec<Video>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DuplicateResolutionAction {
+    pub group_id: String,
+    pub keep_video_id: i64,
+    pub delete_video_ids: Vec<i64>,
+    pub delete_disk_file: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ResolutionSummary {
+    pub groups_processed: usize,
+    pub videos_removed: usize,
+    pub bytes_reclaimed: u64,
+    pub success: bool,
+    pub message: String,
+}
+
 

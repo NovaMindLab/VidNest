@@ -2,8 +2,9 @@ use crate::db::Database;
 use crate::health::run_health_check;
 use crate::media::read_thumbnail_base64;
 use crate::models::{
-    DownloadTask, HealthReport, ScanSummary, UrlInspectResult, Video, VideoFilter,
-    VideoListResponse, YtDlpUpdateCheck, YtDlpUpdateResult,
+    DownloadTask, DuplicateGroup, DuplicateResolutionAction, HealthReport, ResolutionSummary,
+    ScanSummary, UrlInspectResult, Video, VideoFilter, VideoListResponse, YtDlpUpdateCheck,
+    YtDlpUpdateResult,
 };
 use crate::scanner::scan_directory;
 use crate::ytdlp;
@@ -530,6 +531,37 @@ pub async fn open_ytd_window(app: AppHandle) -> Result<(), String> {
 
     let _ = win.set_focus();
     Ok(())
+}
+
+#[tauri::command]
+pub async fn find_duplicate_videos(
+    strategy: Option<String>,
+    db: State<'_, Database>,
+) -> Result<Vec<DuplicateGroup>, String> {
+    let strat = strategy.unwrap_or_else(|| "exact_hash".to_string());
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::dedup::find_duplicates(&conn, &strat)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn resolve_duplicate_videos(
+    actions: Vec<DuplicateResolutionAction>,
+    db: State<'_, Database>,
+) -> Result<ResolutionSummary, String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let mut conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::dedup::resolve_duplicates(&mut conn, actions)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 

@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod db;
+pub mod dedup;
 pub mod downloader;
 pub mod health;
 pub mod media;
@@ -10,12 +11,13 @@ pub mod ytdlp;
 
 use commands::{
     cancel_download, cancel_download_task, cancel_full_disk_scan, check_app_update, check_ytdlp_update,
-    clear_completed_tasks, delete_video, download_and_install_update, echo, get_download_tasks,
-    get_player_init_video, get_video_detail, inspect_url, inspect_video_url, install_update_and_relaunch,
-    list_videos, open_update_installer_folder, open_video_player_window, open_ytd_window, pause_download,
-    pause_download_task, ping, relaunch_app, resume_download, resume_download_task, reveal_in_explorer,
-    scan_video_directory, set_player_always_on_top, start_download, start_full_disk_scan,
-    system_health_check, update_ytdlp, PlayerState,
+    clear_completed_tasks, delete_video, download_and_install_update, echo, find_duplicate_videos,
+    get_download_tasks, get_player_init_video, get_video_detail, inspect_url, inspect_video_url,
+    install_update_and_relaunch, list_videos, open_update_installer_folder, open_video_player_window,
+    open_ytd_window, pause_download, pause_download_task, ping, relaunch_app, resolve_duplicate_videos,
+    resume_download, resume_download_task, reveal_in_explorer, scan_video_directory,
+    set_player_always_on_top, start_download, start_full_disk_scan, system_health_check, update_ytdlp,
+    PlayerState,
 };
 use db::Database;
 use std::path::PathBuf;
@@ -105,6 +107,8 @@ pub fn run() {
             set_player_always_on_top,
             open_ytd_window,
             reveal_in_explorer,
+            find_duplicate_videos,
+            resolve_duplicate_videos,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

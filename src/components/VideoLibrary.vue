@@ -6,6 +6,10 @@ import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import VideoPlayerModal from './VideoPlayerModal.vue';
 import type { Video, VideoFilter, VideoListResponse, ScanSummary, ScanProgress } from '../types';
 
+const emit = defineEmits<{
+  (e: 'navigateDedup'): void;
+}>();
+
 const videos = ref<Video[]>([]);
 const totalVideos = ref<number>(0);
 const currentPage = ref<number>(1);
@@ -617,6 +621,19 @@ onUnmounted(() => {
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
           </svg>
           <span>{{ showScanner ? '收起扫描' : '扫描导入' }}</span>
+        </button>
+
+        <!-- Jump to Deduplication View Button -->
+        <button
+          class="btn-toggle-scan"
+          title="查找相同或重复视频并清理"
+          @click="emit('navigateDedup')"
+        >
+          <svg class="btn-sm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          <span>查重清理</span>
         </button>
 
         <!-- View mode -->

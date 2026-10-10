@@ -173,3 +173,30 @@ export interface UpdateInstallResult {
   requires_restart: boolean;
 }
 
+export type DedupStrategy = 'exact_hash' | 'metadata' | 'fuzzy_name';
+
+export interface DuplicateGroup {
+  group_id: string;
+  match_reason: 'exact_hash' | 'metadata' | 'fuzzy_name' | string;
+  match_label: string;
+  total_size: number;
+  reclaimable_size: number;
+  videos: Video[];
+}
+
+export interface DuplicateResolutionAction {
+  groupId: string;
+  keepVideoId: number;
+  deleteVideoIds: number[];
+  deleteDiskFile: boolean;
+}
+
+export interface ResolutionSummary {
+  groups_processed: number;
+  videos_removed: number;
+  bytes_reclaimed: number;
+  success: boolean;
+  message: string;
+}
+
+
