@@ -1,25 +1,38 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
-import type { FormatOption, UrlInspectResult, DownloadTask } from '../types';
+import type { UrlInspectResult, DownloadTask } from '../types';
+
+interface QualityOptionItem {
+  id: string;
+  category: 'video' | 'music';
+  label: string;
+  sizeStr: string;
+  formatId: string;
+}
+
+const props = defineProps<{
+  isStandaloneWindow?: boolean;
+}>();
 
 const emit = defineEmits<{
   (e: 'update:activeCount', count: number): void;
   (e: 'viewInLibrary', payload: { fileName?: string; filePath?: string }): void;
 }>();
 
-// Input and state
+// Main input & inspect state
 const inputUrl = ref<string>('');
 const isInspecting = ref<boolean>(false);
-const isAddingDownload = ref<boolean>(false);
 const inspectError = ref<string>('');
 const inspectResult = ref<UrlInspectResult | null>(null);
 
-// Quality selection state
-const selectedFormatPreset = ref<string>('best');
-const selectedCustomFormatId = ref<string>('');
+// Quality selection (video / music)
+const selectedOptionId = ref<string>('video-1080p');
 
-// Task lists and filters
+// UI View tabs: 'parser' | 'tasks'
+const currentView = ref<'parser' | 'tasks'>('parser');
+
+// Task list & polling
 const tasks = ref<DownloadTask[]>([]);
 const isLoadingTasks = ref<boolean>(false);
 const activeFilter = ref<'all' | 'active' | 'completed' | 'failed'>('all');
@@ -27,13 +40,50 @@ const toastMessage = ref<string>('');
 let toastTimer: number | null = null;
 let pollTimer: number | null = null;
 
-// Presets for video quality
-const qualityPresets = [
-  { id: 'best', label: '最佳画质', desc: '最佳音画混流 (Best)', formatId: 'bestvideo+bestaudio/best' },
-  { id: '1080p', label: '1080P 高清', desc: 'Full HD 1080P', formatId: 'bestvideo[height<=1080]+bestaudio/best[height<=1080]' },
-  { id: '720p', label: '720P 标清', desc: 'HD 720P', formatId: 'bestvideo[height<=720]+bestaudio/best[height<=720]' },
-  { id: 'audio_only', label: '仅提取音频', desc: 'MP3/M4A 纯音频', formatId: 'bestaudio/best' },
-  { id: 'custom', label: '自定义流格式', desc: '指定格式流 ID', formatId: '' },
+// Supported sites list (Matching Image 1)
+const supportedSites = [
+  {
+    name: 'YouTube',
+    iconType: 'youtube',
+    exampleUrl: 'https://www.youtube.com/watch?v=rRK8KP4Y68g',
+    bg: '#f1f3f5',
+    color: '#000000',
+  },
+  {
+    name: 'vimeo',
+    iconType: 'vimeo',
+    exampleUrl: 'https://vimeo.com/76979871',
+    bg: '#f1f3f5',
+    color: '#000000',
+  },
+  {
+    name: 'TED',
+    iconType: 'ted',
+    exampleUrl: 'https://www.ted.com/talks/al_gore_the_case_for_optimism_on_climate_change',
+    bg: '#f1f3f5',
+    color: '#e62b1e',
+  },
+  {
+    name: 'OnlyFans',
+    iconType: 'onlyfans',
+    exampleUrl: '',
+    bg: '#f1f3f5',
+    color: '#00aff0',
+  },
+  {
+    name: 'DailyMotion',
+    iconType: 'dailymotion',
+    exampleUrl: 'https://www.dailymotion.com/video/x7tgad0',
+    bg: '#f1f3f5',
+    color: '#000000',
+  },
+  {
+    name: 'rumble',
+    iconType: 'rumble',
+    exampleUrl: 'https://rumble.com/v20847w-top-news.html',
+    bg: '#f1f3f5',
+    color: '#85c742',
+  },
 ];
 
 // Computed tasks categories
@@ -66,34 +116,87 @@ function showToast(msg: string) {
   }, 2600);
 }
 
-// Fetch download tasks from backend
-async function fetchTasks() {
-  isLoadingTasks.value = true;
-  try {
-    const list = await invoke<DownloadTask[]>('get_download_tasks');
-    tasks.value = list || [];
-    emit('update:activeCount', activeTasks.value.length);
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (!msg.includes('not found') && !msg.includes('unknown')) {
-      console.warn('Failed to fetch download tasks:', msg);
+// Extract Video & Music options based on inspection or smart presets
+const videoOptions = computed<QualityOptionItem[]>(() => {
+  if (!inspectResult.value) return [];
+  const duration = inspectResult.value.duration || 600; // fallback 10 mins
+
+  // Standard video heights
+  const standardTiers = [
+    { height: 1080, label: '1080P', baseMb: 435, defaultBitrate: 5500 },
+    { height: 720, label: '720P', baseMb: 235, defaultBitrate: 2800 },
+    { height: 480, label: '480P', baseMb: 126, defaultBitrate: 1500 },
+    { height: 360, label: '360P', baseMb: 73, defaultBitrate: 850 },
+    { height: 240, label: '240P', baseMb: 46, defaultBitrate: 500 },
+    { height: 144, label: '144P', baseMb: 29, defaultBitrate: 300 },
+  ];
+
+  const formats = inspectResult.value.formats || [];
+
+  return standardTiers.map((tier) => {
+    // Find if specific format exists in inspect results
+    const matchedFmt = formats.find((f) => {
+      const res = f.resolution || '';
+      return res.includes(`${tier.height}`) || (f.note && f.note.includes(`${tier.height}p`));
+    });
+
+    let sizeStr = '';
+    if (matchedFmt && matchedFmt.filesize) {
+      sizeStr = formatFileSize(matchedFmt.filesize);
+    } else {
+      // Calculate realistic estimate based on duration
+      const estBytes = (duration * tier.defaultBitrate * 1024) / 8;
+      sizeStr = formatFileSize(estBytes);
     }
-  } finally {
-    isLoadingTasks.value = false;
-  }
-}
 
-function formatStreamSummary(fmt: FormatOption): string {
-  const notePart = fmt.note ? ` | ${fmt.note}` : '';
-  const sizePart = fmt.filesize ? ` | ${formatFileSize(fmt.filesize)}` : '';
-  return `ID: ${fmt.format_id} [${fmt.ext}] ${fmt.resolution}${notePart}${sizePart}`;
-}
+    const formatId = matchedFmt?.format_id
+      ? `${matchedFmt.format_id}+bestaudio/best`
+      : `bestvideo[height<=${tier.height}]+bestaudio/best[height<=${tier.height}]`;
 
-// Inspect video metadata
+    return {
+      id: `video-${tier.height}p`,
+      category: 'video',
+      label: tier.label,
+      sizeStr,
+      formatId,
+    };
+  });
+});
+
+const musicOptions = computed<QualityOptionItem[]>(() => {
+  if (!inspectResult.value) return [];
+  const duration = inspectResult.value.duration || 600;
+
+  const audioTiers = [
+    { kbps: 64, label: '64kbps', defaultBitrate: 64 },
+    { kbps: 128, label: '128kbps', defaultBitrate: 128 },
+    { kbps: 320, label: '320kbps', defaultBitrate: 320 },
+  ];
+
+  return audioTiers.map((tier) => {
+    const estBytes = (duration * tier.defaultBitrate * 1024) / 8;
+    return {
+      id: `music-${tier.kbps}k`,
+      category: 'music',
+      label: tier.label,
+      sizeStr: formatFileSize(estBytes),
+      formatId: `bestaudio[abr<=${tier.kbps}]/bestaudio/best`,
+    };
+  });
+});
+
+// Currently selected option object
+const currentSelectedOption = computed<QualityOptionItem | undefined>(() => {
+  const v = videoOptions.value.find((o) => o.id === selectedOptionId.value);
+  if (v) return v;
+  return musicOptions.value.find((o) => o.id === selectedOptionId.value);
+});
+
+// Trigger URL inspection
 async function inspectVideoUrl() {
   const url = inputUrl.value.trim();
   if (!url) {
-    inspectError.value = '请输入需要解析的视频链接 (URL)';
+    inspectError.value = '请粘贴需要解析的视频链接 (Paste video link)';
     return;
   }
   inspectError.value = '';
@@ -103,9 +206,11 @@ async function inspectVideoUrl() {
   try {
     const res = await invoke<UrlInspectResult>('inspect_url', { url });
     inspectResult.value = res;
-    selectedFormatPreset.value = 'best';
-    selectedCustomFormatId.value = res.formats?.[0]?.format_id || '';
-    showToast('元信息解析成功！');
+    // Default to 1080P or the first video option
+    if (videoOptions.value.length > 0) {
+      selectedOptionId.value = videoOptions.value[0].id;
+    }
+    showToast('视频信息解析成功！');
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     inspectError.value = `视频解析失败: ${msg}`;
@@ -114,178 +219,94 @@ async function inspectVideoUrl() {
   }
 }
 
-// Auto-install yt-dlp engine when missing
-const isInstallingEngine = ref<boolean>(false);
-const isYtdlpMissingError = computed(() => {
-  const err = inspectError.value.toLowerCase();
-  return err.includes('yt-dlp') || err.includes('ytdl') || err.includes('未找到可用的');
-});
-
-async function handleInstallEngine() {
-  isInstallingEngine.value = true;
-  try {
-    showToast('正在下载并部署独立托管 yt-dlp 引擎，请稍候...');
-    const res = await invoke<{ success: boolean; message: string }>('update_ytdlp');
-    if (res.success) {
-      showToast('yt-dlp 核心引擎安装成功！正在重新解析...');
-      inspectError.value = '';
-      if (inputUrl.value.trim()) {
-        await inspectVideoUrl();
-      }
-    } else {
-      inspectError.value = `引擎安装失败: ${res.message}`;
-    }
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    inspectError.value = `引擎安装失败: ${msg}`;
-  } finally {
-    isInstallingEngine.value = false;
-  }
-}
-
-// Quick add download with default best quality
-async function quickAddDownload() {
-  const url = inputUrl.value.trim();
-  if (!url) {
-    inspectError.value = '请输入需要下载的视频链接 (URL)';
-    return;
-  }
-  inspectError.value = '';
-  isAddingDownload.value = true;
-
-  try {
-    await invoke<DownloadTask>('start_download', {
-      url,
-      format_id: 'bestvideo+bestaudio/best',
-      formatId: 'bestvideo+bestaudio/best',
-    });
-    inputUrl.value = '';
-    showToast('已加入下载任务队列');
-    await fetchTasks();
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    inspectError.value = `添加下载失败: ${msg}`;
-  } finally {
-    isAddingDownload.value = false;
-  }
-}
-
-// Confirm download from inspect preview
-async function confirmInspectDownload() {
+// Start download of the selected format
+const isStartingDownload = ref<boolean>(false);
+async function startSelectedDownload() {
   if (!inspectResult.value) return;
-  const url = inspectResult.value.url;
-  let targetFormatId: string | undefined = undefined;
+  const targetOption = currentSelectedOption.value;
+  const formatId = targetOption ? targetOption.formatId : 'bestvideo+bestaudio/best';
 
-  if (selectedFormatPreset.value === 'custom') {
-    targetFormatId = selectedCustomFormatId.value.trim() || undefined;
-  } else {
-    const foundPreset = qualityPresets.find((p) => p.id === selectedFormatPreset.value);
-    targetFormatId = foundPreset?.formatId || undefined;
-  }
-
-  isAddingDownload.value = true;
+  isStartingDownload.value = true;
   try {
     await invoke<DownloadTask>('start_download', {
-      url,
-      format_id: targetFormatId,
-      formatId: targetFormatId,
+      url: inspectResult.value.url,
+      format_id: formatId,
+      formatId: formatId,
     });
-    inspectResult.value = null;
-    inputUrl.value = '';
-    showToast('已确认并开始下载任务');
+    showToast(`已开始下载: ${targetOption?.label || '最佳画质'}`);
     await fetchTasks();
+    // Switch to task view or keep in parser with toast
+    currentView.value = 'tasks';
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    alert(`启动下载失败: ${msg}`);
+    showToast(`下载启动失败: ${msg}`);
   } finally {
-    isAddingDownload.value = false;
+    isStartingDownload.value = false;
+  }
+}
+
+// Use supported site sample link
+function handleSiteClick(site: typeof supportedSites[0]) {
+  if (site.exampleUrl) {
+    inputUrl.value = site.exampleUrl;
+    inspectVideoUrl();
+  } else {
+    showToast(`请复制 ${site.name} 的视频链接并粘贴`);
+  }
+}
+
+// Fetch download tasks from backend
+async function fetchTasks() {
+  isLoadingTasks.value = true;
+  try {
+    const list = await invoke<DownloadTask[]>('get_download_tasks');
+    tasks.value = list || [];
+    emit('update:activeCount', activeTasks.value.length);
+  } catch (err: unknown) {
+    console.warn('Failed to fetch download tasks:', err);
+  } finally {
+    isLoadingTasks.value = false;
+  }
+}
+
+// Open standalone window
+async function openInStandaloneWindow() {
+  try {
+    await invoke('open_ytd_window');
+  } catch (err: unknown) {
+    showToast(`打开独立窗口失败: ${err}`);
   }
 }
 
 // Task control operations
 async function pauseTask(task: DownloadTask) {
   try {
-    await invoke('pause_download_task', {
-      task_id: task.id,
-      taskId: task.id,
-      id: task.id,
-    });
+    await invoke('pause_download_task', { task_id: task.id, taskId: task.id, id: task.id });
     showToast('任务已暂停');
     await fetchTasks();
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    alert(`暂停失败: ${msg}`);
+    showToast(`暂停失败: ${err}`);
   }
 }
 
 async function resumeTask(task: DownloadTask) {
   try {
-    await invoke('resume_download_task', {
-      task_id: task.id,
-      taskId: task.id,
-      id: task.id,
-    });
+    await invoke('resume_download_task', { task_id: task.id, taskId: task.id, id: task.id });
     showToast('任务已恢复');
     await fetchTasks();
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    alert(`恢复失败: ${msg}`);
+    showToast(`恢复失败: ${err}`);
   }
 }
 
 async function cancelTask(task: DownloadTask) {
   if (!confirm(`确定取消任务 "${task.title}" 吗？`)) return;
   try {
-    await invoke('cancel_download_task', {
-      task_id: task.id,
-      taskId: task.id,
-      id: task.id,
-    });
+    await invoke('cancel_download_task', { task_id: task.id, taskId: task.id, id: task.id });
     showToast('任务已取消');
     await fetchTasks();
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    alert(`取消失败: ${msg}`);
-  }
-}
-
-async function retryTask(task: DownloadTask) {
-  try {
-    await invoke('retry_download_task', {
-      task_id: task.id,
-      taskId: task.id,
-      id: task.id,
-      url: task.url,
-    });
-    showToast('已重新加入下载队列');
-    await fetchTasks();
-  } catch {
-    try {
-      await invoke('start_download', {
-        url: task.url,
-        format_id: 'bestvideo+bestaudio/best',
-        formatId: 'bestvideo+bestaudio/best',
-      });
-      showToast('已重新提交下载');
-      await fetchTasks();
-    } catch (innerErr: unknown) {
-      const msg = innerErr instanceof Error ? innerErr.message : String(innerErr);
-      alert(`重试失败: ${msg}`);
-    }
-  }
-}
-
-async function deleteTask(task: DownloadTask) {
-  try {
-    await invoke('delete_download_task', {
-      task_id: task.id,
-      taskId: task.id,
-      id: task.id,
-    });
-    showToast('已移除任务记录');
-    await fetchTasks();
-  } catch {
-    tasks.value = tasks.value.filter((t) => t.id !== task.id);
+    showToast(`取消失败: ${err}`);
   }
 }
 
@@ -297,23 +318,6 @@ async function clearCompleted() {
     showToast('已清空已完成记录');
   } catch {
     tasks.value = tasks.value.filter((t) => t.status !== 'completed');
-    showToast('已清空已完成记录');
-  }
-}
-
-async function copyFilePath(path: string | null | undefined) {
-  if (!path) return;
-  try {
-    await navigator.clipboard.writeText(path);
-    showToast('文件路径已复制到剪贴板！');
-  } catch {
-    const input = document.createElement('input');
-    input.value = path;
-    document.body.appendChild(input);
-    input.select();
-    document.execCommand('copy');
-    document.body.removeChild(input);
-    showToast('文件路径已复制到剪贴板！');
   }
 }
 
@@ -331,79 +335,24 @@ async function pasteFromClipboard() {
       inputUrl.value = text.trim();
       inspectError.value = '';
     }
-  } catch (err) {
-    console.warn('Clipboard read failed:', err);
+  } catch {
+    showToast('请直接在输入框按 ⌘V / Ctrl+V 粘贴');
   }
-}
-
-function formatDuration(seconds: number | null | undefined): string {
-  if (seconds === null || seconds === undefined || isNaN(seconds)) return '--:--';
-  const totalSecs = Math.floor(seconds);
-  const hours = Math.floor(totalSecs / 3600);
-  const minutes = Math.floor((totalSecs % 3600) / 60);
-  const secs = totalSecs % 60;
-  if (hours > 0) {
-    return `${hours.toString().padStart(2, '0')}:${minutes
-      .toString()
-      .padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }
-  return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
 function formatFileSize(bytes: number | null | undefined): string {
-  if (!bytes || bytes <= 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-}
-
-function formatDate(timestamp: number | null | undefined): string {
-  if (!timestamp) return '-';
-  const d = new Date(timestamp > 1e11 ? timestamp : timestamp * 1000);
-  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function getStatusBadgeClass(status: string): string {
-  switch (status) {
-    case 'downloading':
-      return 'badge-primary';
-    case 'completed':
-      return 'badge-success';
-    case 'paused':
-      return 'badge-warning';
-    case 'failed':
-    case 'cancelled':
-      return 'badge-danger';
-    default:
-      return 'badge-secondary';
+  if (!bytes || bytes <= 0) return '0 MB';
+  const mb = bytes / (1024 * 1024);
+  if (mb < 1000) {
+    return `${Math.round(mb)} MB`;
   }
+  const gb = bytes / (1024 * 1024 * 1024);
+  return `${gb.toFixed(1)} GB`;
 }
 
-function getStatusText(status: string): string {
-  switch (status) {
-    case 'downloading':
-      return '下载中';
-    case 'pending':
-      return '排队中';
-    case 'paused':
-      return '已暂停';
-    case 'completed':
-      return '已完成';
-    case 'failed':
-      return '下载失败';
-    case 'cancelled':
-      return '已取消';
-    default:
-      return status;
-  }
-}
-
-onMounted(() => {
-  fetchTasks();
-  pollTimer = window.setInterval(() => {
-    fetchTasks();
-  }, 1500);
+onMounted(async () => {
+  await fetchTasks();
+  pollTimer = window.setInterval(fetchTasks, 1500);
 });
 
 onUnmounted(() => {
@@ -413,1249 +362,1193 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="download-split-container">
-    <!-- Toast Notification -->
-    <transition name="fade">
-      <div v-if="toastMessage" class="toast-box">
-        <svg class="toast-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="20 6 9 17 4 12"></polyline>
-        </svg>
-        <span>{{ toastMessage }}</span>
+  <div class="ytd-container" :class="{ 'standalone-mode': props.isStandaloneWindow }">
+    <!-- Top Bar Navigation (Window Split & Task Queue) -->
+    <div class="ytd-topbar">
+      <div class="topbar-left">
+        <button
+          class="topbar-tab-btn"
+          :class="{ active: currentView === 'parser' }"
+          @click="currentView = 'parser'"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          <span>嗅探下载器</span>
+        </button>
+
+        <button
+          class="topbar-tab-btn"
+          :class="{ active: currentView === 'tasks' }"
+          @click="currentView = 'tasks'"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="8" y1="6" x2="21" y2="6"></line>
+            <line x1="8" y1="12" x2="21" y2="12"></line>
+            <line x1="8" y1="18" x2="21" y2="18"></line>
+            <line x1="3" y1="6" x2="3.01" y2="6"></line>
+            <line x1="3" y1="12" x2="3.01" y2="12"></line>
+            <line x1="3" y1="18" x2="3.01" y2="18"></line>
+          </svg>
+          <span>下载任务列表</span>
+          <span v-if="activeTasks.length > 0" class="badge-count">{{ activeTasks.length }}</span>
+        </button>
       </div>
-    </transition>
 
-    <!-- LEFT PANE: Download Studio (下载工坊与配置中心) -->
-    <aside class="studio-pane">
-      <div class="studio-header">
-        <div class="studio-title-row">
-          <div class="studio-icon-box">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="7 10 12 15 17 10"></polyline>
-              <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-          </div>
-          <div>
-            <h3 class="studio-heading">视频下载工坊</h3>
-            <span class="studio-sub">支持 B站、YouTube、TikTok 等</span>
-          </div>
-        </div>
+      <div class="topbar-right">
+        <button
+          v-if="!props.isStandaloneWindow"
+          class="action-pill-btn"
+          title="在新独立窗口中打开下载器"
+          @click="openInStandaloneWindow"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+          <span>独立窗口</span>
+        </button>
       </div>
+    </div>
 
-      <div class="studio-scroll-area">
-        <!-- URL Input Block -->
-        <div class="studio-section">
-          <label class="studio-label">粘贴视频链接 (URL)：</label>
-          <div class="url-input-box">
-            <input
-              v-model="inputUrl"
-              class="url-input-field font-mono"
-              placeholder="https://www.bilibili.com/video/BV... 或 YouTube 链接"
-              @keyup.enter="inspectVideoUrl"
-            />
-            <button
-              v-if="inputUrl"
-              class="btn-clear-url"
-              title="清空"
-              @click="inputUrl = ''"
-            >
-              ✕
-            </button>
-            <button
-              class="btn-paste-url"
-              title="从剪贴板粘贴"
-              @click="pasteFromClipboard"
-            >
-              粘贴
-            </button>
-          </div>
+    <!-- MAIN PARSER VIEW (Matching Image 1 & Image 2) -->
+    <div v-show="currentView === 'parser'" class="parser-wrapper">
+      <!-- Title -->
+      <h1 class="main-heading">Download Video and Music</h1>
 
-          <div class="studio-actions-row">
-            <button
-              class="btn btn-secondary flex-1"
-              :disabled="isInspecting || !inputUrl.trim()"
-              @click="inspectVideoUrl"
-            >
-              <span v-if="isInspecting" class="spinner-sm"></span>
-              <span>{{ isInspecting ? '解析中...' : '解析元信息 (Inspect)' }}</span>
-            </button>
-
-            <button
-              class="btn btn-primary flex-1"
-              :disabled="isAddingDownload || !inputUrl.trim()"
-              @click="quickAddDownload"
-            >
-              <span v-if="isAddingDownload" class="spinner-sm"></span>
-              <span>{{ isAddingDownload ? '提交中...' : '快速下载' }}</span>
-            </button>
-          </div>
-
-          <div v-if="inspectError" class="alert-error-mini">
-            <div class="alert-error-content">
-              <span class="alert-error-icon">⚠️</span>
-              <span class="alert-error-text">{{ inspectError }}</span>
-            </div>
-            <button
-              v-if="isYtdlpMissingError"
-              type="button"
-              class="btn-install-engine"
-              :disabled="isInstallingEngine"
-              @click="handleInstallEngine"
-            >
-              <span v-if="isInstallingEngine" class="spinner-sm"></span>
-              <span>{{ isInstallingEngine ? '正在下载配置引擎，请稍候...' : '⚡️ 点击一键安装 yt-dlp 核心引擎并重试' }}</span>
-            </button>
-          </div>
+      <!-- Giant Input Card (Matching Image 1 & Image 2) -->
+      <div class="search-input-box" :class="{ 'has-error': !!inspectError }">
+        <div class="input-inner">
+          <input
+            v-model="inputUrl"
+            type="text"
+            class="video-url-input"
+            placeholder="Paste the video link here..."
+            @keydown.enter="inspectVideoUrl"
+          />
+          <button
+            v-if="!inputUrl"
+            class="paste-btn"
+            title="从剪贴板粘贴链接"
+            @click="pasteFromClipboard"
+          >
+            📋 粘贴
+          </button>
+          <button
+            v-else
+            class="clear-btn"
+            title="清空输入"
+            @click="inputUrl = ''; inspectResult = null; inspectError = '';"
+          >
+            ✕
+          </button>
         </div>
 
-        <!-- Quality Preset Selection -->
-        <div class="studio-section">
-          <label class="studio-label">首选下载画质预设：</label>
-          <div class="preset-cards-list">
-            <label
-              v-for="p in qualityPresets"
-              :key="p.id"
-              class="preset-item-card"
-              :class="{ active: selectedFormatPreset === p.id }"
-            >
-              <input
-                type="radio"
-                name="quality"
-                :value="p.id"
-                v-model="selectedFormatPreset"
-                class="hidden-radio"
-              />
-              <div class="preset-content">
-                <span class="p-title">{{ p.label }}</span>
-                <span class="p-desc">{{ p.desc }}</span>
+        <button
+          class="download-trigger-btn"
+          :disabled="isInspecting"
+          @click="inspectVideoUrl"
+        >
+          <span v-if="isInspecting" class="spinner-small"></span>
+          <span>{{ isInspecting ? '解析中...' : 'Download' }}</span>
+        </button>
+      </div>
+
+      <!-- Error alert -->
+      <div v-if="inspectError" class="error-banner">
+        <span>⚠️ {{ inspectError }}</span>
+      </div>
+
+      <!-- STATE 1: Not Inspected Yet -> Show Supported Sites (Image 1) -->
+      <div v-if="!inspectResult && !isInspecting" class="uninspected-state">
+        <p class="copy-hint-text">Copy link from supported sites.</p>
+
+        <h2 class="supported-heading">Supported sites</h2>
+
+        <div class="supported-grid">
+          <div
+            v-for="site in supportedSites"
+            :key="site.name"
+            class="site-card"
+            @click="handleSiteClick(site)"
+          >
+            <!-- YouTube Icon -->
+            <template v-if="site.iconType === 'youtube'">
+              <div class="site-icon-wrapper">
+                <svg width="28" height="20" viewBox="0 0 28 20" fill="none">
+                  <rect width="28" height="20" rx="5" fill="#FF0000"/>
+                  <polygon points="11,5 19,10 11,15" fill="#FFFFFF"/>
+                </svg>
               </div>
-              <span class="check-mark font-mono" v-if="selectedFormatPreset === p.id">✓</span>
-            </label>
+              <span class="site-name-text yt-font">YouTube</span>
+            </template>
+
+            <!-- Vimeo Icon -->
+            <template v-else-if="site.iconType === 'vimeo'">
+              <div class="site-icon-wrapper">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="#00ADEF">
+                  <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm6.5 8.5c-.2 3.1-2.4 7.4-6.4 7.4-3.8 0-4.3-3.6-5.2-6.1-.5-1.5-.9-2.2-1.6-2.2-.2 0-.8.4-1.5 1.1l-.8-1c1.2-1.1 2.5-2.3 3.6-2.3 1.3 0 2.1.9 2.3 2.6.3 2 .8 4.7 1.7 4.7.7 0 1.6-1.5 1.7-2.7.2-1.4-.7-1.4-1.4-1.2.6-2 1.8-3 3.6-3 1.5 0 2.2 1 2 2.7z"/>
+                </svg>
+              </div>
+              <span class="site-name-text vimeo-font">vimeo</span>
+            </template>
+
+            <!-- TED Icon -->
+            <template v-else-if="site.iconType === 'ted'">
+              <span class="ted-logo-text">TED</span>
+            </template>
+
+            <!-- OnlyFans Icon -->
+            <template v-else-if="site.iconType === 'onlyfans'">
+              <div class="site-icon-wrapper">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="#00AFF0">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 14c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/>
+                </svg>
+              </div>
+              <span class="site-name-text onlyfans-font">OnlyFans</span>
+            </template>
+
+            <!-- DailyMotion Icon -->
+            <template v-else-if="site.iconType === 'dailymotion'">
+              <div class="site-icon-wrapper">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="#000000">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M8 7h4a5 5 0 0 1 0 10H8V7z" fill="#FFFFFF"/>
+                </svg>
+              </div>
+              <span class="site-name-text dm-font">DailyMotion</span>
+            </template>
+
+            <!-- Rumble Icon -->
+            <template v-else-if="site.iconType === 'rumble'">
+              <div class="site-icon-wrapper">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="#85C742">
+                  <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm-2 14.5v-9l7 4.5z"/>
+                </svg>
+              </div>
+              <span class="site-name-text rumble-font">rumble</span>
+            </template>
           </div>
         </div>
+      </div>
 
-        <!-- Embedded Inspect Preview Card (当解析成功时，直接在左侧展示预览和确认按钮) -->
-        <div v-if="inspectResult" class="studio-section inspect-card-embedded">
-          <div class="inspect-card-top">
-            <span class="inspect-tag">已解析视频元信息</span>
-            <button class="btn-close-inspect" @click="inspectResult = null">✕</button>
-          </div>
+      <!-- STATE 2: Parsing in Progress Skeleton -->
+      <div v-if="isInspecting" class="inspecting-skeleton">
+        <div class="skeleton-spinner-box">
+          <div class="spinner-large"></div>
+          <p class="skeleton-text">正在深度解析多媒体视频流与音频格式...</p>
+          <span class="skeleton-sub">借助 yt-dlp 核心引擎秒级萃取全分辨率列表</span>
+        </div>
+      </div>
 
-          <div class="inspect-thumb-wrap">
+      <!-- STATE 3: Inspected Success -> Show Format Options (Matching Image 2) -->
+      <div v-if="inspectResult && !isInspecting" class="result-card">
+        <!-- Left Column: Thumbnail + Video Title -->
+        <div class="result-left-col">
+          <div class="thumb-container">
             <img
               v-if="inspectResult.thumbnail"
               :src="inspectResult.thumbnail"
-              class="inspect-thumb-img"
               :alt="inspectResult.title"
-              referrerpolicy="no-referrer"
+              class="video-thumbnail"
             />
-            <div v-else class="inspect-thumb-ph">▶</div>
-            <span v-if="inspectResult.duration" class="inspect-dur font-mono">
-              {{ formatDuration(inspectResult.duration) }}
-            </span>
+            <div v-else class="thumb-fallback">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.5">
+                <polygon points="6 3 20 12 6 21 6 3"></polygon>
+              </svg>
+            </div>
+          </div>
+          <h3 class="video-display-title" :title="inspectResult.title">
+            {{ inspectResult.title }}
+          </h3>
+          <div v-if="inspectResult.uploader" class="video-uploader-tag">
+            <span>👤 {{ inspectResult.uploader }}</span>
+          </div>
+        </div>
+
+        <!-- Right Column: Video & Music Options Matrix -->
+        <div class="result-right-col">
+          <!-- Video Section -->
+          <div class="format-section">
+            <h4 class="format-heading">Video</h4>
+
+            <div class="format-options-grid">
+              <label
+                v-for="opt in videoOptions"
+                :key="opt.id"
+                class="radio-option-item"
+                :class="{ active: selectedOptionId === opt.id }"
+              >
+                <input
+                  v-model="selectedOptionId"
+                  type="radio"
+                  name="download_format"
+                  :value="opt.id"
+                  class="native-radio-hidden"
+                />
+                <!-- Custom Radio Indicator (Matching Red Circle Dot in Image 2) -->
+                <span class="custom-radio-circle"></span>
+                <span class="option-label-text">{{ opt.label }} ({{ opt.sizeStr }})</span>
+              </label>
+            </div>
           </div>
 
-          <div class="inspect-info-wrap">
-            <h4 class="inspect-title" :title="inspectResult.title">{{ inspectResult.title }}</h4>
-            <div class="inspect-tags-row">
-              <span v-if="inspectResult.extractor" class="tag-chip extractor-chip">
-                {{ inspectResult.extractor.toUpperCase() }}
-              </span>
-              <span v-if="inspectResult.uploader" class="tag-chip">
-                UP: {{ inspectResult.uploader }}
-              </span>
-            </div>
+          <!-- Divider -->
+          <div class="format-divider"></div>
 
-            <!-- Custom format selector if needed -->
-            <div v-if="selectedFormatPreset === 'custom' || (inspectResult.formats && inspectResult.formats.length > 0)" class="format-select-sub">
-              <label class="custom-f-lbl">可选流格式：</label>
-              <select v-model="selectedCustomFormatId" class="select-format-dropdown font-mono">
-                <option
-                  v-for="fmt in inspectResult.formats || []"
-                  :key="fmt.format_id"
-                  :value="fmt.format_id"
-                >
-                  {{ formatStreamSummary(fmt) }}
-                </option>
-              </select>
-            </div>
+          <!-- Music Section -->
+          <div class="format-section">
+            <h4 class="format-heading">Music</h4>
 
+            <div class="format-options-grid">
+              <label
+                v-for="opt in musicOptions"
+                :key="opt.id"
+                class="radio-option-item"
+                :class="{ active: selectedOptionId === opt.id }"
+              >
+                <input
+                  v-model="selectedOptionId"
+                  type="radio"
+                  name="download_format"
+                  :value="opt.id"
+                  class="native-radio-hidden"
+                />
+                <span class="custom-radio-circle"></span>
+                <span class="option-label-text">{{ opt.label }} ({{ opt.sizeStr }})</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- DOWNLOAD Big Red Button (Matching Image 2) -->
+          <div class="download-action-row">
             <button
-              class="btn btn-primary btn-full confirm-dl-btn"
-              :disabled="isAddingDownload"
-              @click="confirmInspectDownload"
+              class="giant-download-btn"
+              :disabled="isStartingDownload"
+              @click="startSelectedDownload"
             >
-              <span v-if="isAddingDownload" class="spinner-sm"></span>
-              <span>{{ isAddingDownload ? '启动中...' : '确认并开始下载任务' }}</span>
+              <span v-if="isStartingDownload" class="spinner-small"></span>
+              <span>DOWNLOAD</span>
             </button>
           </div>
         </div>
       </div>
-    </aside>
+    </div>
 
-    <!-- RIGHT PANE: Task Queue & Monitor (任务看板与下载队列) -->
-    <main class="queue-pane">
-      <!-- Queue Filter Header -->
-      <header class="queue-header">
-        <div class="filter-tabs-row">
+    <!-- TASK QUEUE VIEW -->
+    <div v-show="currentView === 'tasks'" class="tasks-wrapper">
+      <div class="tasks-header-row">
+        <div class="tasks-filter-group">
           <button
-            class="q-tab-btn"
+            class="filter-pill"
             :class="{ active: activeFilter === 'all' }"
             @click="activeFilter = 'all'"
           >
-            全部任务
-            <span class="q-badge-count">{{ tasks.length }}</span>
+            全部 ({{ tasks.length }})
           </button>
           <button
-            class="q-tab-btn"
+            class="filter-pill"
             :class="{ active: activeFilter === 'active' }"
             @click="activeFilter = 'active'"
           >
-            进行中
-            <span class="q-badge-count hl-blue">{{ activeTasks.length }}</span>
+            进行中 ({{ activeTasks.length }})
           </button>
           <button
-            class="q-tab-btn"
+            class="filter-pill"
             :class="{ active: activeFilter === 'completed' }"
             @click="activeFilter = 'completed'"
           >
-            已完成
-            <span class="q-badge-count hl-green">{{ completedTasks.length }}</span>
+            已完成 ({{ completedTasks.length }})
           </button>
           <button
-            class="q-tab-btn"
+            class="filter-pill"
             :class="{ active: activeFilter === 'failed' }"
             @click="activeFilter = 'failed'"
           >
-            异常/失败
-            <span class="q-badge-count hl-red">{{ failedTasks.length }}</span>
+            失败 ({{ failedTasks.length }})
           </button>
         </div>
 
-        <div class="queue-tools-row">
+        <div class="tasks-action-right">
           <button
             v-if="completedTasks.length > 0"
-            class="btn-text-tool"
+            class="clear-tasks-btn"
             @click="clearCompleted"
           >
             清空已完成
           </button>
-          <button
-            class="btn-refresh-tool"
-            :class="{ 'spin-anim': isLoadingTasks }"
-            title="刷新列表"
-            @click="fetchTasks"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M23 4v6h-6"></path>
-              <path d="M1 20v-6h6"></path>
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-            </svg>
-          </button>
         </div>
-      </header>
+      </div>
 
-      <!-- Tasks List View -->
-      <div class="queue-scroll-area">
-        <!-- Empty State -->
-        <div v-if="displayedTasks.length === 0" class="empty-queue-box">
-          <div class="empty-icon-circle">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="7 10 12 15 17 10"></polyline>
-              <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-          </div>
-          <h3 class="empty-q-title">
-            {{ activeFilter === 'all' ? '暂无下载任务' : `当前无${activeFilter === 'active' ? '进行中' : activeFilter === 'completed' ? '已完成' : '失败'}任务` }}
-          </h3>
-          <p class="empty-q-desc">
-            在左侧下载工坊输入视频链接，解析并点击开始下载，视频将自动下载并归档至本地媒体库。
-          </p>
-        </div>
+      <!-- Empty State -->
+      <div v-if="displayedTasks.length === 0" class="empty-tasks-box">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.5">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        <p>暂无符合条件的下载任务</p>
+        <button class="return-parser-btn" @click="currentView = 'parser'">
+          去添加新视频下载
+        </button>
+      </div>
 
-        <!-- Task Item Cards -->
-        <div v-else class="task-cards-list">
-          <div
-            v-for="task in displayedTasks"
-            :key="task.id"
-            class="task-row-card"
-          >
-            <!-- Thumbnail Box -->
-            <div class="task-thumb-col">
+      <!-- Task Card List -->
+      <div v-else class="tasks-card-list">
+        <div
+          v-for="task in displayedTasks"
+          :key="task.id"
+          class="task-item-card"
+        >
+          <div class="task-card-left">
+            <div class="task-thumb-box">
               <img
                 v-if="task.thumbnail"
                 :src="task.thumbnail"
-                :alt="task.title"
-                class="task-thumb-pic"
-                referrerpolicy="no-referrer"
+                class="task-thumb"
               />
-              <div v-else class="task-thumb-ph">▶</div>
-              <span class="status-corner-pill badge font-mono" :class="getStatusBadgeClass(task.status)">
-                {{ getStatusText(task.status) }}
+              <div v-else class="task-thumb-placeholder">🎬</div>
+            </div>
+          </div>
+
+          <div class="task-card-center">
+            <div class="task-title-row">
+              <span class="task-title" :title="task.title">{{ task.title }}</span>
+              <span class="task-status-pill" :class="task.status">{{ task.status }}</span>
+            </div>
+
+            <!-- Progress bar -->
+            <div class="progress-track">
+              <div
+                class="progress-fill"
+                :class="task.status"
+                :style="{ width: `${Math.min(100, Math.max(0, task.progress || 0))}%` }"
+              ></div>
+            </div>
+
+            <div class="task-meta-row">
+              <span>{{ (task.progress || 0).toFixed(1) }}%</span>
+              <span v-if="task.speed_str">⚡ {{ task.speed_str }}</span>
+              <span v-if="task.downloaded_bytes && task.total_bytes">
+                {{ formatFileSize(task.downloaded_bytes) }} / {{ formatFileSize(task.total_bytes) }}
               </span>
+              <span v-if="task.eta_str">⏳ 剩余 {{ task.eta_str }}</span>
             </div>
+          </div>
 
-            <!-- Main Task Body -->
-            <div class="task-info-col">
-              <div class="task-top-line">
-                <h4 class="task-title-text" :title="task.title">{{ task.title || task.url }}</h4>
-                <span class="task-created-time font-mono">{{ formatDate(task.created_at) }}</span>
-              </div>
-
-              <!-- Active Downloading Progress -->
-              <div v-if="task.status === 'downloading' || task.status === 'pending' || task.status === 'paused'" class="task-progress-box">
-                <div class="progress-track">
-                  <div
-                    class="progress-fill"
-                    :class="{ 'pulse-bar': task.status === 'downloading', 'paused-bar': task.status === 'paused' }"
-                    :style="{ width: `${Math.min(Math.max(task.progress || 0, 0), 100)}%` }"
-                  ></div>
-                </div>
-
-                <div class="progress-numbers-line">
-                  <div class="p-num-left font-mono">
-                    <span class="p-pct">{{ (task.progress || 0).toFixed(1) }}%</span>
-                    <span class="p-bytes">{{ formatFileSize(task.downloaded_bytes) }} / {{ task.total_bytes > 0 ? formatFileSize(task.total_bytes) : '计算中...' }}</span>
-                  </div>
-                  <div class="p-num-right font-mono">
-                    <span v-if="task.speed_str" class="p-speed">⚡ {{ task.speed_str }}</span>
-                    <span v-if="task.eta_str" class="p-eta">ETA: {{ task.eta_str }}</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Completed Meta -->
-              <div v-else-if="task.status === 'completed'" class="task-completed-box">
-                <div class="comp-path font-mono" :title="task.target_path || ''">
-                  <span class="comp-label">文件路径：</span>{{ task.target_path || '默认下载目录' }}
-                </div>
-                <span class="comp-size font-mono">{{ formatFileSize(task.total_bytes || task.downloaded_bytes) }}</span>
-              </div>
-
-              <!-- Failed Alert -->
-              <div v-else-if="task.status === 'failed' || task.status === 'cancelled'" class="task-failed-box">
-                <span class="fail-msg">{{ task.error_message || (task.status === 'cancelled' ? '用户已取消下载' : '下载失败，网络中断或防盗链限制') }}</span>
-              </div>
-
-              <!-- Source URL -->
-              <div class="task-source-line">
-                <span class="source-tag">来源:</span>
-                <a :href="task.url" target="_blank" class="source-url-link font-mono" :title="task.url">{{ task.url }}</a>
-              </div>
-            </div>
-
-            <!-- Task Controls -->
-            <div class="task-controls-col">
-              <template v-if="task.status === 'downloading'">
-                <button class="btn-ctrl btn-pause" @click="pauseTask(task)" title="暂停">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="6" y="4" width="4" height="16"></rect>
-                    <rect x="14" y="4" width="4" height="16"></rect>
-                  </svg>
-                  <span>暂停</span>
-                </button>
-                <button class="btn-ctrl btn-cancel" @click="cancelTask(task)" title="取消">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
-                  <span>取消</span>
-                </button>
-              </template>
-
-              <template v-else-if="task.status === 'paused'">
-                <button class="btn-ctrl btn-resume" @click="resumeTask(task)" title="继续">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                  </svg>
-                  <span>继续</span>
-                </button>
-                <button class="btn-ctrl btn-cancel" @click="cancelTask(task)" title="取消">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
-                  <span>取消</span>
-                </button>
-              </template>
-
-              <template v-else-if="task.status === 'completed'">
-                <button class="btn-ctrl btn-view-lib" @click="viewInLibrary(task)" title="在媒体库中查看">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="2" y="2" width="20" height="20" rx="2.18"></rect>
-                    <line x1="7" y1="2" x2="7" y2="22"></line>
-                  </svg>
-                  <span>查看媒体库</span>
-                </button>
-                <button class="btn-ctrl btn-copy" @click="copyFilePath(task.target_path)" title="复制文件路径">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="9" y="9" width="13" height="13" rx="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                  </svg>
-                  <span>复制路径</span>
-                </button>
-              </template>
-
-              <template v-else-if="task.status === 'failed' || task.status === 'cancelled'">
-                <button class="btn-ctrl btn-retry" @click="retryTask(task)" title="重新下载">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="1 4 1 10 7 10"></polyline>
-                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
-                  </svg>
-                  <span>重试</span>
-                </button>
-                <button class="btn-ctrl btn-delete" @click="deleteTask(task)" title="删除记录">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="3 6 5 6 21 6"></polyline>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                  </svg>
-                  <span>删除</span>
-                </button>
-              </template>
-            </div>
+          <div class="task-card-actions">
+            <button
+              v-if="task.status === 'downloading'"
+              class="task-btn"
+              title="暂停"
+              @click="pauseTask(task)"
+            >
+              ⏸️
+            </button>
+            <button
+              v-else-if="task.status === 'paused'"
+              class="task-btn"
+              title="继续"
+              @click="resumeTask(task)"
+            >
+              ▶️
+            </button>
+            <button
+              v-if="task.status === 'completed'"
+              class="task-btn success"
+              title="在媒体库中查看"
+              @click="viewInLibrary(task)"
+            >
+              📁 查看
+            </button>
+            <button
+              v-if="task.status !== 'completed'"
+              class="task-btn danger"
+              title="取消任务"
+              @click="cancelTask(task)"
+            >
+              ✕
+            </button>
           </div>
         </div>
       </div>
-    </main>
+    </div>
+
+    <!-- Toast Notification -->
+    <div v-if="toastMessage" class="toast-popup">
+      {{ toastMessage }}
+    </div>
   </div>
 </template>
 
 <style scoped>
-.download-split-container {
-  display: flex;
+.ytd-container {
   width: 100%;
-  height: 100%;
-  overflow: hidden;
-  background-color: var(--bg-app);
+  min-height: 100vh;
+  background-color: #f9fafb;
+  color: #111827;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  padding: 30px 24px 60px;
+  box-sizing: border-box;
 }
 
-/* Toast */
-.toast-box {
-  position: fixed;
-  top: 1.25rem;
-  right: 1.5rem;
-  z-index: 1000;
-  background-color: #1e293b;
-  color: #f8fafc;
-  padding: 0.65rem 1.15rem;
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+.ytd-container.standalone-mode {
+  padding: 20px 24px;
+}
+
+/* Topbar */
+.ytd-topbar {
+  max-width: 900px;
+  margin: 0 auto 30px;
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.toast-ico {
-  width: 16px;
-  height: 16px;
-  color: #10b981;
-}
-
-/* Left Studio Pane */
-.studio-pane {
-  width: 380px;
-  min-width: 380px;
-  max-width: 380px;
-  height: 100%;
-  background-color: var(--bg-card);
-  border-right: 1px solid var(--border-subtle);
+.topbar-left {
   display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  gap: 12px;
 }
 
-.studio-header {
-  height: 50px;
-  min-height: 50px;
-  padding: 0 1.25rem;
-  display: flex;
+.topbar-tab-btn {
+  display: inline-flex;
   align-items: center;
-  border-bottom: 1px solid var(--border-subtle);
-  background-color: var(--bg-header);
-}
-
-.studio-title-row {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-}
-
-.studio-icon-box {
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
-  background: linear-gradient(135deg, #3b82f6, #6366f1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-}
-
-.studio-icon-box svg {
-  width: 15px;
-  height: 15px;
-}
-
-.studio-heading {
-  margin: 0;
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.studio-sub {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-}
-
-.studio-scroll-area {
-  flex: 1;
-  overflow-y: auto;
-  padding: 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-
-.studio-section {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.studio-label {
-  font-size: 0.78rem;
+  gap: 8px;
+  padding: 8px 18px;
+  border-radius: 100px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  color: #4b5563;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-.url-input-box {
-  position: relative;
+.topbar-tab-btn:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.topbar-tab-btn.active {
+  background: #111827;
+  color: #ffffff;
+  border-color: #111827;
+}
+
+.badge-count {
+  background: #e0382b;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+}
+
+.action-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  color: #374151;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.action-pill-btn:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+/* Parser Wrapper */
+.parser-wrapper {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.main-heading {
+  text-align: center;
+  font-size: 32px;
+  font-weight: 800;
+  color: #111827;
+  letter-spacing: -0.5px;
+  margin-bottom: 28px;
+}
+
+/* Giant Search Input Box (Matching Image 1 & Image 2) */
+.search-input-box {
+  background: #ffffff;
+  border: 2.5px solid #111827;
+  border-radius: 12px;
+  padding: 6px 6px 6px 18px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
 }
 
-.url-input-field {
+.search-input-box:focus-within {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+}
+
+.search-input-box.has-error {
+  border-color: #ef4444;
+}
+
+.input-inner {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  margin-right: 12px;
+}
+
+.video-url-input {
   width: 100%;
-  padding: 0.55rem 3.5rem 0.55rem 0.75rem;
-  border-radius: 8px;
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-input);
-  color: var(--text-primary);
-  font-size: 0.82rem;
+  border: none;
   outline: none;
+  font-size: 16px;
+  color: #111827;
+  background: transparent;
+  padding: 8px 0;
 }
 
-.url-input-field:focus {
-  border-color: #3b82f6;
+.video-url-input::placeholder {
+  color: #9ca3af;
 }
 
-.btn-clear-url {
-  position: absolute;
-  right: 2.4rem;
+.paste-btn, .clear-btn {
   background: none;
   border: none;
-  color: var(--text-muted);
+  color: #6b7280;
+  font-size: 13px;
   cursor: pointer;
-  font-size: 0.75rem;
+  padding: 4px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
 }
 
-.btn-paste-url {
-  position: absolute;
-  right: 4px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: 5px;
-  color: #3b82f6;
-  font-size: 0.7rem;
-  font-weight: 600;
-  padding: 2px 6px;
-  cursor: pointer;
+.paste-btn:hover, .clear-btn:hover {
+  background: #f3f4f6;
+  color: #111827;
 }
 
-.studio-actions-row {
-  display: flex;
-  gap: 0.65rem;
-}
-
-.flex-1 {
-  flex: 1;
-}
-
-.alert-error-mini {
-  padding: 0.65rem 0.85rem;
-  background-color: #fef2f2;
-  color: #991b1b;
-  border-radius: 8px;
-  font-size: 0.78rem;
-  border: 1px solid #fecaca;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.alert-error-content {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.4rem;
-  line-height: 1.45;
-}
-
-.alert-error-text {
-  word-break: break-all;
-}
-
-.btn-install-engine {
-  align-self: flex-start;
-  background: #dc2626;
+.download-trigger-btn {
+  background-color: #d32f2f;
   color: #ffffff;
   border: none;
-  border-radius: 6px;
-  padding: 0.4rem 0.85rem;
-  font-size: 0.75rem;
-  font-weight: 600;
+  border-radius: 8px;
+  padding: 12px 34px;
+  font-size: 16px;
+  font-weight: 700;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  transition: all 0.2s ease;
-  box-shadow: 0 1px 2px rgba(220, 38, 38, 0.2);
+  gap: 8px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
 }
 
-.btn-install-engine:hover:not(:disabled) {
-  background: #b91c1c;
+.download-trigger-btn:hover:not(:disabled) {
+  background-color: #b71c1c;
+  transform: translateY(-1px);
 }
 
-.btn-install-engine:disabled {
-  opacity: 0.6;
+.download-trigger-btn:disabled {
+  opacity: 0.7;
   cursor: not-allowed;
 }
 
-/* Preset Cards */
-.preset-cards-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
+.error-banner {
+  margin-top: 14px;
+  padding: 10px 16px;
+  background-color: #fee2e2;
+  border-left: 4px solid #ef4444;
+  border-radius: 6px;
+  color: #b91c1c;
+  font-size: 14px;
 }
 
-.preset-item-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.6rem 0.85rem;
+/* Uninspected State (Matching Image 1) */
+.uninspected-state {
+  margin-top: 14px;
+  text-align: center;
+}
+
+.copy-hint-text {
+  font-size: 15px;
+  color: #6b7280;
+  margin-bottom: 40px;
+}
+
+.supported-heading {
+  font-size: 24px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 24px;
+}
+
+.supported-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+.site-card {
+  background-color: #f1f3f5;
   border-radius: 8px;
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-input);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.preset-item-card:hover {
-  background: var(--btn-hover);
-}
-
-.preset-item-card.active {
-  border-color: #3b82f6;
-  background: var(--nav-active-bg);
-}
-
-.hidden-radio {
-  display: none;
-}
-
-.preset-content {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-
-.p-title {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.p-desc {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-}
-
-.check-mark {
-  color: #3b82f6;
-  font-size: 0.85rem;
-  font-weight: 700;
-}
-
-/* Embedded Inspect Preview Card */
-.inspect-card-embedded {
-  background: var(--bg-input);
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  padding: 0.85rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.inspect-card-top {
+  padding: 14px 18px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-}
-
-.inspect-tag {
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: #3b82f6;
-  text-transform: uppercase;
-}
-
-.btn-close-inspect {
-  background: none;
-  border: none;
-  color: var(--text-muted);
+  justify-content: center;
+  gap: 10px;
   cursor: pointer;
-  font-size: 0.85rem;
+  transition: all 0.2s ease;
+  user-select: none;
 }
 
-.inspect-thumb-wrap {
-  position: relative;
+.site-card:hover {
+  background-color: #e5e7eb;
+  transform: translateY(-2px);
+}
+
+.site-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.site-name-text {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.yt-font {
+  font-family: 'YouTube Sans', Roboto, sans-serif;
+  letter-spacing: -0.5px;
+}
+
+.vimeo-font {
+  font-style: italic;
+  font-weight: 800;
+}
+
+.ted-logo-text {
+  color: #e62b1e;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+}
+
+.onlyfans-font {
+  color: #00aff0;
+  font-weight: 700;
+}
+
+.dm-font {
+  font-weight: 700;
+}
+
+.rumble-font {
+  color: #111827;
+  font-weight: 700;
+}
+
+/* Skeleton Loading */
+.inspecting-skeleton {
+  margin-top: 40px;
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 48px 24px;
+  text-align: center;
+  border: 1px solid #e5e7eb;
+}
+
+.skeleton-spinner-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.spinner-large {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f4f6;
+  border-top-color: #d32f2f;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.skeleton-text {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.skeleton-sub {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+/* Result Card (Matching Image 2) */
+.result-card {
+  margin-top: 36px;
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #eef2f6;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+  padding: 28px;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 32px;
+}
+
+/* Left Column */
+.result-left-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.thumb-container {
   width: 100%;
-  padding-top: 56.25%;
-  border-radius: 7px;
+  aspect-ratio: 16/9;
+  border-radius: 10px;
   overflow: hidden;
-  background: #090e17;
+  background-color: #e5e7eb;
 }
 
-.inspect-thumb-img {
-  position: absolute;
-  top: 0;
-  left: 0;
+.video-thumbnail {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 
-.inspect-thumb-ph {
-  position: absolute;
-  top: 0;
-  left: 0;
+.thumb-fallback {
   width: 100%;
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #64748b;
 }
 
-.inspect-dur {
-  position: absolute;
-  bottom: 6px;
-  right: 6px;
-  background: rgba(0, 0, 0, 0.75);
-  color: white;
-  padding: 2px 5px;
-  border-radius: 4px;
-  font-size: 0.7rem;
-}
-
-.inspect-info-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.inspect-title {
-  margin: 0;
-  font-size: 0.85rem;
-  font-weight: 600;
-  line-height: 1.35;
-  color: var(--text-primary);
+.video-display-title {
+  margin-top: 12px;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: #4b5563;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-.inspect-tags-row {
+.video-uploader-tag {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+/* Right Column */
+.result-right-col {
   display: flex;
-  gap: 0.4rem;
+  flex-direction: column;
 }
 
-.tag-chip {
-  font-size: 0.7rem;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--bg-card);
-  color: var(--text-muted);
-  font-weight: 500;
+.format-section {
+  display: flex;
+  flex-direction: column;
 }
 
-.extractor-chip {
-  background: #dbeafe;
-  color: #1e40af;
+.format-heading {
+  font-size: 19px;
   font-weight: 700;
+  color: #111827;
+  margin-bottom: 14px;
 }
 
-.format-select-sub {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+.format-options-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  row-gap: 12px;
+  column-gap: 24px;
 }
 
-.custom-f-lbl {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-}
-
-.select-format-dropdown {
-  width: 100%;
-  padding: 0.4rem;
-  border-radius: 6px;
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-card);
-  color: var(--text-primary);
-  font-size: 0.75rem;
-  outline: none;
-}
-
-.confirm-dl-btn {
-  margin-top: 0.35rem;
-}
-
-/* RIGHT PANE: Task Queue & Monitor */
-.queue-pane {
-  flex: 1;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: var(--bg-app);
-}
-
-.queue-header {
-  height: 50px;
-  min-height: 50px;
-  padding: 0 1.25rem;
+.radio-option-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-header);
-}
-
-.filter-tabs-row {
-  display: flex;
-  gap: 0.4rem;
-}
-
-.q-tab-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.35rem 0.75rem;
-  border-radius: 7px;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 0.8rem;
-  font-weight: 500;
+  gap: 10px;
   cursor: pointer;
-  transition: all 0.15s;
+  user-select: none;
+  font-size: 14.5px;
+  color: #4b5563;
+  transition: color 0.15s ease;
 }
 
-.q-tab-btn:hover {
-  background: var(--btn-hover);
+.radio-option-item:hover {
+  color: #111827;
 }
 
-.q-tab-btn.active {
-  background: var(--bg-input);
-  color: #3b82f6;
+.radio-option-item.active {
+  color: #d32f2f;
   font-weight: 600;
 }
 
-.q-badge-count {
-  font-size: 0.7rem;
-  padding: 0.05rem 0.4rem;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.2);
-  color: var(--text-muted);
+.native-radio-hidden {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
 }
 
-.hl-blue { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
-.hl-green { background: rgba(16, 185, 129, 0.15); color: #10b981; }
-.hl-red { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
-
-.queue-tools-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.btn-text-tool {
-  background: none;
-  border: none;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.btn-text-tool:hover {
-  color: #ef4444;
-}
-
-.btn-refresh-tool {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 4px;
-  display: flex;
-  align-items: center;
-}
-
-.btn-refresh-tool svg {
-  width: 15px;
-  height: 15px;
-}
-
-.queue-scroll-area {
-  flex: 1;
-  overflow-y: auto;
-  padding: 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-}
-
-/* Empty Queue */
-.empty-queue-box {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 4rem 2rem;
-  text-align: center;
-}
-
-.empty-icon-circle {
-  width: 60px;
-  height: 60px;
+/* Custom Radio Circle (Matching Red Circle Dot in Image 2) */
+.custom-radio-circle {
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  background: var(--bg-input);
-  display: flex;
+  border: 1.8px solid #d1d5db;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-muted);
-  margin-bottom: 1rem;
-}
-
-.empty-icon-circle svg {
-  width: 30px;
-  height: 30px;
-}
-
-.empty-q-title {
-  margin: 0 0 0.4rem;
-  font-size: 1.05rem;
-  color: var(--text-primary);
-}
-
-.empty-q-desc {
-  margin: 0;
-  font-size: 0.82rem;
-  color: var(--text-muted);
-  max-width: 440px;
-}
-
-/* Task Row Cards */
-.task-cards-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-}
-
-.task-row-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: 11px;
-  padding: 0.85rem;
-  display: flex;
-  gap: 1rem;
-  align-items: center;
+  flex-shrink: 0;
+  background-color: #ffffff;
   transition: all 0.15s ease;
 }
 
-.task-row-card:hover {
-  border-color: rgba(59, 130, 246, 0.3);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+.radio-option-item.active .custom-radio-circle {
+  border-color: #d32f2f;
 }
 
-.task-thumb-col {
-  position: relative;
-  width: 120px;
-  height: 68px;
-  min-width: 120px;
-  border-radius: 7px;
+.radio-option-item.active .custom-radio-circle::after {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background-color: #d32f2f;
+}
+
+.format-divider {
+  height: 1px;
+  background-color: #e5e7eb;
+  margin: 22px 0 18px;
+}
+
+/* Action row */
+.download-action-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 26px;
+}
+
+.giant-download-btn {
+  background-color: #d32f2f;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 12px 34px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 12px rgba(211, 47, 47, 0.25);
+}
+
+.giant-download-btn:hover:not(:disabled) {
+  background-color: #b71c1c;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(211, 47, 47, 0.35);
+}
+
+.giant-download-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Task Management View */
+.tasks-wrapper {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.tasks-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.tasks-filter-group {
+  display: flex;
+  gap: 8px;
+}
+
+.filter-pill {
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  color: #4b5563;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.filter-pill.active {
+  background: #111827;
+  color: #ffffff;
+  border-color: #111827;
+}
+
+.clear-tasks-btn {
+  background: none;
+  border: none;
+  color: #6b7280;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.clear-tasks-btn:hover {
+  color: #ef4444;
+}
+
+.empty-tasks-box {
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 48px;
+  text-align: center;
+  border: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: #6b7280;
+}
+
+.return-parser-btn {
+  margin-top: 8px;
+  padding: 8px 18px;
+  border-radius: 8px;
+  background: #d32f2f;
+  color: #ffffff;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tasks-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.task-item-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: 80px 1fr auto;
+  gap: 16px;
+  align-items: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.task-thumb-box {
+  width: 80px;
+  height: 52px;
+  border-radius: 6px;
   overflow: hidden;
-  background: #090e17;
+  background: #e5e7eb;
 }
 
-.task-thumb-pic {
+.task-thumb {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.task-thumb-ph {
+.task-thumb-placeholder {
   width: 100%;
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #64748b;
-  font-size: 1rem;
+  font-size: 20px;
 }
 
-.status-corner-pill {
-  position: absolute;
-  top: 4px;
-  left: 4px;
-  font-size: 0.65rem;
-  padding: 1px 5px;
-  border-radius: 4px;
-}
-
-.badge-primary { background: #2563eb; color: white; }
-.badge-secondary { background: #475569; color: white; }
-.badge-success { background: #15803d; color: white; }
-.badge-warning { background: #b45309; color: white; }
-.badge-danger { background: #b91c1c; color: white; }
-
-.task-info-col {
-  flex: 1;
+.task-card-center {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  overflow: hidden;
+  gap: 6px;
 }
 
-.task-top-line {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 0.5rem;
-}
-
-.task-title-text {
-  margin: 0;
-  font-size: 0.88rem;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--text-primary);
-}
-
-.task-created-time {
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-/* Progress bar */
-.task-progress-box {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.progress-track {
-  width: 100%;
-  height: 6px;
-  background: var(--bg-input);
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background: #3b82f6;
-  border-radius: 999px;
-  transition: width 0.2s ease;
-}
-
-.pulse-bar {
-  background: linear-gradient(90deg, #3b82f6, #60a5fa, #3b82f6);
-  background-size: 200% 100%;
-  animation: shimmer 2s infinite linear;
-}
-
-.paused-bar {
-  background: #f59e0b;
-}
-
-@keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-.progress-numbers-line {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.72rem;
-}
-
-.p-num-left {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.p-pct {
-  font-weight: 700;
-  color: #3b82f6;
-}
-
-.p-bytes {
-  color: var(--text-muted);
-}
-
-.p-num-right {
-  display: flex;
-  gap: 0.75rem;
-  color: var(--text-muted);
-}
-
-.p-speed {
-  color: #10b981;
-  font-weight: 600;
-}
-
-/* Completed & Failed boxes */
-.task-completed-box {
+.task-title-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 0.75rem;
-  color: var(--text-muted);
+  gap: 12px;
 }
 
-.comp-path {
+.task-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 480px;
 }
 
-.comp-label {
-  color: var(--text-muted);
+.task-status-pill {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
 }
 
-.comp-size {
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.task-failed-box {
-  font-size: 0.75rem;
-  color: #ef4444;
-}
-
-.task-source-line {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.7rem;
-}
-
-.source-tag {
-  color: var(--text-muted);
-}
-
-.source-url-link {
-  color: var(--text-muted);
-  text-decoration: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 460px;
-}
-
-.source-url-link:hover {
-  text-decoration: underline;
-  color: #3b82f6;
-}
-
-/* Task controls */
-.task-controls-col {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-}
-
-.btn-ctrl {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.35rem 0.65rem;
-  border-radius: 6px;
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-input);
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.btn-ctrl:hover {
-  background: var(--btn-hover);
-}
-
-.btn-ctrl svg {
-  width: 13px;
-  height: 13px;
-}
-
-.btn-delete:hover, .btn-cancel:hover {
-  color: #ef4444;
-  border-color: rgba(239, 68, 68, 0.4);
-}
-
-.btn-view-lib {
-  background: #eff6ff;
-  color: #1e40af;
-  border-color: #bfdbfe;
-}
-
-.btn-view-lib:hover {
+.task-status-pill.downloading {
   background: #dbeafe;
+  color: #1d4ed8;
 }
 
-/* Global button helpers */
-.btn-full {
+.task-status-pill.completed {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.task-status-pill.paused {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.task-status-pill.failed, .task-status-pill.cancelled {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.progress-track {
   width: 100%;
+  height: 6px;
+  background: #f3f4f6;
+  border-radius: 3px;
+  overflow: hidden;
 }
 
-.spinner-sm {
-  width: 12px;
-  height: 12px;
+.progress-fill {
+  height: 100%;
+  background: #2563eb;
+  transition: width 0.3s ease;
+}
+
+.progress-fill.completed {
+  background: #16a34a;
+}
+
+.progress-fill.paused {
+  background: #d97706;
+}
+
+.progress-fill.failed {
+  background: #dc2626;
+}
+
+.task-meta-row {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.task-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.task-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.task-btn:hover {
+  background: #f3f4f6;
+}
+
+.task-btn.success {
+  background: #16a34a;
+  color: #ffffff;
+  border-color: #16a34a;
+}
+
+.task-btn.danger {
+  color: #dc2626;
+}
+
+/* Spinner */
+.spinner-small {
+  width: 16px;
+  height: 16px;
   border: 2px solid rgba(255, 255, 255, 0.4);
-  border-top-color: white;
+  border-top-color: #ffffff;
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  display: inline-block;
-}
-
-.spin-anim {
   animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* Toast */
+.toast-popup {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #111827;
+  color: #ffffff;
+  padding: 10px 22px;
+  border-radius: 100px;
+  font-size: 13.5px;
+  font-weight: 500;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translate(-50%, 10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@media (max-width: 768px) {
+  .result-card {
+    grid-template-columns: 1fr;
+  }
+  .supported-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 </style>

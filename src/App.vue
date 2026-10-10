@@ -9,6 +9,7 @@ import StandalonePlayerWindow from './components/StandalonePlayerWindow.vue';
 
 const urlParams = new URLSearchParams(window.location.search);
 const isPlayerWindow = ref(urlParams.get('window') === 'player');
+const isYtdWindow = ref(urlParams.get('window') === 'ytd');
 
 const currentTab = ref<'library' | 'downloads' | 'system'>('library');
 const activeDownloadsCount = ref<number>(0);
@@ -114,7 +115,7 @@ function formatTime(timestampMs: number): string {
 }
 
 onMounted(async () => {
-  if (isPlayerWindow.value) {
+  if (isPlayerWindow.value || isYtdWindow.value) {
     return;
   }
   await fetchHealth();
@@ -127,6 +128,11 @@ onMounted(async () => {
 
 <template>
   <StandalonePlayerWindow v-if="isPlayerWindow" />
+  <DownloadCenter
+    v-else-if="isYtdWindow"
+    :is-standalone-window="true"
+    @view-in-library="handleViewInLibrary"
+  />
   <div v-else class="desktop-app">
     <!-- LEFT SIDEBAR -->
     <aside class="app-sidebar">

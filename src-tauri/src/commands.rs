@@ -337,4 +337,30 @@ pub async fn set_player_always_on_top(app: AppHandle, always_on_top: bool) -> Re
     Ok(())
 }
 
+#[tauri::command]
+pub async fn open_ytd_window(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("ytd-window") {
+        let _ = win.show();
+        let _ = win.unminimize();
+        let _ = win.set_focus();
+        return Ok(());
+    }
+
+    let win = tauri::WebviewWindowBuilder::new(
+        &app,
+        "ytd-window",
+        tauri::WebviewUrl::App("index.html?window=ytd".into()),
+    )
+    .title("VidNest - 视频嗅探与下载中枢")
+    .inner_size(980.0, 750.0)
+    .min_inner_size(680.0, 520.0)
+    .resizable(true)
+    .center()
+    .build()
+    .map_err(|e| format!("创建独立下载窗口失败: {}", e))?;
+
+    let _ = win.set_focus();
+    Ok(())
+}
+
 
