@@ -335,7 +335,7 @@ function openExternal(url: string) {
             <div class="about-hero-text">
               <h2>VidNest</h2>
               <p class="about-version-line">
-                <span>{{ t('settings.about.version') }} 1.1.0</span>
+                <span>{{ t('settings.about.version') }} 1.2.0</span>
                 <span class="stable-tag">{{ t('settings.about.stable') }}</span>
               </p>
             </div>
