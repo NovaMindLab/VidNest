@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
 import type { Video } from '../types';
 
@@ -312,6 +312,16 @@ async function copyPath() {
   }
 }
 
+async function openInStandaloneWindow() {
+  if (!props.video) return;
+  try {
+    await invoke('open_video_player_window', { video: props.video });
+    close();
+  } catch (err) {
+    console.error('Failed to open standalone window:', err);
+  }
+}
+
 function startHeaderDrag(e: MouseEvent) {
   const target = e.target as HTMLElement;
   if (target.closest('button') || target.closest('input') || target.closest('a')) {
@@ -422,6 +432,12 @@ onUnmounted(() => {
         </div>
 
         <div class="modal-header-actions">
+          <button class="head-act-btn" title="弹出为独立 Webview 桌面窗口 (可跨屏幕拖拽/置顶)" @click="openInStandaloneWindow">
+            <svg class="h-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
+            </svg>
+            <span>独立窗口</span>
+          </button>
           <button class="head-act-btn" title="在系统播放器中打开" @click="openExternal">
             <svg class="h-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />

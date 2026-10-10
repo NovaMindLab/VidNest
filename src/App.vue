@@ -5,6 +5,10 @@ import type { HealthReport, YtDlpUpdateCheck, YtDlpUpdateResult } from './types'
 import VideoLibrary from './components/VideoLibrary.vue';
 import DownloadCenter from './components/DownloadCenter.vue';
 import AppUpdateModal from './components/AppUpdateModal.vue';
+import StandalonePlayerWindow from './components/StandalonePlayerWindow.vue';
+
+const urlParams = new URLSearchParams(window.location.search);
+const isPlayerWindow = ref(urlParams.get('window') === 'player');
 
 const currentTab = ref<'library' | 'downloads' | 'system'>('library');
 const activeDownloadsCount = ref<number>(0);
@@ -110,6 +114,9 @@ function formatTime(timestampMs: number): string {
 }
 
 onMounted(async () => {
+  if (isPlayerWindow.value) {
+    return;
+  }
   await fetchHealth();
   await testPing();
   if (autoCheckYtdlpOnLaunch.value) {
@@ -119,7 +126,8 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="desktop-app">
+  <StandalonePlayerWindow v-if="isPlayerWindow" />
+  <div v-else class="desktop-app">
     <!-- LEFT SIDEBAR -->
     <aside class="app-sidebar">
       <!-- App Brand -->

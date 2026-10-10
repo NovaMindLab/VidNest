@@ -42,9 +42,14 @@ const viewMode = ref<'grid' | 'list'>('grid');
 
 const copiedPath = ref<boolean>(false);
 
-function openVideo(video: Video) {
-  activePlayerVideo.value = video;
-  isPlayerVisible.value = true;
+async function openVideo(video: Video) {
+  try {
+    await invoke('open_video_player_window', { video });
+  } catch (err) {
+    console.warn('Failed to open native player window, falling back to modal:', err);
+    activePlayerVideo.value = video;
+    isPlayerVisible.value = true;
+  }
 }
 
 async function revealVideo(filePath: string) {

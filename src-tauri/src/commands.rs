@@ -8,7 +8,9 @@ use crate::models::{
 use crate::scanner::scan_directory;
 use crate::ytdlp;
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Manager, State};
+use std::sync::Mutex;
+use serde_json::Value;
+use tauri::{AppHandle, Emitter, Manager, State};
 
 #[tauri::command]
 pub fn system_health_check(app: AppHandle) -> Result<HealthReport, String> {
@@ -268,4 +270,71 @@ pub async fn download_and_install_update(
 pub fn relaunch_app(app: AppHandle) {
     app.restart();
 }
+
+#[derive(Default)]
+pub struct PlayerState {
+    pub current_video: Mutex<Option<Value>>,
+}
+
+#[tauri::command]
+pub async fn open_video_player_window(
+    app: AppHandle,
+    state: State<'_, PlayerState>,
+    video: Value,
+) -> Result<(), String> {
+    // 1. Update managed player state
+    {
+        let mut cur = state.current_video.lock().map_err(|e| e.to_string())?;
+        *cur = Some(video.clone());
+    }
+
+    let win_title = video
+        .get("file_name")
+        .and_then(|v| v.as_str())
+        .map(|n| format!("VidNest 播放器 - {}", n))
+        .unwrap_or_else(|| "VidNest 独立播放器".to_string());
+
+    // 2. If window already exists, activate and emit event
+    if let Some(win) = app.get_webview_window("video-player") {
+        let _ = win.show();
+        let _ = win.unminimize();
+        let _ = win.set_focus();
+        let _ = win.set_title(&win_title);
+        let _ = win.emit("play-video", &video);
+        return Ok(());
+    }
+
+    // 3. Otherwise, create new dedicated WebviewWindow
+    let win = tauri::WebviewWindowBuilder::new(
+        &app,
+        "video-player",
+        tauri::WebviewUrl::App("index.html?window=player".into()),
+    )
+    .title(&win_title)
+    .inner_size(1080.0, 720.0)
+    .min_inner_size(600.0, 400.0)
+    .resizable(true)
+    .center()
+    .build()
+    .map_err(|e| format!("创建独立播放器窗口失败: {}", e))?;
+
+    let _ = win.set_focus();
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_player_init_video(state: State<'_, PlayerState>) -> Result<Option<Value>, String> {
+    let cur = state.current_video.lock().map_err(|e| e.to_string())?;
+    Ok(cur.clone())
+}
+
+#[tauri::command]
+pub async fn set_player_always_on_top(app: AppHandle, always_on_top: bool) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("video-player") {
+        win.set_always_on_top(always_on_top)
+            .map_err(|e| format!("设置置顶状态失败: {}", e))?;
+    }
+    Ok(())
+}
+
 

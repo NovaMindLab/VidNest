@@ -11,9 +11,10 @@ pub mod ytdlp;
 use commands::{
     cancel_download, cancel_download_task, cancel_full_disk_scan, check_app_update, check_ytdlp_update,
     clear_completed_tasks, delete_video, download_and_install_update, echo, get_download_tasks,
-    get_video_detail, inspect_url, inspect_video_url, list_videos, pause_download, pause_download_task,
-    ping, relaunch_app, resume_download, resume_download_task, scan_video_directory, start_download,
-    start_full_disk_scan, system_health_check, update_ytdlp,
+    get_player_init_video, get_video_detail, inspect_url, inspect_video_url, list_videos,
+    open_video_player_window, pause_download, pause_download_task, ping, relaunch_app, resume_download,
+    resume_download_task, scan_video_directory, set_player_always_on_top, start_download,
+    start_full_disk_scan, system_health_check, update_ytdlp, PlayerState,
 };
 use db::Database;
 use std::path::PathBuf;
@@ -54,6 +55,7 @@ pub fn run() {
         })
         .manage(db)
         .manage(download_manager)
+        .manage(PlayerState::default())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             system_health_check,
@@ -81,6 +83,9 @@ pub fn run() {
             check_app_update,
             download_and_install_update,
             relaunch_app,
+            open_video_player_window,
+            get_player_init_video,
+            set_player_always_on_top,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
