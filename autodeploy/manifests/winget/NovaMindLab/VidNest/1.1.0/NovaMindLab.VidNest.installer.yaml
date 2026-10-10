@@ -16,6 +16,6 @@ Installers:
   - Architecture: x64
     InstallerType: nullsoft
     InstallerUrl: https://github.com/NovaMindLab/VidNest/releases/download/v1.1.0/Local.Video.Intelligence_1.1.0_x64-setup.exe
-    InstallerSha256: FD2998111FF470C99C248E9BEF8D12C4FE1372AE3849628CB84B1D4306EC8C81
+    InstallerSha256: A876256C1328D2393426EF6C1B0F926599C85D31E4BDE4385AC32F9112A88857
 ManifestType: installer
 ManifestVersion: 1.6.0
