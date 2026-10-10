@@ -289,3 +289,36 @@ pub fn delete_video(conn: &Connection, id: i64, delete_disk_file: bool) -> Resul
         Ok(false)
     }
 }
+
+/// Scans existing database records for `.ts` files and purges any records
+/// that are actually TypeScript code or non-existent files.
+pub fn purge_invalid_ts_records(conn: &Connection) -> Result<usize, String> {
+    let mut stmt = conn
+        .prepare("SELECT id, file_path FROM videos WHERE file_path LIKE '%.ts' OR file_name LIKE '%.ts'")
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
+        .map_err(|e| e.to_string())?;
+
+    let mut ids_to_delete = Vec::new();
+    for item in rows.flatten() {
+        let (id, path_str) = item;
+        let path = Path::new(&path_str);
+        if !path.exists() || !crate::scanner::platform::is_mpeg_ts_video(path) {
+            ids_to_delete.push(id);
+        }
+    }
+
+    let mut deleted_count = 0;
+    for id in ids_to_delete {
+        let _ = conn.execute("DELETE FROM fts_index WHERE video_id = ?1", [id.to_string()]);
+        let _ = conn.execute("DELETE FROM video_tags WHERE video_id = ?1", [id]);
+        if conn.execute("DELETE FROM videos WHERE id = ?1", [id]).is_ok() {
+            deleted_count += 1;
+        }
+    }
+
+    Ok(deleted_count)
+}
+

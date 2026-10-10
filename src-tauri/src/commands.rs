@@ -103,6 +103,9 @@ pub fn list_videos(
     let conn_arc = db.get_connection();
     let conn = conn_arc.lock().map_err(|e| e.to_string())?;
 
+    // Automatically purge any false-positive non-video .ts records (e.g. TypeScript files)
+    let _ = crate::db::videos::purge_invalid_ts_records(&conn);
+
     let mut response = crate::db::videos::list_videos(&conn, filter.unwrap_or_default())?;
 
     // Populate thumbnail base64 data for the page items

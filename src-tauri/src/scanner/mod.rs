@@ -73,15 +73,24 @@ pub fn compute_fast_file_hash(path: &Path) -> Result<String, String> {
     Ok(format!("{:x}", hash_result))
 }
 
-/// Checks whether a given path has a supported video extension.
+/// Checks whether a given path is a valid supported video file.
+/// For `.ts` files, rigorously disambiguates against TypeScript source code.
 pub fn is_video_file(path: &Path) -> bool {
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| {
-            let lower = ext.to_lowercase();
-            SUPPORTED_EXTENSIONS.contains(&lower.as_str())
-        })
-        .unwrap_or(false)
+    let ext = match path.extension().and_then(|ext| ext.to_str()) {
+        Some(e) => e.to_lowercase(),
+        None => return false,
+    };
+
+    if !SUPPORTED_EXTENSIONS.contains(&ext.as_str()) {
+        return false;
+    }
+
+    // Crucial: Disambiguate .ts extension (TypeScript vs MPEG-TS)
+    if ext == "ts" {
+        return platform::is_mpeg_ts_video(path);
+    }
+
+    true
 }
 
 /// Two-Phase ultra-low-overhead full-disk scan.

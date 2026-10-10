@@ -28,12 +28,26 @@ pub const BLACKLIST_DIR_NAMES: &[&str] = &[
     ".rustup",
     ".gradle",
     ".vscode",
+    ".idea",
     "Pods",
     "DerivedData",
     ".npm",
     ".yarn",
+    ".pnpm-store",
     "Caches",
     ".cache",
+    "dist",
+    "build",
+    "target",
+    "out",
+    ".next",
+    ".nuxt",
+    ".turbo",
+    "coverage",
+    "typings",
+    "@types",
+    "vendor",
+    "packages",
 ];
 
 /// Checks if a folder name matches common system/cache/dependency blacklists.
@@ -49,32 +63,88 @@ pub fn is_blacklisted_dir(dir_name: &str) -> bool {
 
 /// Checks whether a `.ts` file is actually an MPEG-TS video file
 /// instead of a TypeScript source code file.
-/// MPEG Transport Stream packets are 188 bytes long and always start with 0x47 ('G').
 pub fn is_mpeg_ts_video(path: &Path) -> bool {
+    let file_name = match path.file_name().and_then(|f| f.to_str()) {
+        Some(name) => name.to_lowercase(),
+        None => return false,
+    };
+
+    // 1. Filename heuristic: TypeScript declaration, test, or config files
+    if file_name.ends_with(".d.ts")
+        || file_name.ends_with(".spec.ts")
+        || file_name.ends_with(".test.ts")
+        || file_name.ends_with(".config.ts")
+        || file_name.ends_with(".routes.ts")
+        || file_name.ends_with(".controller.ts")
+        || file_name.ends_with(".service.ts")
+    {
+        return false;
+    }
+
+    // 2. Size heuristic: real video streams are almost never below 64 KB
+    let metadata = match path.metadata() {
+        Ok(m) => m,
+        Err(_) => return false,
+    };
+    let file_len = metadata.len();
+    if file_len < 64 * 1024 {
+        return false;
+    }
+
+    // 3. Content heuristic: check binary vs text
     let mut file = match File::open(path) {
         Ok(f) => f,
         Err(_) => return false,
     };
 
-    let mut buf = [0u8; 188 * 3];
-    let bytes_read = match file.read(&mut buf) {
-        Ok(n) if n >= 188 => n,
+    let mut sample_buf = [0u8; 1024];
+    let n = match file.read(&mut sample_buf) {
+        Ok(bytes) if bytes >= 188 => bytes,
         _ => return false,
     };
 
-    // Check sync bytes at offsets 0, 188, 376...
-    let mut sync_matches = 0;
-    let mut checks = 0;
-    for offset in (0..bytes_read).step_by(188) {
-        if offset < bytes_read {
-            checks += 1;
-            if buf[offset] == 0x47 {
-                sync_matches += 1;
+    // Quick text check: if the head looks like source code (contains text keywords or mostly printable ASCII)
+    if let Ok(sample_str) = std::str::from_utf8(&sample_buf[..n]) {
+        let code_keywords = [
+            "import ", "export ", "function ", "interface ", "class ",
+            "const ", "let ", "var ", "type ", "declare ", "return ",
+            "//", "/*", "<script", "<template",
+        ];
+        for kw in &code_keywords {
+            if sample_str.contains(kw) {
+                return false;
             }
         }
     }
 
-    checks > 0 && sync_matches == checks
+    // 4. Strict MPEG-TS packet sync byte check
+    // In MPEG-TS, packets are 188 bytes long (or 204 with FEC).
+    // The first byte of each packet must be 0x47 ('G').
+    // We verify at least 3 consecutive packet sync bytes.
+    let packet_sizes = [188usize, 204usize];
+    let mut valid_ts = false;
+
+    for &pkt_size in &packet_sizes {
+        if n >= pkt_size * 3 {
+            let mut all_sync = true;
+            let mut count = 0;
+            for offset in (0..n).step_by(pkt_size) {
+                if offset < n {
+                    count += 1;
+                    if sample_buf[offset] != 0x47 {
+                        all_sync = false;
+                        break;
+                    }
+                }
+            }
+            if all_sync && count >= 3 {
+                valid_ts = true;
+                break;
+            }
+        }
+    }
+
+    valid_ts
 }
 
 /// Filters candidate video path for valid extension, minimum size, and false-positive checks.
