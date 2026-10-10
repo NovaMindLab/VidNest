@@ -4,14 +4,17 @@ import { invoke } from '@tauri-apps/api/core';
 import type { HealthReport, YtDlpUpdateCheck, YtDlpUpdateResult } from './types';
 import VideoLibrary from './components/VideoLibrary.vue';
 import DownloadCenter from './components/DownloadCenter.vue';
+import AppSettingsView from './components/AppSettingsView.vue';
 import AppUpdateModal from './components/AppUpdateModal.vue';
 import StandalonePlayerWindow from './components/StandalonePlayerWindow.vue';
+import { t, currentLocale, toggleLocale } from './i18n';
+import { initTheme, activeTheme, toggleTheme } from './utils/theme';
 
 const urlParams = new URLSearchParams(window.location.search);
 const isPlayerWindow = ref(urlParams.get('window') === 'player');
 const isYtdWindow = ref(urlParams.get('window') === 'ytd');
 
-const currentTab = ref<'library' | 'downloads' | 'system'>('library');
+const currentTab = ref<'library' | 'downloads' | 'system' | 'settings'>('library');
 const activeDownloadsCount = ref<number>(0);
 const showUpdateModal = ref<boolean>(false);
 
@@ -115,6 +118,7 @@ function formatTime(timestampMs: number): string {
 }
 
 onMounted(async () => {
+  initTheme();
   if (isPlayerWindow.value || isYtdWindow.value) {
     return;
   }
@@ -151,7 +155,7 @@ onMounted(async () => {
 
       <!-- Navigation Menu -->
       <nav class="sidebar-nav">
-        <div class="nav-section-title">核心功能</div>
+        <div class="nav-section-title">{{ t('nav.core') }}</div>
 
         <button
           class="nav-item"
@@ -166,7 +170,7 @@ onMounted(async () => {
               <line x1="2" y1="12" x2="22" y2="12"></line>
             </svg>
           </div>
-          <span class="nav-item-label">本地媒体库</span>
+          <span class="nav-item-label">{{ t('nav.library') }}</span>
         </button>
 
         <button
@@ -181,7 +185,7 @@ onMounted(async () => {
               <line x1="12" y1="15" x2="12" y2="3"></line>
             </svg>
           </div>
-          <span class="nav-item-label">视频下载中心</span>
+          <span class="nav-item-label">{{ t('nav.downloads') }}</span>
           <span v-if="activeDownloadsCount > 0" class="nav-badge">
             {{ activeDownloadsCount }}
           </span>
@@ -194,11 +198,28 @@ onMounted(async () => {
         >
           <div class="nav-item-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+          </div>
+          <span class="nav-item-label">{{ t('nav.system') }}</span>
+        </button>
+
+        <div class="nav-section-title" style="margin-top: 14px;">{{ t('nav.preferences') }}</div>
+
+        <button
+          class="nav-item"
+          :class="{ active: currentTab === 'settings' }"
+          @click="currentTab = 'settings'"
+        >
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="3"></circle>
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
             </svg>
           </div>
-          <span class="nav-item-label">环境与引擎状态</span>
+          <span class="nav-item-label">{{ t('nav.settings') }}</span>
         </button>
       </nav>
 
@@ -207,7 +228,7 @@ onMounted(async () => {
         <div class="health-card">
           <div class="health-row">
             <span class="health-status-dot" :class="healthReport?.status === 'healthy' ? 'dot-green' : 'dot-yellow'"></span>
-            <span class="health-title">{{ healthReport?.status === 'healthy' ? '引擎就绪' : '环境受限' }}</span>
+            <span class="health-title">{{ healthReport?.status === 'healthy' ? t('health.ready') : t('health.restricted') }}</span>
             <span v-if="pingLatency !== null" class="latency-badge">{{ pingLatency }}ms</span>
           </div>
           <div class="health-meta">
@@ -221,7 +242,7 @@ onMounted(async () => {
             <path d="M1 20v-6h6"></path>
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
           </svg>
-          <span>{{ isLoading ? '检测中...' : '检查环境' }}</span>
+          <span>{{ isLoading ? t('health.checking') : t('health.checkEnv') }}</span>
         </button>
       </div>
     </aside>
@@ -234,21 +255,47 @@ onMounted(async () => {
           <span class="breadcrumb-prefix">VidNest</span>
           <span class="breadcrumb-separator">/</span>
           <h2 class="breadcrumb-current">
-            {{ currentTab === 'library' ? '本地媒体资产库' : currentTab === 'downloads' ? 'yt-dlp 在线下载中心' : '系统运行环境与引擎中心' }}
+            {{
+              currentTab === 'library'
+                ? t('header.libraryTitle')
+                : currentTab === 'downloads'
+                ? t('header.downloadsTitle')
+                : currentTab === 'system'
+                ? t('header.systemTitle')
+                : t('header.settingsTitle')
+            }}
           </h2>
         </div>
 
         <div class="header-actions">
-          <button class="btn-check-update" title="检查新版本 (应用内差分增量升级)" @click="showUpdateModal = true">
+          <!-- Quick Theme Toggle -->
+          <button
+            class="btn-quick-action"
+            :title="activeTheme === 'dark' ? t('header.lightMode') : t('header.darkMode')"
+            @click="toggleTheme"
+          >
+            <span>{{ activeTheme === 'dark' ? '☀️' : '🌙' }}</span>
+          </button>
+
+          <!-- Quick Language Toggle -->
+          <button
+            class="btn-quick-action"
+            :title="t('header.switchLanguage')"
+            @click="toggleLocale"
+          >
+            <span class="lang-text">{{ currentLocale === 'zh-CN' ? '🇺🇸 EN' : '🇨🇳 中' }}</span>
+          </button>
+
+          <button class="btn-check-update" :title="t('header.checkUpdate')" @click="showUpdateModal = true">
             <span class="update-icon">⚡</span>
-            <span>检查更新</span>
+            <span>{{ t('header.checkUpdate') }}</span>
           </button>
           <span class="engine-badge" v-if="ytdlpCheck?.current_version">
             yt-dlp: {{ ytdlpCheck.current_version }}
           </span>
           <span class="localfirst-pill">
             <span class="pulse-indicator"></span>
-            本地优先
+            {{ t('app.localFirst') }}
           </span>
         </div>
       </header>
@@ -277,7 +324,12 @@ onMounted(async () => {
           />
         </div>
 
-        <!-- VIEW 3: SYSTEM & UPDATER (SPLIT 2-COLUMN DASHBOARD) -->
+        <!-- VIEW 3: SETTINGS VIEW -->
+        <div v-else-if="currentTab === 'settings'" class="view-panel">
+          <AppSettingsView @check-update="showUpdateModal = true" />
+        </div>
+
+        <!-- VIEW 4: SYSTEM & UPDATER (SPLIT 2-COLUMN DASHBOARD) -->
         <div v-else class="system-dashboard-view">
           <!-- Overview Mini Cards -->
           <div class="stat-banner-grid">
@@ -758,6 +810,31 @@ onMounted(async () => {
   transform: translateY(-1px);
 }
 
+.btn-quick-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-quick-action:hover {
+  background: var(--btn-hover);
+  border-color: var(--accent-primary, #3b82f6);
+  transform: translateY(-1px);
+}
+
+.lang-text {
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
 .update-icon {
   font-size: 0.85rem;
 }
@@ -1177,48 +1254,60 @@ onMounted(async () => {
 </style>
 
 <style>
-/* Global CSS variables & Reset */
-:root {
+/* Global CSS variables & Theme Modes */
+:root,
+html[data-theme='dark'] {
+  --bg-app: #080c14;
+  --bg-sidebar: #0e1524;
+  --bg-header: #0e1524;
+  --bg-card: #111a2d;
+  --bg-input: #172238;
+  --border-color: #1f2c45;
+  --border-subtle: #1f2c45;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #8896ab;
+  --btn-hover: #1e2c47;
+  --nav-active-bg: #1e3a8a33;
+  --badge-blue-bg: #1e3a8a;
+  --accent-primary: #3b82f6;
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-badge: rgba(255, 255, 255, 0.05);
+  --bg-item: rgba(255, 255, 255, 0.03);
+  --accent-subtle: rgba(59, 130, 246, 0.12);
+}
+
+html[data-theme='light'] {
   --bg-app: #f8fafc;
   --bg-sidebar: #ffffff;
   --bg-header: #ffffff;
   --bg-card: #ffffff;
   --bg-input: #f1f5f9;
+  --border-color: #e2e8f0;
+  --border-subtle: #e2e8f0;
   --text-primary: #0f172a;
   --text-secondary: #334155;
   --text-muted: #64748b;
-  --border-subtle: #e2e8f0;
-  --btn-hover: #e2e8f0;
+  --btn-hover: #f1f5f9;
   --nav-active-bg: #eff6ff;
   --badge-blue-bg: #dbeafe;
+  --accent-primary: #2563eb;
+  --bg-hover: rgba(0, 0, 0, 0.05);
+  --bg-badge: rgba(0, 0, 0, 0.04);
+  --bg-item: #f8fafc;
+  --accent-subtle: rgba(37, 99, 235, 0.1);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg-app: #080c14;
-    --bg-sidebar: #0e1524;
-    --bg-header: #0e1524;
-    --bg-card: #111a2d;
-    --bg-input: #172238;
-    --text-primary: #f8fafc;
-    --text-secondary: #cbd5e1;
-    --text-muted: #8896ab;
-    --border-subtle: #1f2c45;
-    --btn-hover: #1e2c47;
-    --nav-active-bg: #1e3a8a33;
-    --badge-blue-bg: #1e3a8a;
-  }
+/* Status Badges */
+.badge-success { background: #064e3b; color: #6ee7b7; }
+.badge-warning { background: #78350f; color: #fde68a; }
+.badge-danger { background: #7f1d1d; color: #fca5a5; }
 
-  .badge-success { background: #064e3b; color: #6ee7b7; }
-  .badge-warning { background: #78350f; color: #fde68a; }
-  .badge-danger { background: #7f1d1d; color: #fca5a5; }
+.mode-managed { background: #1e3a8a; color: #93c5fd; }
+.mode-system { background: #1e2c47; color: #cbd5e1; }
 
-  .mode-managed { background: #1e3a8a; color: #93c5fd; }
-  .mode-system { background: #1e2c47; color: #cbd5e1; }
-
-  .fb-ok { background: #172554; color: #93c5fd; border-color: #1e40af; }
-  .fb-err { background: #450a0a; color: #fca5a5; border-color: #991b1b; }
-}
+.fb-ok { background: #172554; color: #93c5fd; border-color: #1e40af; }
+.fb-err { background: #450a0a; color: #fca5a5; border-color: #991b1b; }
 
 * {
   box-sizing: border-box;

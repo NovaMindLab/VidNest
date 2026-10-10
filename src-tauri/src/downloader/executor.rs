@@ -110,6 +110,15 @@ pub fn build_download_args(
         "--no-warnings".to_string(),
         "--no-update".to_string(),
         "--no-playlist".to_string(),
+        "--no-check-certificates".to_string(),
+        "--retries".to_string(),
+        "5".to_string(),
+        "--fragment-retries".to_string(),
+        "5".to_string(),
+        "--extractor-args".to_string(),
+        "youtube:player_client=android,web".to_string(),
+        "--compat-options".to_string(),
+        "no-youtube-unavailable-videos".to_string(),
         "--print".to_string(),
         "after_move:filepath".to_string(),
         "-o".to_string(),
@@ -160,6 +169,9 @@ pub async fn inspect_url(url: &str, app_data_dir: Option<&Path>) -> Result<UrlIn
         "--no-update".to_string(),
         "--no-colors".to_string(),
         "--skip-download".to_string(),
+        "--no-check-certificates".to_string(),
+        "--extractor-args".to_string(),
+        "youtube:player_client=android,web".to_string(),
     ];
 
     if let Some(ff_loc) = resolve_ffmpeg_dir(app_data_dir) {

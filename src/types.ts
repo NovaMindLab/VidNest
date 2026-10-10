@@ -123,14 +123,21 @@ export type DownloadStatus = 'pending' | 'downloading' | 'paused' | 'completed' 
 export interface DownloadTask {
   id: string;
   url: string;
-  title: string;
+  title?: string | null;
+  author?: string | null;
+  platform?: string | null;
+  format_id?: string | null;
   thumbnail?: string | null;
   status: DownloadStatus | string;
   progress: number;
   downloaded_bytes: number;
   total_bytes: number;
+  speed?: number;
   speed_str?: string | null;
+  eta?: string | null;
   eta_str?: string | null;
+  file_path?: string | null;
+  error_log?: string | null;
   error_message?: string | null;
   target_path?: string | null;
   created_at: number;

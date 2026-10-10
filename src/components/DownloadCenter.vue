@@ -98,7 +98,7 @@ const completedTasks = computed(() => {
 });
 
 const failedTasks = computed(() => {
-  return tasks.value.filter((t) => t.status === 'failed' || t.status === 'cancelled');
+  return tasks.value.filter((t) => t.status === 'failed' || t.status === 'error' || t.status === 'cancelled');
 });
 
 const displayedTasks = computed(() => {
@@ -150,8 +150,8 @@ const videoOptions = computed<QualityOptionItem[]>(() => {
     }
 
     const formatId = matchedFmt?.format_id
-      ? `${matchedFmt.format_id}+bestaudio/best`
-      : `bestvideo[height<=${tier.height}]+bestaudio/best[height<=${tier.height}]`;
+      ? `${matchedFmt.format_id}+bestaudio/bestvideo[height<=${tier.height}]+bestaudio/best`
+      : `bestvideo[height<=${tier.height}]+bestaudio/best[height<=${tier.height}]/best`;
 
     return {
       id: `video-${tier.height}p`,
@@ -323,9 +323,24 @@ async function clearCompleted() {
 
 function viewInLibrary(task: DownloadTask) {
   emit('viewInLibrary', {
-    fileName: task.title,
+    fileName: task.title || undefined,
     filePath: task.target_path || undefined,
   });
+}
+
+async function retryTask(task: DownloadTask) {
+  try {
+    showToast(`正在重试下载: ${task.title || '视频'}`);
+    await invoke('start_download', {
+      url: task.url,
+      formatId: task.format_id || undefined,
+    });
+    currentView.value = 'tasks';
+    activeFilter.value = 'active';
+    await fetchTasks();
+  } catch (err: unknown) {
+    showToast(`重试失败: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 async function pasteFromClipboard() {
@@ -716,7 +731,7 @@ onUnmounted(() => {
 
           <div class="task-card-center">
             <div class="task-title-row">
-              <span class="task-title" :title="task.title">{{ task.title }}</span>
+              <span class="task-title" :title="task.title || undefined">{{ task.title }}</span>
               <span class="task-status-pill" :class="task.status">{{ task.status }}</span>
             </div>
 
@@ -737,9 +752,22 @@ onUnmounted(() => {
               </span>
               <span v-if="task.eta_str">⏳ 剩余 {{ task.eta_str }}</span>
             </div>
+
+            <!-- Error message if error or failed -->
+            <div v-if="(task.status === 'error' || task.status === 'failed') && task.error_log" class="task-error-tip">
+              ⚠️ {{ task.error_log }}
+            </div>
           </div>
 
           <div class="task-card-actions">
+            <button
+              v-if="task.status === 'error' || task.status === 'failed'"
+              class="task-btn retry"
+              title="重新下载"
+              @click="retryTask(task)"
+            >
+              🔄 重试
+            </button>
             <button
               v-if="task.status === 'downloading'"
               class="task-btn"
@@ -1438,7 +1466,7 @@ onUnmounted(() => {
   color: #b45309;
 }
 
-.task-status-pill.failed, .task-status-pill.cancelled {
+.task-status-pill.failed, .task-status-pill.error, .task-status-pill.cancelled {
   background: #fee2e2;
   color: #b91c1c;
 }
@@ -1465,8 +1493,19 @@ onUnmounted(() => {
   background: #d97706;
 }
 
-.progress-fill.failed {
+.progress-fill.failed, .progress-fill.error {
   background: #dc2626;
+}
+
+.task-error-tip {
+  font-size: 11px;
+  color: #dc2626;
+  background: #fef2f2;
+  border: 1px solid #fee2e2;
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-top: 4px;
+  word-break: break-all;
 }
 
 .task-meta-row {
@@ -1505,6 +1544,16 @@ onUnmounted(() => {
 
 .task-btn.danger {
   color: #dc2626;
+}
+
+.task-btn.retry {
+  background: #ef4444;
+  color: #ffffff;
+  border-color: #ef4444;
+}
+
+.task-btn.retry:hover {
+  background: #dc2626;
 }
 
 /* Spinner */
