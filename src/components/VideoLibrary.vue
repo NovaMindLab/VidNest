@@ -9,7 +9,7 @@ import type { Video, VideoFilter, VideoListResponse, ScanSummary, ScanProgress }
 const videos = ref<Video[]>([]);
 const totalVideos = ref<number>(0);
 const currentPage = ref<number>(1);
-const batchSize = ref<number>(80);
+const batchSize = ref<number>(36);
 const hasMore = ref<boolean>(true);
 
 const isLoading = ref<boolean>(false);
@@ -41,6 +41,25 @@ const selectedSort = ref<string>('created_desc');
 const viewMode = ref<'grid' | 'list'>('grid');
 
 const copiedPath = ref<boolean>(false);
+let searchTimer: number | null = null;
+
+function onSearchInput() {
+  if (searchTimer) {
+    clearTimeout(searchTimer);
+  }
+  searchTimer = window.setTimeout(() => {
+    fetchVideos(true);
+  }, 250);
+}
+
+function clearSearch() {
+  if (searchTimer) {
+    clearTimeout(searchTimer);
+    searchTimer = null;
+  }
+  searchText.value = '';
+  fetchVideos(true);
+}
 
 async function openVideo(video: Video) {
   try {
@@ -145,6 +164,21 @@ const columnsCount = computed(() => {
   return 6;
 });
 
+const currentGridRowHeight = computed(() => {
+  const w = galleryWidth.value || 900;
+  const cols = columnsCount.value || 3;
+  const paddingX = 40; // gallery-pane padding: 1.25rem * 2
+  const gapX = 17.6; // virtual-grid-row gap: 1.1rem
+  const availableWidth = Math.max(260, w - paddingX - (cols - 1) * gapX);
+  const cardWidth = availableWidth / cols;
+  const thumbHeight = Math.round(cardWidth * (9 / 16));
+  // 底部信息栏（标题 2 行高度 + 格式大小 + 快捷操作按钮条 + 内边距 + 间距等）
+  // 预留 140px，外加行下外边距 16px，彻底杜绝底部操作菜单被遮挡/截断
+  const cardInfoHeight = 140;
+  const rowMargin = 16;
+  return thumbHeight + cardInfoHeight + rowMargin;
+});
+
 export type VirtualRow =
   | { type: 'header'; key: string; group: DateGroup; height: number }
   | { type: 'grid-row'; key: string; groupKey: string; videos: Video[]; height: number }
@@ -174,6 +208,7 @@ const flatVirtualRows = computed<VirtualRow[]>(() => {
     // 2. Video items
     if (isGrid) {
       const vids = group.videos;
+      const rHeight = currentGridRowHeight.value;
       for (let i = 0; i < vids.length; i += cols) {
         const chunk = vids.slice(i, i + cols);
         rows.push({
@@ -181,7 +216,7 @@ const flatVirtualRows = computed<VirtualRow[]>(() => {
           key: `grow-${group.key}-${i}`,
           groupKey: group.key,
           videos: chunk,
-          height: 258,
+          height: rHeight,
         });
       }
     } else {
@@ -476,6 +511,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  if (searchTimer) clearTimeout(searchTimer);
   if (resizeObserver) resizeObserver.disconnect();
   if (unlistenScanProgress) unlistenScanProgress();
   if (unlistenVideoEnriched) unlistenVideoEnriched();
@@ -497,9 +533,13 @@ onUnmounted(() => {
             v-model="searchText"
             class="search-input-field"
             placeholder="搜索视频标题、文件名或路径..."
-            @input="fetchVideos(true)"
+            @input="onSearchInput"
           />
-          <button v-if="searchText" class="search-clear-btn" @click="searchText = ''; fetchVideos(true)">✕</button>
+          <button
+            v-if="searchText"
+            class="search-clear-btn"
+            @click="clearSearch"
+          >✕</button>
         </div>
 
         <!-- Codec Pills -->
@@ -1432,7 +1472,7 @@ onUnmounted(() => {
   display: grid;
   gap: 1.1rem;
   width: 100%;
-  height: calc(100% - 14px);
+  height: calc(100% - 16px);
 }
 
 /* Sticky List View Header */
@@ -1491,6 +1531,8 @@ onUnmounted(() => {
   transition: all 0.15s ease-in-out;
   display: flex;
   flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
 }
 
 .video-grid-card:hover {
@@ -1511,6 +1553,7 @@ onUnmounted(() => {
   padding-top: 56.25%; /* 16:9 */
   background: #090e17;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .grid-thumb-img {
@@ -1562,22 +1605,28 @@ onUnmounted(() => {
 }
 
 .grid-card-info {
-  padding: 0.65rem 0.75rem;
+  padding: 0.65rem 0.75rem 0.75rem;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  justify-content: space-between;
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
 }
 
 .grid-card-title {
   font-size: 0.85rem;
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.35;
+  min-height: 2.7em;
+  max-height: 2.7em;
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   color: var(--text-primary);
+  margin-bottom: 0.2rem;
 }
 
 .grid-card-sub {
@@ -1586,7 +1635,7 @@ onUnmounted(() => {
   justify-content: space-between;
   font-size: 0.72rem;
   color: var(--text-muted);
-  margin-top: auto;
+  margin-bottom: 0.35rem;
 }
 
 .codec-pill {
@@ -1769,18 +1818,19 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  margin-top: 0.4rem;
-  padding-top: 0.4rem;
+  margin-top: auto;
+  padding-top: 0.45rem;
   border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
 }
 
 .card-act-btn {
   flex: 1;
   background: var(--bg-input);
   border: 1px solid var(--border-subtle);
-  border-radius: 5px;
+  border-radius: 6px;
   font-size: 0.72rem;
-  padding: 3px 4px;
+  padding: 5px 3px;
   color: var(--text-secondary);
   cursor: pointer;
   display: flex;

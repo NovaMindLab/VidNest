@@ -32,9 +32,10 @@ pub fn run() {
         .expect("Failed to initialize SQLite database with migrations");
 
     let download_manager = downloader::DownloadManager::global();
+    let db_for_purge = db.clone();
 
     tauri::Builder::default()
-        .setup(|app| {
+        .setup(move |app| {
             if let Ok(app_data) = app.path().app_data_dir() {
                 let bin_dir = app_data.join("bin");
                 let _ = std::fs::create_dir_all(&bin_dir);
@@ -52,6 +53,19 @@ pub fn run() {
                 paths.push(current_path);
                 std::env::set_var("PATH", paths.join(":"));
             }
+
+            // Quiet background purge after 2.5s delay to keep startup ultra-fast
+            let db_bg = db_for_purge.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(tokio::time::Duration::from_millis(2500)).await;
+                let _ = tokio::task::spawn_blocking(move || {
+                    let conn_arc = db_bg.get_connection();
+                    if let Ok(conn) = conn_arc.lock() {
+                        let _ = crate::db::videos::purge_invalid_ts_records(&conn);
+                    };
+                }).await;
+            });
+
             Ok(())
         })
         .manage(db)

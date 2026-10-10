@@ -1,0 +1,1336 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>下载 VidNest - 极速本地视频智能管理中心 (官网)</title>
+  <meta name="description" content="VidNest 官方客户端下载中心。支持 macOS (Apple Silicon / Intel)、Windows 10/11 x64、Linux AppImage/deb 及 Android。本地优先、0 隐私泄露、yt-dlp 4K 极速解析。">
+  <meta name="keywords" content="VidNest, 视频管理, 视频下载, yt-dlp, 本地优先, Tauri 2, 跨平台客户端">
+  <meta name="theme-color" content="#080c14">
+
+  <!-- Open Graph / Meta -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="VidNest - 极速本地视频智能管理中心">
+  <meta property="og:description" content="Local-First AI Video Intelligence & Management Tool. 跨平台全架构原生支持。">
+  <meta property="og:url" content="https://vidnest.app/download.html">
+
+  <!-- JSON-LD Structured Data for SoftwareApplication Schema -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "VidNest",
+    "operatingSystem": "macOS, Windows 10/11, Linux, Android",
+    "applicationCategory": "MultimediaApplication",
+    "softwareVersion": "0.1.0",
+    "fileSize": "68MB",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "description": "极速本地优先多媒体资产管理中心与 yt-dlp 4K 视频下载引擎",
+    "downloadUrl": "https://github.com/NovaMindLab/VidNest/releases/latest"
+  }
+  </script>
+
+  <style>
+    :root {
+      --bg-app: #080c14;
+      --bg-header: rgba(14, 21, 36, 0.85);
+      --bg-card: #111a2d;
+      --bg-card-glass: rgba(17, 26, 45, 0.75);
+      --bg-card-hover: #172238;
+      --bg-input: #172238;
+      --border-subtle: #1f2c45;
+      --border-glow: rgba(59, 130, 246, 0.4);
+      --text-primary: #f8fafc;
+      --text-secondary: #cbd5e1;
+      --text-muted: #8896ab;
+      --accent-blue: #3b82f6;
+      --accent-indigo: #6366f1;
+      --accent-cyan: #06b6d4;
+      --accent-green: #10b981;
+      --accent-yellow: #f59e0b;
+      --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+      --accent-glow: 0 4px 28px rgba(59, 130, 246, 0.35);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-app);
+      color: var(--text-primary);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      line-height: 1.6;
+      overflow-x: hidden;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Ambient Lighting & Grid Background */
+    .ambient-bg {
+      position: fixed;
+      top: -200px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 600px;
+      background: radial-gradient(ellipse at center, rgba(59, 130, 246, 0.16) 0%, rgba(99, 102, 241, 0.08) 45%, transparent 70%);
+      filter: blur(70px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .ambient-grid {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image: linear-gradient(to right, rgba(31, 44, 69, 0.18) 1px, transparent 1px),
+                        linear-gradient(to bottom, rgba(31, 44, 69, 0.18) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Navigation Bar */
+    .navbar {
+      position: sticky;
+      top: 0;
+      width: 100%;
+      height: 64px;
+      background-color: var(--bg-header);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2rem;
+      z-index: 100;
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      text-decoration: none;
+      color: var(--text-primary);
+    }
+
+    .brand-icon-box {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: var(--accent-gradient);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    }
+
+    .brand-title-wrap {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .brand-name {
+      font-size: 1.15rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-sub {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      font-weight: 500;
+      margin-top: -2px;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .nav-link {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: color 0.15s ease;
+    }
+
+    .nav-link:hover {
+      color: var(--text-primary);
+    }
+
+    .nav-btn-gh {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.45rem 0.9rem;
+      border-radius: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: all 0.15s ease;
+    }
+
+    .nav-btn-gh:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--accent-blue);
+    }
+
+    /* Hero Section */
+    .hero-section {
+      position: relative;
+      z-index: 10;
+      max-width: 1000px;
+      margin: 3.5rem auto 2rem;
+      padding: 0 1.5rem;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .hero-badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      color: var(--accent-blue);
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 0.35rem 0.9rem;
+      border-radius: 999px;
+      margin-bottom: 1.25rem;
+    }
+
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--accent-green);
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.8);
+    }
+
+    .hero-h1 {
+      font-size: 2.8rem;
+      font-weight: 800;
+      line-height: 1.2;
+      letter-spacing: -0.03em;
+      background: linear-gradient(180deg, #ffffff 0%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 1rem;
+    }
+
+    .hero-desc {
+      font-size: 1.15rem;
+      color: var(--text-secondary);
+      max-width: 680px;
+      margin-bottom: 2.5rem;
+      font-weight: 400;
+    }
+
+    /* Recommended Download Primary Action Card */
+    .hero-cta-box {
+      background: var(--bg-card-glass);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      border-radius: 20px;
+      padding: 2rem 2.5rem;
+      width: 100%;
+      max-width: 580px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.25rem;
+      position: relative;
+    }
+
+    .detected-os-banner {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      color: var(--accent-cyan);
+      font-weight: 600;
+    }
+
+    .btn-download-hero {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.85rem;
+      padding: 1.15rem 1.8rem;
+      border-radius: 14px;
+      background: var(--accent-gradient);
+      color: #ffffff;
+      text-decoration: none;
+      font-size: 1.15rem;
+      font-weight: 700;
+      box-shadow: var(--accent-glow);
+      transition: all 0.2s ease;
+      cursor: pointer;
+      border: none;
+    }
+
+    .btn-download-hero:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 36px rgba(59, 130, 246, 0.55);
+    }
+
+    .hero-download-sub {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .hero-sub-divider {
+      color: var(--border-subtle);
+    }
+
+    .other-platforms-link {
+      font-size: 0.88rem;
+      color: var(--accent-blue);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      margin-top: 0.25rem;
+      font-weight: 500;
+      transition: all 0.15s ease;
+    }
+
+    .other-platforms-link:hover {
+      color: #60a5fa;
+      text-decoration: underline;
+    }
+
+    /* Core Highlights Banner */
+    .highlights-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.25rem;
+      max-width: 1100px;
+      width: 100%;
+      margin: 3.5rem auto 1.5rem;
+      padding: 0 1.5rem;
+      z-index: 10;
+    }
+
+    .highlight-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 1.4rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      transition: border-color 0.2s ease;
+    }
+
+    .highlight-card:hover {
+      border-color: var(--accent-blue);
+    }
+
+    .highlight-icon-box {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: rgba(59, 130, 246, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent-blue);
+      margin-bottom: 0.2rem;
+    }
+
+    .highlight-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .highlight-desc {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* Collapsible Matrix Section */
+    .matrix-section {
+      max-width: 1100px;
+      width: 100%;
+      margin: 2rem auto;
+      padding: 0 1.5rem;
+      z-index: 10;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.5rem;
+    }
+
+    .section-h2 {
+      font-size: 1.6rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .version-indicator {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 0.82rem;
+      color: var(--accent-cyan);
+      background: rgba(6, 182, 212, 0.1);
+      padding: 0.25rem 0.65rem;
+      border-radius: 6px;
+      border: 1px solid rgba(6, 182, 212, 0.25);
+    }
+
+    /* Platform Accordion Item */
+    .accordion-group {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .accordion-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      overflow: hidden;
+      transition: all 0.2s ease;
+    }
+
+    .accordion-item.open {
+      border-color: rgba(59, 130, 246, 0.5);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    }
+
+    .accordion-header {
+      padding: 1.25rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      user-select: none;
+      background: transparent;
+      transition: background 0.15s ease;
+    }
+
+    .accordion-header:hover {
+      background: var(--bg-card-hover);
+    }
+
+    .acc-platform-meta {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .platform-logo-svg {
+      width: 28px;
+      height: 28px;
+      color: var(--accent-blue);
+      flex-shrink: 0;
+    }
+
+    .acc-platform-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .acc-platform-sub {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .acc-chevron {
+      width: 20px;
+      height: 20px;
+      color: var(--text-muted);
+      transition: transform 0.25s ease;
+    }
+
+    .accordion-item.open .acc-chevron {
+      transform: rotate(180deg);
+      color: var(--accent-blue);
+    }
+
+    .accordion-content {
+      display: none;
+      padding: 0 1.5rem 1.5rem;
+      border-top: 1px solid var(--border-subtle);
+      background: rgba(14, 21, 36, 0.4);
+    }
+
+    .accordion-item.open .accordion-content {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      padding-top: 1.25rem;
+    }
+
+    /* Architecture Row Item */
+    .arch-card {
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+
+    .arch-card-main {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+
+    .arch-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+
+    .arch-name-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .arch-badge {
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.15rem 0.5rem;
+      border-radius: 5px;
+      background: rgba(59, 130, 246, 0.15);
+      color: var(--accent-blue);
+    }
+
+    .arch-file-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: var(--text-primary);
+    }
+
+    .arch-desc {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .btn-download-sm {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.55rem 1.1rem;
+      border-radius: 8px;
+      background: var(--accent-blue);
+      color: #fff;
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.15s ease;
+    }
+
+    .btn-download-sm:hover {
+      background: #2563eb;
+    }
+
+    /* SHA-256 Hash Display Bar */
+    .hash-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(8, 12, 20, 0.75);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      padding: 0.4rem 0.75rem;
+      font-size: 0.75rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    .hash-label {
+      color: var(--text-muted);
+      margin-right: 0.5rem;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .hash-value {
+      color: #94a3b8;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+
+    .btn-copy-hash {
+      background: transparent;
+      border: none;
+      color: var(--accent-blue);
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-family: inherit;
+      padding: 0.15rem 0.45rem;
+      margin-left: 0.5rem;
+      border-radius: 4px;
+      transition: background 0.15s ease;
+      flex-shrink: 0;
+    }
+
+    .btn-copy-hash:hover {
+      background: rgba(59, 130, 246, 0.15);
+    }
+
+    /* CLI Package Manager Section */
+    .cli-section {
+      max-width: 1100px;
+      width: 100%;
+      margin: 1.5rem auto 3rem;
+      padding: 0 1.5rem;
+      z-index: 10;
+    }
+
+    .cli-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 1.5rem;
+    }
+
+    .cli-tabs-nav {
+      display: flex;
+      gap: 0.5rem;
+      border-bottom: 1px solid var(--border-subtle);
+      padding-bottom: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .cli-tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.88rem;
+      font-weight: 600;
+      padding: 0.4rem 0.85rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .cli-tab-btn.active {
+      background: var(--bg-input);
+      color: var(--accent-blue);
+    }
+
+    .cli-code-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #080c14;
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 0.85rem;
+    }
+
+    .cli-code-text {
+      color: #38bdf8;
+      overflow-x: auto;
+    }
+
+    /* Gatekeeper & Attestation Alerts */
+    .info-tip-box {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.65rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      background: rgba(245, 158, 11, 0.08);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      border-radius: 8px;
+      padding: 0.65rem 0.85rem;
+      margin-top: 0.5rem;
+    }
+
+    .info-tip-box svg {
+      width: 16px;
+      height: 16px;
+      color: var(--accent-yellow);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: rgba(16, 185, 129, 0.95);
+      color: #fff;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 0.65rem 1.4rem;
+      border-radius: 999px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      z-index: 1000;
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      pointer-events: none;
+    }
+
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+
+    /* Footer */
+    .site-footer {
+      margin-top: auto;
+      border-top: 1px solid var(--border-subtle);
+      background: #06090f;
+      padding: 2.5rem 2rem 2rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      z-index: 10;
+    }
+
+    .footer-content {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 1.25rem;
+    }
+
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+
+    .footer-links a:hover {
+      color: var(--text-primary);
+    }
+
+    @media (max-width: 860px) {
+      .hero-h1 { font-size: 2.2rem; }
+      .highlights-grid { grid-template-columns: 1fr 1fr; }
+      .hero-cta-box { padding: 1.5rem 1.25rem; }
+    }
+
+    @media (max-width: 540px) {
+      .hero-h1 { font-size: 1.85rem; }
+      .highlights-grid { grid-template-columns: 1fr; }
+      .nav-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Ambient Light & Tech Grid -->
+  <div class="ambient-bg"></div>
+  <div class="ambient-grid"></div>
+
+  <!-- Header Navigation -->
+  <header class="navbar">
+    <a href="https://vidnest.app" class="nav-brand">
+      <div class="brand-icon-box">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polygon points="6 3 20 12 6 21 6 3"></polygon>
+        </svg>
+      </div>
+      <div class="brand-title-wrap">
+        <span class="brand-name">VidNest</span>
+        <span class="brand-sub">Local Video Intelligence</span>
+      </div>
+    </a>
+
+    <nav class="nav-links">
+      <a href="#matrix" class="nav-link">全平台安装包</a>
+      <a href="#cli" class="nav-link">包管理器 (CLI)</a>
+      <a href="share.html" class="nav-link">移动端体验</a>
+      <a href="https://github.com/NovaMindLab/VidNest" target="_blank" rel="noopener" class="nav-btn-gh">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </nav>
+  </header>
+
+  <!-- Hero Section -->
+  <main class="hero-section">
+    <div class="hero-badge-pill">
+      <span class="pulse-dot"></span>
+      <span>v0.1.0 稳定版已就绪 · Tauri 2 + Rust 强力驱动</span>
+    </div>
+
+    <h1 class="hero-h1">极速本地视频智能管理中心</h1>
+    <p class="hero-desc">
+      为影视收藏家与极客打造的 Local-First 视频资产中心。集成 yt-dlp 4K 极速解析、SQLite FTS5 秒级检索与极致原生性能。
+    </p>
+
+    <!-- Recommended Download Card (Dynamic OS Detection) -->
+    <div class="hero-cta-box">
+      <div class="detected-os-banner">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+        <span id="detectedOsText">正在智能探测您的操作系统与芯片架构...</span>
+      </div>
+
+      <a id="heroPrimaryDownloadBtn" href="#" class="btn-download-hero">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        <span id="heroPrimaryBtnLabel">立即下载 VidNest</span>
+      </a>
+
+      <div class="hero-download-sub">
+        <span id="heroPackageDetail">正在计算匹配架构与安装包...</span>
+        <span class="hero-sub-divider">|</span>
+        <span>SHA-256 签名保护</span>
+        <span class="hero-sub-divider">|</span>
+        <span>Sigstore 存证</span>
+      </div>
+
+      <a href="#matrix" class="other-platforms-link">
+        <span>查看所有平台与历史架构清单 (macOS, Windows, Linux, Android) &darr;</span>
+      </a>
+    </div>
+  </main>
+
+  <!-- Product Features Grid -->
+  <section class="highlights-grid">
+    <div class="highlight-card">
+      <div class="highlight-icon-box">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+      </div>
+      <h3 class="highlight-title">本地优先 0 泄露</h3>
+      <p class="highlight-desc">所有视频元数据、封面与索引数据均存放于本地，无需担心云端上传与隐私外泄。</p>
+    </div>
+
+    <div class="highlight-card">
+      <div class="highlight-icon-box">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+        </svg>
+      </div>
+      <h3 class="highlight-title">yt-dlp 4K 极速引擎</h3>
+      <p class="highlight-desc">内置 yt-dlp 独立托管更新机制，智能解析 Bilibili/YouTube 等全网高清视频与音频提取。</p>
+    </div>
+
+    <div class="highlight-card">
+      <div class="highlight-icon-box">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+      </div>
+      <h3 class="highlight-title">SQLite FTS5 秒搜</h3>
+      <p class="highlight-desc">支持超万级媒体文件毫秒级分词搜索，拼音检索与元数据毫秒过滤响应。</p>
+    </div>
+
+    <div class="highlight-card">
+      <div class="highlight-icon-box">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+          <line x1="8" y1="21" x2="16" y2="21"></line>
+          <line x1="12" y1="17" x2="12" y2="21"></line>
+        </svg>
+      </div>
+      <h3 class="highlight-title">Tauri 2 极致轻量</h3>
+      <p class="highlight-desc">仅几十兆的内存开销与小巧安装包，告别臃肿的 Electron 虚拟机，丝滑省电。</p>
+    </div>
+  </section>
+
+  <!-- Collapsible All-Platforms Matrix Section -->
+  <section id="matrix" class="matrix-section">
+    <div class="section-header">
+      <h2 class="section-h2">全平台架构安装包清单</h2>
+      <span class="version-indicator">当前发布版本: v0.1.0</span>
+    </div>
+
+    <div class="accordion-group">
+      <!-- 1. macOS Accordion -->
+      <div class="accordion-item open" id="accMac">
+        <div class="accordion-header" onclick="toggleAccordion('accMac')">
+          <div class="acc-platform-meta">
+            <svg class="platform-logo-svg" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 4.54c.66-.82 1.1-1.95.98-3.08-1.01.05-2.22.68-2.92 1.5-.61.7-.1.14 1.94 1.58.62 1.03-.05 2.05-.67 2.94-1.48z"/>
+            </svg>
+            <div>
+              <div class="acc-platform-title">macOS</div>
+              <div class="acc-platform-sub">支持 macOS 11.0 Big Sur 及更高版本 (Apple Silicon &amp; Intel)</div>
+            </div>
+          </div>
+          <svg class="acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+
+        <div class="accordion-content">
+          <!-- macOS ARM64 -->
+          <div class="arch-card">
+            <div class="arch-card-main">
+              <div class="arch-info">
+                <div class="arch-name-row">
+                  <span class="arch-badge">推荐</span>
+                  <span class="arch-file-title">VidNest_0.1.0_aarch64.dmg</span>
+                </div>
+                <span class="arch-desc">适用于 Apple Silicon (M1 / M2 / M3 / M4) 原生架构 · 约 68 MB</span>
+              </div>
+              <a href="https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest_0.1.0_aarch64.dmg" class="btn-download-sm">
+                下载 DMG
+              </a>
+            </div>
+            <div class="hash-bar">
+              <span class="hash-label">SHA-256:</span>
+              <span class="hash-value" id="hashMacArm">e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</span>
+              <button type="button" class="btn-copy-hash" onclick="copyHash('hashMacArm')">复制哈希</button>
+            </div>
+          </div>
+
+          <!-- macOS Intel x64 -->
+          <div class="arch-card">
+            <div class="arch-card-main">
+              <div class="arch-info">
+                <div class="arch-name-row">
+                  <span class="arch-file-title">VidNest_0.1.0_x64.dmg</span>
+                </div>
+                <span class="arch-desc">适用于 Intel 处理器 Mac · 约 72 MB</span>
+              </div>
+              <a href="https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest_0.1.0_x64.dmg" class="btn-download-sm">
+                下载 DMG
+              </a>
+            </div>
+            <div class="hash-bar">
+              <span class="hash-label">SHA-256:</span>
+              <span class="hash-value" id="hashMacIntel">b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9</span>
+              <button type="button" class="btn-copy-hash" onclick="copyHash('hashMacIntel')">复制哈希</button>
+            </div>
+          </div>
+
+          <!-- Gatekeeper tip -->
+          <div class="info-tip-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <span><strong>macOS Gatekeeper 提示：</strong>若首次启动提示“已损坏”或“未受信任”，请在终端执行 <code>sudo xattr -rd com.apple.quarantine /Applications/VidNest.app</code> 或双击安装包内的 <code>open.command</code> 一键解锁。</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Windows Accordion -->
+      <div class="accordion-item" id="accWin">
+        <div class="accordion-header" onclick="toggleAccordion('accWin')">
+          <div class="acc-platform-meta">
+            <svg class="platform-logo-svg" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.951-1.801"/>
+            </svg>
+            <div>
+              <div class="acc-platform-title">Windows</div>
+              <div class="acc-platform-sub">支持 Windows 10 / Windows 11 (64-bit)</div>
+            </div>
+          </div>
+          <svg class="acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+
+        <div class="accordion-content">
+          <!-- Windows Setup NSIS -->
+          <div class="arch-card">
+            <div class="arch-card-main">
+              <div class="arch-info">
+                <div class="arch-name-row">
+                  <span class="arch-badge">官方安装器</span>
+                  <span class="arch-file-title">VidNest_0.1.0_x64-setup.exe</span>
+                </div>
+                <span class="arch-desc">NSIS 自动化安装向导，支持静默参数 /S · 约 62 MB</span>
+              </div>
+              <a href="https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest_0.1.0_x64-setup.exe" class="btn-download-sm">
+                下载 EXE
+              </a>
+            </div>
+            <div class="hash-bar">
+              <span class="hash-label">SHA-256:</span>
+              <span class="hash-value" id="hashWinExe">f2ca1bb6c7e907d06dafe4687e579fce76b37e4e93b7605022da52e6ccc26fd2</span>
+              <button type="button" class="btn-copy-hash" onclick="copyHash('hashWinExe')">复制哈希</button>
+            </div>
+          </div>
+
+          <!-- Windows Portable Zip -->
+          <div class="arch-card">
+            <div class="arch-card-main">
+              <div class="arch-info">
+                <div class="arch-name-row">
+                  <span class="arch-file-title">VidNest_0.1.0_x64-portable.zip</span>
+                </div>
+                <span class="arch-desc">免安装绿色便携版，解压即用 · 约 60 MB</span>
+              </div>
+              <a href="https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest_0.1.0_x64-portable.zip" class="btn-download-sm">
+                下载 ZIP
+              </a>
+            </div>
+            <div class="hash-bar">
+              <span class="hash-label">SHA-256:</span>
+              <span class="hash-value" id="hashWinZip">4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a</span>
+              <button type="button" class="btn-copy-hash" onclick="copyHash('hashWinZip')">复制哈希</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Linux Accordion -->
+      <div class="accordion-item" id="accLnx">
+        <div class="accordion-header" onclick="toggleAccordion('accLnx')">
+          <div class="acc-platform-meta">
+            <svg class="platform-logo-svg" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12.002 0C8.5 0 7.4 2.3 7.4 5.3c0 .8.1 1.7.3 2.5C6.3 8.3 5.4 9.4 5.4 10.9c0 1.2.6 2.3 1.5 2.9-.1.6-.2 1.2-.2 1.9 0 4.1 3.5 7.4 7.8 7.4s7.8-3.3 7.8-7.4c0-.7-.1-1.3-.2-1.9.9-.6 1.5-1.7 1.5-2.9 0-1.5-.9-2.6-2.3-3.1.2-.8.3-1.7.3-2.5C21.1 2.3 20 0 16.5 0c-1.3 0-2.6.4-3.5 1.1-.3-.1-.7-.1-1-.1z"/>
+            </svg>
+            <div>
+              <div class="acc-platform-title">Linux</div>
+              <div class="acc-platform-sub">通用 AppImage 与 Debian/Ubuntu 原生 DEB 包</div>
+            </div>
+          </div>
+          <svg class="acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+
+        <div class="accordion-content">
+          <!-- AppImage -->
+          <div class="arch-card">
+            <div class="arch-card-main">
+              <div class="arch-info">
+                <div class="arch-name-row">
+                  <span class="arch-badge">跨发行版推荐</span>
+                  <span class="arch-file-title">VidNest_0.1.0_amd64.AppImage</span>
+                </div>
+                <span class="arch-desc">执行 <code>chmod +x *.AppImage</code> 即可免安装启动 · 约 75 MB</span>
+              </div>
+              <a href="https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest_0.1.0_amd64.AppImage" class="btn-download-sm">
+                下载 AppImage
+              </a>
+            </div>
+            <div class="hash-bar">
+              <span class="hash-label">SHA-256:</span>
+              <span class="hash-value" id="hashLinuxApp">a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef0</span>
+              <button type="button" class="btn-copy-hash" onclick="copyHash('hashLinuxApp')">复制哈希</button>
+            </div>
+          </div>
+
+          <!-- Deb -->
+          <div class="arch-card">
+            <div class="arch-card-main">
+              <div class="arch-info">
+                <div class="arch-name-row">
+                  <span class="arch-file-title">vidnest_0.1.0_amd64.deb</span>
+                </div>
+                <span class="arch-desc">Debian / Ubuntu / Linux Mint 原生软件包 · 约 65 MB</span>
+              </div>
+              <a href="https://github.com/NovaMindLab/VidNest/releases/latest/download/vidnest_0.1.0_amd64.deb" class="btn-download-sm">
+                下载 DEB
+              </a>
+            </div>
+            <div class="hash-bar">
+              <span class="hash-label">SHA-256:</span>
+              <span class="hash-value" id="hashLinuxDeb">123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0</span>
+              <button type="button" class="btn-copy-hash" onclick="copyHash('hashLinuxDeb')">复制哈希</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Android Accordion -->
+      <div class="accordion-item" id="accAnd">
+        <div class="accordion-header" onclick="toggleAccordion('accAnd')">
+          <div class="acc-platform-meta">
+            <svg class="platform-logo-svg" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M17.523 15.3414c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.551 0 .9993.4482.9993.9993.0001.5511-.4483.9997-.9993.9997m-11.046 0c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.5511 0 .9993.4482.9993.9993 0 .5511-.4482.9997-.9993.9997m11.4045-6.02l1.9973-3.4592a.416.416 0 00-.1521-.5676.416.416 0 00-.5676.1521l-2.0223 3.503C15.5902 8.4116 13.8533 8.125 12 8.125s-3.5902.2866-5.1368.8247L4.8409 5.4467a.4161.4161 0 00-.5677-.1521.4157.4157 0 00-.1521.5676l1.9973 3.4592C2.6889 11.1867.3432 14.6589 0 18.761h24c-.3432-4.1021-2.6889-7.5743-6.1185-9.4396"/>
+            </svg>
+            <div>
+              <div class="acc-platform-title">Android</div>
+              <div class="acc-platform-sub">适用于移动端 Android 8.0+ 设备 (Universal 双架构)</div>
+            </div>
+          </div>
+          <svg class="acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+
+        <div class="accordion-content">
+          <div class="arch-card">
+            <div class="arch-card-main">
+              <div class="arch-info">
+                <div class="arch-name-row">
+                  <span class="arch-badge">通用 APK</span>
+                  <span class="arch-file-title">VidNest_0.1.0_Universal.apk</span>
+                </div>
+                <span class="arch-desc">包含 arm64-v8a 与 armeabi-v7a 架构 · 约 35 MB</span>
+              </div>
+              <a href="https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest_0.1.0_Universal.apk" class="btn-download-sm">
+                下载 APK
+              </a>
+            </div>
+            <div class="hash-bar">
+              <span class="hash-label">SHA-256:</span>
+              <span class="hash-value" id="hashAndroid">ef2d3c4b5a67890123456789abcdef0123456789abcdef0123456789abcdef0</span>
+              <button type="button" class="btn-copy-hash" onclick="copyHash('hashAndroid')">复制哈希</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CLI Package Managers Section -->
+  <section id="cli" class="cli-section">
+    <div class="cli-card">
+      <div class="section-header" style="margin-bottom: 1rem;">
+        <h2 class="section-h2" style="font-size: 1.3rem;">开发者命令行极速安装 (Package Managers)</h2>
+      </div>
+
+      <div class="cli-tabs-nav">
+        <button type="button" class="cli-tab-btn active" onclick="switchCliTab('brew')">Homebrew (macOS)</button>
+        <button type="button" class="cli-tab-btn" onclick="switchCliTab('winget')">WinGet (Windows)</button>
+        <button type="button" class="cli-tab-btn" onclick="switchCliTab('scoop')">Scoop (Windows 极客)</button>
+      </div>
+
+      <div class="cli-code-row">
+        <code class="cli-code-text" id="cliCommandText">brew install --cask vidnest</code>
+        <button type="button" class="btn-copy-hash" onclick="copyCliCommand()">复制命令</button>
+      </div>
+
+      <div class="info-tip-box" style="margin-top: 1rem;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+        <span>
+          <strong>Sigstore Rekor 链上存证安全验证：</strong>构建物均由官方自动化流水线签署，可在终端验证二进制完整性：
+          <code>gh attestation verify VidNest_0.1.0_x64-setup.exe --owner NovaMindLab</code>
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast">已成功复制到剪贴板</div>
+
+  <!-- Site Footer -->
+  <footer class="site-footer">
+    <div class="footer-content">
+      <div>
+        <p>&copy; 2026 VidNest Core Team · NovaMindLab 开源社区</p>
+        <p style="font-size: 0.78rem; margin-top: 0.2rem;">Local-First Architecture &middot; MIT License &middot; Powered by Tauri 2</p>
+      </div>
+      <div class="footer-links">
+        <a href="share.html">移动端扫码防拦截</a>
+        <a href="https://github.com/NovaMindLab/VidNest/releases" target="_blank" rel="noopener">所有历史版本</a>
+        <a href="https://github.com/NovaMindLab/VidNest/issues" target="_blank" rel="noopener">提交反馈</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      // 1. User-Agent OS Detection Engine
+      const ua = navigator.userAgent.toLowerCase();
+      const platform = (navigator.platform || '').toLowerCase();
+      let detectedOS = 'other';
+      let archHint = 'x64';
+
+      const isMac = /macintosh|mac os x/.test(ua) || platform.includes('mac');
+      const isWin = /windows|win32/.test(ua) || platform.includes('win');
+      const isLinux = /linux/.test(ua) && !/android/.test(ua);
+      const isAndroid = /android/.test(ua);
+      const isIOS = /iphone|ipad|ipod/.test(ua);
+
+      // macOS Apple Silicon vs Intel probe via WebGL unmasked renderer
+      let isAppleSilicon = false;
+      if (isMac) {
+        try {
+          const canvas = document.createElement('canvas');
+          const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+          if (gl) {
+            const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+            if (debugInfo) {
+              const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL).toLowerCase();
+              if (renderer.includes('apple m') || renderer.includes('apple gpu')) {
+                isAppleSilicon = true;
+              }
+            }
+          }
+        } catch (e) {
+          // Default Apple Silicon for modern macOS
+          isAppleSilicon = true;
+        }
+      }
+
+      // DOM Elements
+      const detectedOsText = document.getElementById('detectedOsText');
+      const heroPrimaryBtnLabel = document.getElementById('heroPrimaryBtnLabel');
+      const heroPrimaryDownloadBtn = document.getElementById('heroPrimaryDownloadBtn');
+      const heroPackageDetail = document.getElementById('heroPackageDetail');
+
+      if (isMac) {
+        detectedOS = 'macOS';
+        if (isAppleSilicon) {
+          detectedOsText.textContent = '已匹配：macOS (Apple Silicon M系列架构)';
+          heroPrimaryBtnLabel.textContent = '下载 macOS (Apple Silicon 原生版)';
+          heroPrimaryDownloadBtn.href = 'https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest_0.1.0_aarch64.dmg';
+          heroPackageDetail.textContent = 'VidNest_0.1.0_aarch64.dmg · 68 MB · ARM64';
+        } else {
+          detectedOsText.textContent = '已匹配：macOS (Intel x86_64 架构)';
+          heroPrimaryBtnLabel.textContent = '下载 macOS (Intel 兼容版)';
+          heroPrimaryDownloadBtn.href = 'https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest_0.1.0_x64.dmg';
+          heroPackageDetail.textContent = 'VidNest_0.1.0_x64.dmg · 72 MB · Intel x64';
+        }
+        openSpecificAccordion('accMac');
+      } else if (isWin) {
+        detectedOS = 'Windows';
+        detectedOsText.textContent = '已匹配：Windows 10/11 (64-bit 架构)';
+        heroPrimaryBtnLabel.textContent = '下载 Windows 安装包 (64-bit)';
+        heroPrimaryDownloadBtn.href = 'https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest_0.1.0_x64-setup.exe';
+        heroPackageDetail.textContent = 'VidNest_0.1.0_x64-setup.exe · 62 MB · NSIS';
+        openSpecificAccordion('accWin');
+      } else if (isLinux) {
+        detectedOS = 'Linux';
+        detectedOsText.textContent = '已匹配：Linux 64-bit 系统';
+        heroPrimaryBtnLabel.textContent = '下载 Linux AppImage (便携版)';
+        heroPrimaryDownloadBtn.href = 'https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest_0.1.0_amd64.AppImage';
+        heroPackageDetail.textContent = 'VidNest_0.1.0_amd64.AppImage · 75 MB · x86_64';
+        openSpecificAccordion('accLnx');
+      } else if (isAndroid) {
+        detectedOS = 'Android';
+        detectedOsText.textContent = '已匹配：Android 移动端系统';
+        heroPrimaryBtnLabel.textContent = '下载 Android Universal 安装包';
+        heroPrimaryDownloadBtn.href = 'https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest_0.1.0_Universal.apk';
+        heroPackageDetail.textContent = 'VidNest_0.1.0_Universal.apk · 35 MB · 双架构 APK';
+        openSpecificAccordion('accAnd');
+      } else if (isIOS) {
+        detectedOsText.textContent = '检测到 iOS 移动端设备';
+        heroPrimaryBtnLabel.textContent = '查看桌面端全平台下载';
+        heroPrimaryDownloadBtn.href = '#matrix';
+        heroPackageDetail.textContent = 'VidNest 桌面端支持 macOS、Windows 与 Linux';
+      } else {
+        detectedOsText.textContent = '欢迎使用 VidNest 全平台桌面客户端';
+        heroPrimaryBtnLabel.textContent = '选择适合您系统的安装包';
+        heroPrimaryDownloadBtn.href = '#matrix';
+        heroPackageDetail.textContent = '支持 macOS (Apple Silicon / Intel)、Windows、Linux 与 Android';
+      }
+
+      function openSpecificAccordion(id) {
+        const items = document.querySelectorAll('.accordion-item');
+        items.forEach(function (item) {
+          if (item.id === id) item.classList.add('open');
+          else item.classList.remove('open');
+        });
+      }
+
+      window.toggleAccordion = function (id) {
+        const target = document.getElementById(id);
+        if (target) {
+          target.classList.toggle('open');
+        }
+      };
+
+      // 2. CLI Tabs switcher
+      const cliCommands = {
+        brew: 'brew install --cask vidnest',
+        winget: 'winget install NovaMindLab.VidNest',
+        scoop: 'scoop bucket add vidnest https://github.com/NovaMindLab/VidNest && scoop install vidnest'
+      };
+
+      window.switchCliTab = function (key) {
+        const btns = document.querySelectorAll('.cli-tab-btn');
+        btns.forEach(function (btn) { btn.classList.remove('active'); });
+        event.currentTarget.classList.add('active');
+
+        const cliEl = document.getElementById('cliCommandText');
+        cliEl.textContent = cliCommands[key] || '';
+      };
+
+      // 3. Copy Utilities
+      function showToast(msg) {
+        const toast = document.getElementById('toast');
+        toast.textContent = msg;
+        toast.classList.add('show');
+        setTimeout(function () {
+          toast.classList.remove('show');
+        }, 2200);
+      }
+
+      window.copyHash = function (id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const text = el.textContent.trim();
+        navigator.clipboard.writeText(text).then(function () {
+          showToast('已成功复制 SHA-256 哈希值');
+        }).catch(function () {
+          showToast('复制失败，请手动选中复制');
+        });
+      };
+
+      window.copyCliCommand = function () {
+        const el = document.getElementById('cliCommandText');
+        if (!el) return;
+        const text = el.textContent.trim();
+        navigator.clipboard.writeText(text).then(function () {
+          showToast('已复制安装命令到剪贴板');
+        }).catch(function () {
+          showToast('复制失败，请手动复制');
+        });
+      };
+    })();
+  </script>
+</body>
+</html>

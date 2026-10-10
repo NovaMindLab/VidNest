@@ -235,6 +235,7 @@ async function startSelectedDownload() {
     });
     showToast(`已开始下载: ${targetOption?.label || '最佳画质'}`);
     await fetchTasks();
+    scheduleNextPoll();
     // Switch to task view or keep in parser with toast
     currentView.value = 'tasks';
   } catch (err: unknown) {
@@ -294,6 +295,7 @@ async function resumeTask(task: DownloadTask) {
     await invoke('resume_download_task', { task_id: task.id, taskId: task.id, id: task.id });
     showToast('任务已恢复');
     await fetchTasks();
+    scheduleNextPoll();
   } catch (err: unknown) {
     showToast(`恢复失败: ${err}`);
   }
@@ -338,6 +340,7 @@ async function retryTask(task: DownloadTask) {
     currentView.value = 'tasks';
     activeFilter.value = 'active';
     await fetchTasks();
+    scheduleNextPoll();
   } catch (err: unknown) {
     showToast(`重试失败: ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -365,13 +368,26 @@ function formatFileSize(bytes: number | null | undefined): string {
   return `${gb.toFixed(1)} GB`;
 }
 
+function scheduleNextPoll() {
+  if (pollTimer) {
+    clearTimeout(pollTimer);
+    pollTimer = null;
+  }
+  // 智能降频轮询：有正在下载/排队任务时以 1.5s 刷新；空闲时降频为 8s，释放主进程 IPC
+  const interval = activeTasks.value.length > 0 ? 1500 : 8000;
+  pollTimer = window.setTimeout(async () => {
+    await fetchTasks();
+    scheduleNextPoll();
+  }, interval);
+}
+
 onMounted(async () => {
   await fetchTasks();
-  pollTimer = window.setInterval(fetchTasks, 1500);
+  scheduleNextPoll();
 });
 
 onUnmounted(() => {
-  if (pollTimer) clearInterval(pollTimer);
+  if (pollTimer) clearTimeout(pollTimer);
   if (toastTimer) clearTimeout(toastTimer);
 });
 </script>

@@ -13,10 +13,14 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 #[tauri::command]
-pub fn system_health_check(app: AppHandle) -> Result<HealthReport, String> {
+pub async fn system_health_check(app: AppHandle) -> Result<HealthReport, String> {
     let app_data_path = app.path().app_data_dir().ok();
-    let report = run_health_check(app_data_path);
-    Ok(report)
+    tokio::task::spawn_blocking(move || {
+        let report = run_health_check(app_data_path);
+        Ok(report)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -96,56 +100,68 @@ pub fn cancel_full_disk_scan() -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub fn list_videos(
+pub async fn list_videos(
     filter: Option<VideoFilter>,
     db: State<'_, Database>,
 ) -> Result<VideoListResponse, String> {
-    let conn_arc = db.get_connection();
-    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
 
-    // Automatically purge any false-positive non-video .ts records (e.g. TypeScript files)
-    let _ = crate::db::videos::purge_invalid_ts_records(&conn);
+        let mut response = crate::db::videos::list_videos(&conn, filter.unwrap_or_default())?;
 
-    let mut response = crate::db::videos::list_videos(&conn, filter.unwrap_or_default())?;
-
-    // Populate thumbnail base64 data for the page items
-    for item in &mut response.items {
-        if let Some(thumb_path) = &item.thumbnail_path {
-            item.thumbnail_data = read_thumbnail_base64(Path::new(thumb_path));
+        // Populate thumbnail base64 data for the page items (cached in memory)
+        for item in &mut response.items {
+            if let Some(thumb_path) = &item.thumbnail_path {
+                item.thumbnail_data = read_thumbnail_base64(Path::new(thumb_path));
+            }
         }
-    }
 
-    Ok(response)
+        Ok(response)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn get_video_detail(
+pub async fn get_video_detail(
     id: i64,
     db: State<'_, Database>,
 ) -> Result<Option<Video>, String> {
-    let conn_arc = db.get_connection();
-    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
 
-    let mut video = crate::db::videos::get_video_by_id(&conn, id)?;
-    if let Some(ref mut v) = video {
-        if let Some(thumb_path) = &v.thumbnail_path {
-            v.thumbnail_data = read_thumbnail_base64(Path::new(thumb_path));
+        let mut video = crate::db::videos::get_video_by_id(&conn, id)?;
+        if let Some(ref mut v) = video {
+            if let Some(thumb_path) = &v.thumbnail_path {
+                v.thumbnail_data = read_thumbnail_base64(Path::new(thumb_path));
+            }
         }
-    }
 
-    Ok(video)
+        Ok(video)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn delete_video(
+pub async fn delete_video(
     id: i64,
     delete_file: bool,
     db: State<'_, Database>,
 ) -> Result<bool, String> {
-    let conn_arc = db.get_connection();
-    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
 
-    crate::db::videos::delete_video(&conn, id, delete_file)
+        crate::db::videos::delete_video(&conn, id, delete_file)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -334,31 +350,35 @@ pub fn install_update_and_relaunch(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn open_update_installer_folder() -> Result<(), String> {
-    let installer_path = {
-        let lock = crate::updater::DOWNLOADED_INSTALLER_PATH.lock().map_err(|e| e.to_string())?;
-        lock.clone()
-    };
-    let target = installer_path.unwrap_or_else(|| std::env::temp_dir());
-    let folder = if target.is_file() {
-        target.parent().unwrap_or(&target).to_path_buf()
-    } else {
-        target
-    };
+pub async fn open_update_installer_folder() -> Result<(), String> {
+    tokio::task::spawn_blocking(|| {
+        let installer_path = {
+            let lock = crate::updater::DOWNLOADED_INSTALLER_PATH.lock().map_err(|e| e.to_string())?;
+            lock.clone()
+        };
+        let target = installer_path.unwrap_or_else(|| std::env::temp_dir());
+        let folder = if target.is_file() {
+            target.parent().unwrap_or(&target).to_path_buf()
+        } else {
+            target
+        };
 
-    #[cfg(target_os = "windows")]
-    {
-        let _ = std::process::Command::new("explorer").arg(&folder).spawn();
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let _ = std::process::Command::new("open").arg(&folder).spawn();
-    }
-    #[cfg(target_os = "linux")]
-    {
-        let _ = std::process::Command::new("xdg-open").arg(&folder).spawn();
-    }
-    Ok(())
+        #[cfg(target_os = "windows")]
+        {
+            let _ = std::process::Command::new("explorer").arg(&folder).spawn();
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let _ = std::process::Command::new("open").arg(&folder).spawn();
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let _ = std::process::Command::new("xdg-open").arg(&folder).spawn();
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

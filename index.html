@@ -5,10 +5,64 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>VidNest · 本地视频智能管理</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        background-color: #080c14;
+        color: #f8fafc;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        overflow: hidden;
+      }
+      .pre-shell {
+        display: flex;
+        width: 100vw;
+        height: 100vh;
+      }
+      .pre-sidebar {
+        width: 240px;
+        background-color: #0e1524;
+        border-right: 1px solid #1f2c45;
+        padding: 1.25rem 1rem;
+        box-sizing: border-box;
+      }
+      .pre-brand {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0 0.5rem 1.25rem;
+        border-bottom: 1px solid #1f2c45;
+      }
+      .pre-logo {
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+      }
+      .pre-title {
+        font-weight: 700;
+        font-size: 1.15rem;
+        color: #f8fafc;
+      }
+      .pre-main {
+        flex: 1;
+        background-color: #080c14;
+      }
+    </style>
   </head>
 
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div class="pre-shell">
+        <div class="pre-sidebar">
+          <div class="pre-brand">
+            <div class="pre-logo"></div>
+            <div class="pre-title">VidNest</div>
+          </div>
+        </div>
+        <div class="pre-main"></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

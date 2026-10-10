@@ -156,11 +156,35 @@ pub fn generate_thumbnail(
     Ok(output_file)
 }
 
-/// Loads a thumbnail image file and encodes it as a base64 Data URL.
+use std::collections::HashMap;
+use std::sync::{OnceLock, RwLock};
+
+fn get_thumbnail_cache() -> &'static RwLock<HashMap<PathBuf, String>> {
+    static CACHE: OnceLock<RwLock<HashMap<PathBuf, String>>> = OnceLock::new();
+    CACHE.get_or_init(|| RwLock::new(HashMap::with_capacity(512)))
+}
+
+/// Loads a thumbnail image file and encodes it as a base64 Data URL, with high-performance in-memory caching.
 pub fn read_thumbnail_base64(path: &Path) -> Option<String> {
+    let cache = get_thumbnail_cache();
+    if let Ok(guard) = cache.read() {
+        if let Some(cached) = guard.get(path) {
+            return Some(cached.clone());
+        }
+    }
+
     let bytes = fs::read(path).ok()?;
     let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
-    Some(format!("data:image/jpeg;base64,{}", encoded))
+    let data_url = format!("data:image/jpeg;base64,{}", encoded);
+
+    if let Ok(mut guard) = cache.write() {
+        if guard.len() >= 600 {
+            guard.clear();
+        }
+        guard.insert(path.to_path_buf(), data_url.clone());
+    }
+
+    Some(data_url)
 }
 
 #[cfg(test)]

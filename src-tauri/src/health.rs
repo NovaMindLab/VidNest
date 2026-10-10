@@ -98,8 +98,26 @@ pub fn check_storage_status(app_data_path: Option<PathBuf>) -> StorageStatus {
     }
 }
 
+use std::sync::{OnceLock, RwLock};
+use std::time::Instant;
+
+fn get_health_cache() -> &'static RwLock<Option<(Instant, HealthReport)>> {
+    static CACHE: OnceLock<RwLock<Option<(Instant, HealthReport)>>> = OnceLock::new();
+    CACHE.get_or_init(|| RwLock::new(None))
+}
+
 /// Performs a full health check across system environment, storage, and external CLI tools.
+/// Features a 30-second TTL in-memory cache and parallel tool probing for instant response.
 pub fn run_health_check(app_data_path: Option<PathBuf>) -> HealthReport {
+    let cache = get_health_cache();
+    if let Ok(guard) = cache.read() {
+        if let Some((instant, ref report)) = *guard {
+            if instant.elapsed() < std::time::Duration::from_secs(30) {
+                return report.clone();
+            }
+        }
+    }
+
     let os = get_os_info();
     let app_data = app_data_path.unwrap_or_else(|| {
         std::env::var_os("LOCALAPPDATA")
@@ -122,33 +140,12 @@ pub fn run_health_check(app_data_path: Option<PathBuf>) -> HealthReport {
         "yt-dlp 视频下载引擎 (系统全局版本)"
     };
 
-    let mut ytdlp_status = probe_external_tool(
-        &ytdlp_target,
-        "--version",
-        true,
-        ytdlp_desc,
-    );
-    ytdlp_status.name = "yt-dlp".to_string();
-    if active_ytdlp.is_some() {
-        ytdlp_status.path = Some(ytdlp_target);
-    }
-
     let managed_ffmpeg = app_data.join("bin").join(if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" });
     let ffmpeg_target = if managed_ffmpeg.exists() {
         managed_ffmpeg.to_string_lossy().to_string()
     } else {
         "ffmpeg".to_string()
     };
-    let mut ffmpeg_status = probe_external_tool(
-        &ffmpeg_target,
-        "-version",
-        true,
-        "FFmpeg 多媒体处理内核 (音视频编解码与缩略图抽帧)",
-    );
-    ffmpeg_status.name = "ffmpeg".to_string();
-    if ffmpeg_status.found {
-        ffmpeg_status.path = Some(ffmpeg_target);
-    }
 
     let managed_ffprobe = app_data.join("bin").join(if cfg!(windows) { "ffprobe.exe" } else { "ffprobe" });
     let ffprobe_target = if managed_ffprobe.exists() {
@@ -156,12 +153,29 @@ pub fn run_health_check(app_data_path: Option<PathBuf>) -> HealthReport {
     } else {
         "ffprobe".to_string()
     };
-    let mut ffprobe_status = probe_external_tool(
-        &ffprobe_target,
-        "-version",
-        true,
-        "FFprobe 媒体探测器 (流信息与元数据解析)",
-    );
+
+    // Parallel multi-process tool probing using std::thread::scope
+    let (mut ytdlp_status, mut ffmpeg_status, mut ffprobe_status) = std::thread::scope(|s| {
+        let yt_h = s.spawn(|| probe_external_tool(&ytdlp_target, "--version", true, ytdlp_desc));
+        let ff_h = s.spawn(|| probe_external_tool(&ffmpeg_target, "-version", true, "FFmpeg 多媒体处理内核 (音视频编解码与缩略图抽帧)"));
+        let fp_h = s.spawn(|| probe_external_tool(&ffprobe_target, "-version", true, "FFprobe 媒体探测器 (流信息与元数据解析)"));
+        (
+            yt_h.join().unwrap_or_else(|_| ToolStatus { name: "yt-dlp".to_string(), found: false, path: None, version: None, required: true, description: ytdlp_desc.to_string() }),
+            ff_h.join().unwrap_or_else(|_| ToolStatus { name: "ffmpeg".to_string(), found: false, path: None, version: None, required: true, description: "FFmpeg".to_string() }),
+            fp_h.join().unwrap_or_else(|_| ToolStatus { name: "ffprobe".to_string(), found: false, path: None, version: None, required: true, description: "FFprobe".to_string() }),
+        )
+    });
+
+    ytdlp_status.name = "yt-dlp".to_string();
+    if active_ytdlp.is_some() {
+        ytdlp_status.path = Some(ytdlp_target);
+    }
+
+    ffmpeg_status.name = "ffmpeg".to_string();
+    if ffmpeg_status.found {
+        ffmpeg_status.path = Some(ffmpeg_target);
+    }
+
     ffprobe_status.name = "ffprobe".to_string();
     if ffprobe_status.found {
         ffprobe_status.path = Some(ffprobe_target);
@@ -183,7 +197,7 @@ pub fn run_health_check(app_data_path: Option<PathBuf>) -> HealthReport {
         .unwrap_or_default()
         .as_millis() as u64;
 
-    HealthReport {
+    let report = HealthReport {
         app_name: "Local Video Intelligence".to_string(),
         app_version: env!("CARGO_PKG_VERSION").to_string(),
         status,
@@ -191,7 +205,13 @@ pub fn run_health_check(app_data_path: Option<PathBuf>) -> HealthReport {
         tools,
         storage,
         timestamp_ms,
+    };
+
+    if let Ok(mut guard) = cache.write() {
+        *guard = Some((Instant::now(), report.clone()));
     }
+
+    report
 }
 
 #[cfg(test)]

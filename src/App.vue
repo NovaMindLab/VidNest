@@ -117,15 +117,19 @@ function formatTime(timestampMs: number): string {
   return d.toLocaleTimeString();
 }
 
-onMounted(async () => {
+onMounted(() => {
   initTheme();
   if (isPlayerWindow.value || isYtdWindow.value) {
     return;
   }
-  await fetchHealth();
-  await testPing();
+  // 非阻塞并行触发系统健康检测与 IPC 探针，首屏毫秒级就绪
+  fetchHealth();
+  testPing();
   if (autoCheckYtdlpOnLaunch.value) {
-    await checkYtdlpUpdate();
+    // 延迟 1.5s 在后台静默检查，绝不争抢首屏与冷启动主流程资源
+    setTimeout(() => {
+      checkYtdlpUpdate();
+    }, 1500);
   }
 });
 </script>
