@@ -201,6 +201,7 @@ export interface ResolutionSummary {
 
 export interface AudioExtractionOptions {
   videoPath: string;
+  videoId?: number | null;
   format: 'mp3' | 'm4a' | 'wav' | 'flac' | string;
   qualityBitrate?: string;
   copyStream?: boolean;
@@ -217,6 +218,27 @@ export interface AudioExtractionResult {
   format: string;
   message: string;
 }
+
+export interface ExtractedAudio {
+  id: number;
+  videoId?: number | null;
+  sourceVideoTitle?: string | null;
+  sourceVideoPath?: string | null;
+  filePath: string;
+  fileName: string;
+  fileSize: number;
+  duration?: number | null;
+  format: string;
+  qualityBitrate?: string | null;
+  createdAt: number;
+}
+
+export interface ExtractedAudioFilter {
+  search?: string;
+  format?: string;
+  sortBy?: 'created_desc' | 'duration_desc' | 'size_desc' | 'name_asc' | string;
+}
+
 
 
 

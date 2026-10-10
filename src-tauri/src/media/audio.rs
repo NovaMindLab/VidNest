@@ -248,6 +248,7 @@ mod tests {
         let d = Path::new("/path/to/video.mp3");
         let opts = AudioExtractionOptions {
             video_path: "/path/to/video.mp4".to_string(),
+            video_id: None,
             format: "mp3".to_string(),
             quality_bitrate: Some("192k".to_string()),
             copy_stream: Some(false),
@@ -272,6 +273,7 @@ mod tests {
         let d = Path::new("/path/to/video.m4a");
         let opts = AudioExtractionOptions {
             video_path: "/path/to/video.mp4".to_string(),
+            video_id: None,
             format: "m4a".to_string(),
             quality_bitrate: None,
             copy_stream: Some(true),
@@ -291,6 +293,7 @@ mod tests {
         let d_wav = Path::new("/path/to/audio.wav");
         let opts_wav = AudioExtractionOptions {
             video_path: "/path/to/video.mp4".to_string(),
+            video_id: None,
             format: "wav".to_string(),
             quality_bitrate: None,
             copy_stream: None,
@@ -304,6 +307,7 @@ mod tests {
         let d_flac = Path::new("/path/to/audio.flac");
         let opts_flac = AudioExtractionOptions {
             video_path: "/path/to/video.mp4".to_string(),
+            video_id: None,
             format: "flac".to_string(),
             quality_bitrate: None,
             copy_stream: None,

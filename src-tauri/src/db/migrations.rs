@@ -106,6 +106,28 @@ pub const MIGRATIONS: &[Migration] = &[
         ALTER TABLE download_tasks ADD COLUMN eta TEXT;
         "#,
     },
+    Migration {
+        version: 3,
+        name: "v3_extracted_audios",
+        sql: r#"
+        CREATE TABLE IF NOT EXISTS extracted_audios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            video_id INTEGER REFERENCES videos(id) ON DELETE SET NULL,
+            source_video_title TEXT,
+            source_video_path TEXT,
+            file_path TEXT NOT NULL UNIQUE,
+            file_name TEXT NOT NULL,
+            file_size INTEGER NOT NULL,
+            duration REAL,
+            format TEXT NOT NULL,
+            quality_bitrate TEXT,
+            created_at INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_extracted_audios_created ON extracted_audios(created_at);
+        CREATE INDEX IF NOT EXISTS idx_extracted_audios_format ON extracted_audios(format);
+        "#,
+    },
 ];
 
 pub fn apply_all(conn: &Connection) -> Result<(), String> {

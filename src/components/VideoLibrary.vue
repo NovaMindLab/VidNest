@@ -9,6 +9,7 @@ import type { Video, VideoFilter, VideoListResponse, ScanSummary, ScanProgress }
 
 const emit = defineEmits<{
   (e: 'navigateDedup'): void;
+  (e: 'navigateAudios'): void;
 }>();
 
 const videos = ref<Video[]>([]);
@@ -645,6 +646,20 @@ onUnmounted(() => {
           <span>查重清理</span>
         </button>
 
+        <!-- Audio Library Button -->
+        <button
+          class="btn btn-secondary btn-header-act"
+          @click="emit('navigateAudios')"
+          title="查看已提取音频资产中枢"
+        >
+          <svg class="btn-sm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 18V5l12-2v13"></path>
+            <circle cx="6" cy="18" r="3"></circle>
+            <circle cx="18" cy="16" r="3"></circle>
+          </svg>
+          <span>已提取音频</span>
+        </button>
+
         <!-- View mode -->
         <div class="view-switch-btns">
           <button
@@ -1007,6 +1022,7 @@ onUnmounted(() => {
       :video="videoForAudioExtract"
       :visible="showAudioExtractModal"
       @close="showAudioExtractModal = false"
+      @view-in-audio-library="emit('navigateAudios')"
     />
 
 

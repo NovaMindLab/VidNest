@@ -3,8 +3,9 @@ use crate::health::run_health_check;
 use crate::media::read_thumbnail_base64;
 use crate::models::{
     AudioExtractionOptions, AudioExtractionResult, DownloadTask, DuplicateGroup,
-    DuplicateResolutionAction, HealthReport, ResolutionSummary, ScanSummary, UrlInspectResult,
-    Video, VideoFilter, VideoListResponse, YtDlpUpdateCheck, YtDlpUpdateResult,
+    DuplicateResolutionAction, ExtractedAudio, ExtractedAudioFilter, HealthReport,
+    ResolutionSummary, ScanSummary, UrlInspectResult, Video, VideoFilter, VideoListResponse,
+    YtDlpUpdateCheck, YtDlpUpdateResult,
 };
 use crate::scanner::scan_directory;
 use crate::ytdlp;
@@ -620,6 +621,7 @@ pub async fn resolve_duplicate_videos(
 #[tauri::command]
 pub async fn extract_audio_from_video(
     app: AppHandle,
+    db: State<'_, Database>,
     options: AudioExtractionOptions,
 ) -> Result<AudioExtractionResult, String> {
     let app_data_path = app.path().app_data_dir().ok().unwrap_or_else(|| {
@@ -629,12 +631,101 @@ pub async fn extract_audio_from_video(
             .join("LocalVideoIntelligence")
     });
 
+    let db_clone = (*db).clone();
     tokio::task::spawn_blocking(move || {
-        crate::media::extract_audio(options, Some(&app_data_path))
+        let res = crate::media::extract_audio(options.clone(), Some(&app_data_path))?;
+
+        // Automatically record into extracted_audios table
+        let conn_arc = db_clone.get_connection();
+        if let Ok(conn) = conn_arc.lock() {
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64;
+
+            // Resolve source video info
+            let (source_id, source_title) = if options.video_id.is_some() {
+                let id = options.video_id;
+                let title: Option<String> = id.and_then(|vid| {
+                    conn.query_row(
+                        "SELECT file_name FROM videos WHERE id = ?1",
+                        [vid],
+                        |row| row.get(0),
+                    ).ok()
+                });
+                (id, title)
+            } else {
+                let queried: Option<(i64, String)> = conn
+                    .query_row(
+                        "SELECT id, file_name FROM videos WHERE file_path = ?1",
+                        [&options.video_path],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    )
+                    .ok();
+                if let Some((vid, title)) = queried {
+                    (Some(vid), Some(title))
+                } else {
+                    let fallback_title = Path::new(&options.video_path)
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s.to_string());
+                    (None, fallback_title)
+                }
+            };
+
+            let _ = crate::db::audios::insert_or_update_extracted_audio(
+                &conn,
+                source_id,
+                source_title.as_deref(),
+                Some(&options.video_path),
+                &res.output_path,
+                &res.file_name,
+                res.file_size,
+                res.duration,
+                &res.format,
+                options.quality_bitrate.as_deref(),
+                now_ms,
+            );
+        }
+
+        Ok(res)
     })
     .await
     .map_err(|e| format!("执行音频提取任务失败: {}", e))?
 }
+
+#[tauri::command]
+pub async fn list_extracted_audios(
+    filter: Option<ExtractedAudioFilter>,
+    db: State<'_, Database>,
+) -> Result<Vec<ExtractedAudio>, String> {
+    let db_clone = (*db).clone();
+    let f = filter.unwrap_or_default();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::db::audios::list_extracted_audios(&conn, &f)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn delete_extracted_audio(
+    id: i64,
+    delete_disk_file: bool,
+    db: State<'_, Database>,
+) -> Result<(), String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::db::audios::delete_extracted_audio(&conn, id, delete_disk_file)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 
 
 

@@ -233,6 +233,7 @@ pub struct ResolutionSummary {
 #[serde(rename_all = "camelCase")]
 pub struct AudioExtractionOptions {
     pub video_path: String,
+    pub video_id: Option<i64>,
     pub format: String, // "mp3" | "m4a" | "wav" | "flac"
     pub quality_bitrate: Option<String>, // "320k" | "192k" | "128k" | "256k"
     pub copy_stream: Option<bool>, // copy audio stream directly without re-encoding
@@ -251,6 +252,31 @@ pub struct AudioExtractionResult {
     pub format: String,
     pub message: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractedAudio {
+    pub id: i64,
+    pub video_id: Option<i64>,
+    pub source_video_title: Option<String>,
+    pub source_video_path: Option<String>,
+    pub file_path: String,
+    pub file_name: String,
+    pub file_size: u64,
+    pub duration: Option<f64>,
+    pub format: String,
+    pub quality_bitrate: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractedAudioFilter {
+    pub search: Option<String>,
+    pub format: Option<String>,
+    pub sort_by: Option<String>, // "created_desc", "duration_desc", "size_desc", "name_asc"
+}
+
 
 
 

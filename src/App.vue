@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { HealthReport, YtDlpUpdateCheck, YtDlpUpdateResult } from './types';
 import VideoLibrary from './components/VideoLibrary.vue';
 import VideoDeduplication from './components/VideoDeduplication.vue';
+import ExtractedAudiosView from './components/ExtractedAudiosView.vue';
 import DownloadCenter from './components/DownloadCenter.vue';
 import AppSettingsView from './components/AppSettingsView.vue';
 import AppUpdateModal from './components/AppUpdateModal.vue';
@@ -15,7 +16,7 @@ const urlParams = new URLSearchParams(window.location.search);
 const isPlayerWindow = ref(urlParams.get('window') === 'player');
 const isYtdWindow = ref(urlParams.get('window') === 'ytd');
 
-const currentTab = ref<'library' | 'dedup' | 'downloads' | 'system' | 'settings'>('library');
+const currentTab = ref<'library' | 'dedup' | 'audios' | 'downloads' | 'system' | 'settings'>('library');
 const activeDownloadsCount = ref<number>(0);
 const showUpdateModal = ref<boolean>(false);
 
@@ -194,6 +195,21 @@ onMounted(() => {
 
         <button
           class="nav-item"
+          :class="{ active: currentTab === 'audios' }"
+          @click="currentTab = 'audios'"
+        >
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 18V5l12-2v13"></path>
+              <circle cx="6" cy="18" r="3"></circle>
+              <circle cx="18" cy="16" r="3"></circle>
+            </svg>
+          </div>
+          <span class="nav-item-label">{{ t('nav.audios') }}</span>
+        </button>
+
+        <button
+          class="nav-item"
           :class="{ active: currentTab === 'downloads' }"
           @click="currentTab = 'downloads'"
         >
@@ -279,6 +295,8 @@ onMounted(() => {
                 ? t('header.libraryTitle')
                 : currentTab === 'dedup'
                 ? t('header.dedupTitle')
+                : currentTab === 'audios'
+                ? t('header.audiosTitle')
                 : currentTab === 'downloads'
                 ? t('header.downloadsTitle')
                 : currentTab === 'system'
@@ -334,12 +352,20 @@ onMounted(() => {
 
         <!-- VIEW 1: VIDEO LIBRARY -->
         <div v-if="currentTab === 'library'" class="view-panel">
-          <VideoLibrary @navigate-dedup="currentTab = 'dedup'" />
+          <VideoLibrary
+            @navigate-dedup="currentTab = 'dedup'"
+            @navigate-audios="currentTab = 'audios'"
+          />
         </div>
 
         <!-- VIEW 1.5: VIDEO DEDUPLICATION -->
         <div v-else-if="currentTab === 'dedup'" class="view-panel">
           <VideoDeduplication @navigate-library="currentTab = 'library'" />
+        </div>
+
+        <!-- VIEW 1.8: EXTRACTED AUDIOS -->
+        <div v-else-if="currentTab === 'audios'" class="view-panel">
+          <ExtractedAudiosView @navigate-library="currentTab = 'library'" />
         </div>
 
         <!-- VIEW 2: DOWNLOAD CENTER -->

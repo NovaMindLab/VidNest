@@ -1,3 +1,4 @@
+pub mod audios;
 pub mod migrations;
 pub mod tasks;
 pub mod videos;

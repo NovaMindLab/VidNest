@@ -12,6 +12,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void;
+  (e: 'viewInAudioLibrary'): void;
 }>();
 
 type AudioFormat = 'mp3' | 'm4a' | 'wav' | 'flac';
@@ -106,6 +107,7 @@ async function executeExtract() {
 
     const options: AudioExtractionOptions = {
       videoPath: props.video.file_path,
+      videoId: props.video.id,
       format: selectedFormat.value,
       qualityBitrate: (selectedFormat.value === 'mp3' || selectedFormat.value === 'm4a') && !copyStream.value
         ? qualityBitrate.value
@@ -143,6 +145,11 @@ async function copyPath() {
   } catch (e) {
     showToast('复制路径失败');
   }
+}
+
+function handleGoToAudioLib() {
+  emit('close');
+  emit('viewInAudioLibrary');
 }
 
 function handleClose() {
@@ -402,7 +409,10 @@ function handleClose() {
           <button class="btn btn-secondary" @click="copyPath">
             📋 {{ t('audioExtract.copyPath') }}
           </button>
-          <button class="btn btn-primary" @click="handleClose">
+          <button class="btn btn-primary" @click="handleGoToAudioLib">
+            🎶 {{ t('audioExtract.goToAudioLib') }}
+          </button>
+          <button class="btn btn-secondary" @click="handleClose">
             {{ t('audioExtract.close') }}
           </button>
         </template>
