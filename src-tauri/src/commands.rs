@@ -2,9 +2,9 @@ use crate::db::Database;
 use crate::health::run_health_check;
 use crate::media::read_thumbnail_base64;
 use crate::models::{
-    DownloadTask, DuplicateGroup, DuplicateResolutionAction, HealthReport, ResolutionSummary,
-    ScanSummary, UrlInspectResult, Video, VideoFilter, VideoListResponse, YtDlpUpdateCheck,
-    YtDlpUpdateResult,
+    AudioExtractionOptions, AudioExtractionResult, DownloadTask, DuplicateGroup,
+    DuplicateResolutionAction, HealthReport, ResolutionSummary, ScanSummary, UrlInspectResult,
+    Video, VideoFilter, VideoListResponse, YtDlpUpdateCheck, YtDlpUpdateResult,
 };
 use crate::scanner::scan_directory;
 use crate::ytdlp;
@@ -616,5 +616,25 @@ pub async fn resolve_duplicate_videos(
     .await
     .map_err(|e| e.to_string())?
 }
+
+#[tauri::command]
+pub async fn extract_audio_from_video(
+    app: AppHandle,
+    options: AudioExtractionOptions,
+) -> Result<AudioExtractionResult, String> {
+    let app_data_path = app.path().app_data_dir().ok().unwrap_or_else(|| {
+        std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir)
+            .join("LocalVideoIntelligence")
+    });
+
+    tokio::task::spawn_blocking(move || {
+        crate::media::extract_audio(options, Some(&app_data_path))
+    })
+    .await
+    .map_err(|e| format!("执行音频提取任务失败: {}", e))?
+}
+
 
 

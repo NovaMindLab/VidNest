@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import VideoPlayerModal from './VideoPlayerModal.vue';
+import AudioExtractionModal from './AudioExtractionModal.vue';
 import type { Video, VideoFilter, VideoListResponse, ScanSummary, ScanProgress } from '../types';
 
 const emit = defineEmits<{
@@ -29,6 +30,14 @@ const showScanner = ref<boolean>(false);
 
 const isPlayerVisible = ref<boolean>(false);
 const activePlayerVideo = ref<Video | null>(null);
+
+const showAudioExtractModal = ref<boolean>(false);
+const videoForAudioExtract = ref<Video | null>(null);
+
+function openAudioExtract(video: Video) {
+  videoForAudioExtract.value = video;
+  showAudioExtractModal.value = true;
+}
 
 let unlistenScanProgress: UnlistenFn | null = null;
 let unlistenVideoEnriched: UnlistenFn | null = null;
@@ -918,6 +927,9 @@ onUnmounted(() => {
                     <button class="card-act-btn" title="播放" @click.stop="openVideo(video)">
                       ▶ 播放
                     </button>
+                    <button class="card-act-btn btn-act-audio" title="提取音频" @click.stop="openAudioExtract(video)">
+                      🎵 提取
+                    </button>
                     <button class="card-act-btn" title="在文件夹中定位" @click.stop="revealVideo(video.file_path)">
                       📁 定位
                     </button>
@@ -961,6 +973,7 @@ onUnmounted(() => {
               <div class="li-size font-mono">{{ formatFileSize(item.row.video.file_size) }}</div>
               <div class="li-actions">
                 <button class="li-btn" title="播放" @click.stop="openVideo(item.row.video)">▶</button>
+                <button class="li-btn btn-act-audio" title="提取音频" @click.stop="openAudioExtract(item.row.video)">🎵</button>
                 <button class="li-btn" title="定位文件" @click.stop="revealVideo(item.row.video.file_path)">📁</button>
                 <button class="li-btn" title="复制路径" @click.stop="copyToClipboard(item.row.video.file_path)">📋</button>
                 <button class="li-btn btn-act-del" title="从媒体库移除" @click.stop="promptRemoveVideo(item.row.video)">✕</button>
@@ -988,6 +1001,14 @@ onUnmounted(() => {
       :visible="isPlayerVisible"
       @close="isPlayerVisible = false"
     />
+
+    <!-- Audio Extraction Modal Component -->
+    <AudioExtractionModal
+      :video="videoForAudioExtract"
+      :visible="showAudioExtractModal"
+      @close="showAudioExtractModal = false"
+    />
+
 
     <!-- Confirm Delete Modal (彻底替换被系统拦截的 window.confirm) -->
     <div v-if="showDeleteConfirmModal" class="confirm-modal-overlay" @click.self="showDeleteConfirmModal = false">
@@ -1958,6 +1979,12 @@ onUnmounted(() => {
   background: rgba(239, 68, 68, 0.08);
 }
 
+.card-act-btn.btn-act-audio:hover {
+  color: #06b6d4;
+  border-color: rgba(6, 182, 212, 0.4);
+  background: rgba(6, 182, 212, 0.08);
+}
+
 /* List Table Actions */
 .lh-actions {
   text-align: right;
@@ -1988,11 +2015,18 @@ onUnmounted(() => {
   border-color: rgba(59, 130, 246, 0.4);
 }
 
+.li-btn.btn-act-audio:hover {
+  color: #06b6d4;
+  border-color: rgba(6, 182, 212, 0.4);
+  background: rgba(6, 182, 212, 0.08);
+}
+
 .li-btn.btn-act-del:hover {
   color: #ef4444;
   border-color: rgba(239, 68, 68, 0.4);
   background: rgba(239, 68, 68, 0.08);
 }
+
 
 .spinner-sm {
   width: 13px;

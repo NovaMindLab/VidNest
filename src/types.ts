@@ -199,4 +199,24 @@ export interface ResolutionSummary {
   message: string;
 }
 
+export interface AudioExtractionOptions {
+  videoPath: string;
+  format: 'mp3' | 'm4a' | 'wav' | 'flac' | string;
+  qualityBitrate?: string;
+  copyStream?: boolean;
+  outputDir?: string;
+  customFilename?: string;
+}
+
+export interface AudioExtractionResult {
+  success: boolean;
+  outputPath: string;
+  fileName: string;
+  fileSize: number;
+  duration?: number | null;
+  format: string;
+  message: string;
+}
+
+
 

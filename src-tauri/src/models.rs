@@ -229,4 +229,28 @@ pub struct ResolutionSummary {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioExtractionOptions {
+    pub video_path: String,
+    pub format: String, // "mp3" | "m4a" | "wav" | "flac"
+    pub quality_bitrate: Option<String>, // "320k" | "192k" | "128k" | "256k"
+    pub copy_stream: Option<bool>, // copy audio stream directly without re-encoding
+    pub output_dir: Option<String>, // custom directory or default video folder
+    pub custom_filename: Option<String>, // optional custom filename without extension
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioExtractionResult {
+    pub success: bool,
+    pub output_path: String,
+    pub file_name: String,
+    pub file_size: u64,
+    pub duration: Option<f64>,
+    pub format: String,
+    pub message: String,
+}
+
+
 
