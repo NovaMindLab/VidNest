@@ -19,6 +19,12 @@ const containerRef = ref<HTMLDivElement | null>(null);
 const isPlaying = ref(false);
 const currentTime = ref(0);
 const duration = ref(0);
+const isScrubbing = ref(false);
+const scrubTime = ref(0);
+const modalOffset = ref({ x: 0, y: 0 });
+const isDraggingModal = ref(false);
+let dragOrigin = { clientX: 0, clientY: 0, startX: 0, startY: 0 };
+
 const volume = ref(1);
 const isMuted = ref(false);
 const playbackRate = ref(1);
@@ -81,7 +87,7 @@ function triggerPlayIndicator() {
 }
 
 function handleTimeUpdate() {
-  if (!videoRef.value) return;
+  if (!videoRef.value || isScrubbing.value) return;
   currentTime.value = videoRef.value.currentTime;
 }
 
@@ -102,17 +108,49 @@ function handleCanPlay() {
 
 function handleError(e: Event) {
   isLoading.value = false;
-  const mediaError = (e.target as HTMLVideoElement)?.error;
-  errorMessage.value = mediaError ? `解码错误: ${mediaError.message} (代码: ${mediaError.code})` : '无法解析此视频格式';
+  const target = e.target as HTMLVideoElement;
+  const mediaError = target?.error;
+  let desc = '无法解析此视频格式';
+  if (mediaError) {
+    switch (mediaError.code) {
+      case 1:
+        desc = '视频流读取被终止';
+        break;
+      case 2:
+        desc = '本地媒体流读取失败（可能权限受限或路径变动）';
+        break;
+      case 3:
+        desc = '视频解码失败，可能存在损坏帧或索引丢失';
+        break;
+      case 4:
+        desc = '内嵌渲染器不支持此格式或音视频编码（如 MKV、FLV、AC3 环绕声）。推荐使用系统专业播放器播放。';
+        break;
+      default:
+        desc = mediaError.message || '未知媒体解码异常';
+    }
+  }
+  errorMessage.value = desc;
+}
+
+function onSeekStart(e: Event) {
+  isScrubbing.value = true;
+  const target = e.target as HTMLInputElement;
+  scrubTime.value = parseFloat(target.value);
 }
 
 function onSeekInput(e: Event) {
   const target = e.target as HTMLInputElement;
+  scrubTime.value = parseFloat(target.value);
+}
+
+function onSeekChange(e: Event) {
+  const target = e.target as HTMLInputElement;
   const val = parseFloat(target.value);
-  if (videoRef.value) {
+  if (videoRef.value && !isNaN(val)) {
     videoRef.value.currentTime = val;
     currentTime.value = val;
   }
+  isScrubbing.value = false;
 }
 
 function seekRelative(delta: number) {
@@ -274,6 +312,46 @@ async function copyPath() {
   }
 }
 
+function startHeaderDrag(e: MouseEvent) {
+  const target = e.target as HTMLElement;
+  if (target.closest('button') || target.closest('input') || target.closest('a')) {
+    return;
+  }
+  if (isFullscreen.value) return;
+
+  isDraggingModal.value = true;
+  dragOrigin = {
+    clientX: e.clientX,
+    clientY: e.clientY,
+    startX: modalOffset.value.x,
+    startY: modalOffset.value.y,
+  };
+  window.addEventListener('mousemove', onHeaderDragMove);
+  window.addEventListener('mouseup', onHeaderDragEnd);
+}
+
+function onHeaderDragMove(e: MouseEvent) {
+  if (!isDraggingModal.value) return;
+  const dx = e.clientX - dragOrigin.clientX;
+  const dy = e.clientY - dragOrigin.clientY;
+  modalOffset.value = {
+    x: dragOrigin.startX + dx,
+    y: dragOrigin.startY + dy,
+  };
+}
+
+function onHeaderDragEnd() {
+  if (isDraggingModal.value) {
+    isDraggingModal.value = false;
+    window.removeEventListener('mousemove', onHeaderDragMove);
+    window.removeEventListener('mouseup', onHeaderDragEnd);
+  }
+}
+
+function resetModalPosition() {
+  modalOffset.value = { x: 0, y: 0 };
+}
+
 watch(
   () => props.visible,
   (val) => {
@@ -281,6 +359,7 @@ watch(
       isLoading.value = true;
       errorMessage.value = '';
       currentTime.value = 0;
+      resetModalPosition();
       setTimeout(() => {
         if (videoRef.value) {
           videoRef.value.play().catch(() => {});
@@ -305,15 +384,31 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
+  window.removeEventListener('mousemove', onHeaderDragMove);
+  window.removeEventListener('mouseup', onHeaderDragEnd);
 });
 </script>
 
 <template>
   <div v-if="visible" class="player-modal-backdrop" @click.self="close">
-    <div ref="containerRef" class="player-modal-container">
+    <div
+      ref="containerRef"
+      class="player-modal-container"
+      :class="{ 'is-dragging': isDraggingModal }"
+      :style="{
+        transform: isFullscreen ? 'none' : `translate3d(${modalOffset.x}px, ${modalOffset.y}px, 0)`
+      }"
+    >
       <!-- Modal Header -->
-      <div class="player-modal-header">
+      <div
+        class="player-modal-header"
+        :class="{ 'is-dragging-header': isDraggingModal }"
+        title="按住标题栏拖动窗口位置，双击还原居中"
+        @mousedown="startHeaderDrag"
+        @dblclick="resetModalPosition"
+      >
         <div class="modal-title-box">
+          <span class="drag-handle-hint" title="按住拖动窗口">⠿</span>
           <span class="player-icon">🎬</span>
           <h3 class="player-title" :title="video?.file_name || '播放视频'">
             {{ video?.file_name || '未知视频' }}
@@ -351,6 +446,8 @@ onUnmounted(() => {
           class="video-element"
           :src="videoSrc"
           playsinline
+          crossorigin="anonymous"
+          preload="auto"
           @timeupdate="handleTimeUpdate"
           @loadedmetadata="handleLoadedMetadata"
           @waiting="handleWaiting"
@@ -377,10 +474,16 @@ onUnmounted(() => {
         <div v-if="errorMessage" class="player-error-overlay">
           <div class="error-box">
             <span class="err-icon">⚠️</span>
+            <h4 class="err-title">视频无法在内嵌窗口中播放</h4>
             <p class="err-text">{{ errorMessage }}</p>
-            <button class="btn-err-fallback" @click.stop="openExternal">
-              尝试使用系统播放器打开
-            </button>
+            <div class="err-actions">
+              <button class="btn-err-fallback primary" @click.stop="openExternal">
+                <span class="btn-ic">🚀</span> 使用系统播放器打开 (IINA/QuickTime)
+              </button>
+              <button class="btn-err-fallback secondary" @click.stop="revealFile">
+                <span class="btn-ic">📁</span> 定位文件所在目录
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -395,12 +498,17 @@ onUnmounted(() => {
             min="0"
             :max="duration || 100"
             step="0.1"
-            :value="currentTime"
+            :value="isScrubbing ? scrubTime : currentTime"
+            @pointerdown="onSeekStart"
+            @mousedown="onSeekStart"
             @input="onSeekInput"
+            @change="onSeekChange"
+            @pointerup="onSeekChange"
+            @mouseup="onSeekChange"
           />
           <div
             class="scrubber-progress-fill"
-            :style="{ width: duration ? `${(currentTime / duration) * 100}%` : '0%' }"
+            :style="{ width: duration ? `${((isScrubbing ? scrubTime : currentTime) / duration) * 100}%` : '0%' }"
           ></div>
         </div>
 
@@ -421,7 +529,7 @@ onUnmounted(() => {
             </button>
 
             <div class="time-readout">
-              <span class="t-cur">{{ formatTime(currentTime) }}</span>
+              <span class="t-cur">{{ formatTime(isScrubbing ? scrubTime : currentTime) }}</span>
               <span class="t-sep">/</span>
               <span class="t-dur">{{ formatTime(duration) }}</span>
             </div>
@@ -549,6 +657,12 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: transform 0.05s ease-out;
+  will-change: transform;
+}
+
+.player-modal-container.is-dragging {
+  transition: none;
 }
 
 /* Modal Header */
@@ -562,6 +676,25 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+  cursor: grab;
+  user-select: none;
+}
+
+.player-modal-header.is-dragging-header {
+  cursor: grabbing;
+}
+
+.drag-handle-hint {
+  font-size: 1.15rem;
+  color: #64748b;
+  cursor: grab;
+  margin-right: 0.2rem;
+  user-select: none;
+}
+
+.player-modal-header.is-dragging-header .drag-handle-hint {
+  cursor: grabbing;
+  color: #94a3b8;
 }
 
 .modal-title-box {
@@ -731,46 +864,89 @@ onUnmounted(() => {
 .player-error-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.85);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 2rem;
+  z-index: 10;
 }
 
 .error-box {
-  background: #1e1520;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 10px;
-  padding: 1.5rem 2rem;
+  background: #18121d;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 12px;
+  padding: 1.75rem 2rem;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  max-width: 420px;
+  max-width: 480px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
 }
 
 .err-icon {
-  font-size: 2.2rem;
-  margin-bottom: 0.5rem;
+  font-size: 2.4rem;
+  margin-bottom: 0.35rem;
+}
+
+.err-title {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fca5a5;
 }
 
 .err-text {
-  margin: 0 0 1rem;
-  font-size: 0.85rem;
-  color: #fca5a5;
-  line-height: 1.45;
+  margin: 0 0 1.25rem;
+  font-size: 0.83rem;
+  color: #cbd5e1;
+  line-height: 1.5;
+}
+
+.err-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: 100%;
 }
 
 .btn-err-fallback {
-  background: #3b82f6;
-  color: white;
   border: none;
-  padding: 7px 14px;
+  padding: 8px 16px;
   border-radius: 6px;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   cursor: pointer;
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  transition: all 0.15s ease;
+}
+
+.btn-err-fallback.primary {
+  background: #3b82f6;
+  color: #ffffff;
+}
+
+.btn-err-fallback.primary:hover {
+  background: #2563eb;
+}
+
+.btn-err-fallback.secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.btn-err-fallback.secondary:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.btn-ic {
+  font-size: 0.95rem;
 }
 
 /* Controls Bar */

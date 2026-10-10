@@ -23,7 +23,24 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: https://asset.localhost blob: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; media-src 'self' asset: https://asset.localhost blob: data:; connect-src 'self' ipc: http://ipc.localhost;"
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost https://asset.localhost blob: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; media-src 'self' asset: http://asset.localhost https://asset.localhost blob: data:; connect-src 'self' ipc: http://ipc.localhost;",
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "**",
+          "**/*",
+          "$HOME/**",
+          "$HOME/**/*",
+          "$DOWNLOAD/**",
+          "$DOWNLOAD/**/*",
+          "$DOCUMENT/**",
+          "$DOCUMENT/**/*",
+          "$DESKTOP/**",
+          "$DESKTOP/**/*",
+          "$VIDEO/**",
+          "$VIDEO/**/*"
+        ]
+      }
     }
   },
   "bundle": {
