@@ -169,3 +169,36 @@ pub struct VideoSource {
     pub downloaded_at: Option<i64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AppUpdateInfo {
+    pub has_update: bool,
+    pub current_version: String,
+    pub latest_version: String,
+    pub release_name: String,
+    pub release_notes: String,
+    pub download_url: String,
+    pub is_differential: bool,
+    pub download_size_bytes: u64,
+    pub original_size_bytes: u64,
+    pub sha256: Option<String>,
+    pub published_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct UpdateProgressPayload {
+    pub status: String, // "downloading" | "verifying" | "ready" | "error"
+    pub downloaded_bytes: u64,
+    pub total_bytes: u64,
+    pub percentage: f64,
+    pub speed_mbps: f64,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct UpdateInstallResult {
+    pub success: bool,
+    pub message: String,
+    pub requires_restart: bool,
+}
+
+

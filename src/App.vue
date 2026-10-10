@@ -4,9 +4,11 @@ import { invoke } from '@tauri-apps/api/core';
 import type { HealthReport, YtDlpUpdateCheck, YtDlpUpdateResult } from './types';
 import VideoLibrary from './components/VideoLibrary.vue';
 import DownloadCenter from './components/DownloadCenter.vue';
+import AppUpdateModal from './components/AppUpdateModal.vue';
 
 const currentTab = ref<'library' | 'downloads' | 'system'>('library');
 const activeDownloadsCount = ref<number>(0);
+const showUpdateModal = ref<boolean>(false);
 
 function onActiveCountChange(count: number) {
   activeDownloadsCount.value = count;
@@ -223,6 +225,10 @@ onMounted(async () => {
         </div>
 
         <div class="header-actions">
+          <button class="btn-check-update" title="检查新版本 (应用内差分增量升级)" @click="showUpdateModal = true">
+            <span class="update-icon">⚡</span>
+            <span>检查更新</span>
+          </button>
           <span class="engine-badge" v-if="ytdlpCheck?.current_version">
             yt-dlp: {{ ytdlpCheck.current_version }}
           </span>
@@ -428,6 +434,9 @@ onMounted(async () => {
         </div>
       </div>
     </main>
+
+    <!-- In-App Differential Updater Modal -->
+    <AppUpdateModal :visible="showUpdateModal" @close="showUpdateModal = false" />
   </div>
 </template>
 
@@ -711,6 +720,32 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+
+.btn-check-update {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #60a5fa;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-check-update:hover {
+  background: rgba(59, 130, 246, 0.22);
+  border-color: rgba(59, 130, 246, 0.5);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.update-icon {
+  font-size: 0.85rem;
 }
 
 .engine-badge {

@@ -5,13 +5,15 @@ pub mod health;
 pub mod media;
 pub mod models;
 pub mod scanner;
+pub mod updater;
 pub mod ytdlp;
 
 use commands::{
-    cancel_download, cancel_download_task, cancel_full_disk_scan, check_ytdlp_update, clear_completed_tasks,
-    delete_video, echo, get_download_tasks, get_video_detail, inspect_url, inspect_video_url, list_videos,
-    pause_download, pause_download_task, ping, resume_download, resume_download_task, scan_video_directory,
-    start_download, start_full_disk_scan, system_health_check, update_ytdlp,
+    cancel_download, cancel_download_task, cancel_full_disk_scan, check_app_update, check_ytdlp_update,
+    clear_completed_tasks, delete_video, download_and_install_update, echo, get_download_tasks,
+    get_video_detail, inspect_url, inspect_video_url, list_videos, pause_download, pause_download_task,
+    ping, relaunch_app, resume_download, resume_download_task, scan_video_directory, start_download,
+    start_full_disk_scan, system_health_check, update_ytdlp,
 };
 use db::Database;
 use std::path::PathBuf;
@@ -76,6 +78,9 @@ pub fn run() {
             clear_completed_tasks,
             ping,
             echo,
+            check_app_update,
+            download_and_install_update,
+            relaunch_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

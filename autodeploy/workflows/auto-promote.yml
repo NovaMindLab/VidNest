@@ -1,0 +1,181 @@
+name: 📢 Automated Promotion & Distribution
+
+'on':
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag (e.g. v0.1.0)'
+        required: false
+        default: 'v0.1.0'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: auto-promote-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: 🚀 Omnichannel Promotion Pipeline
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy_pages.outputs.page_url }}
+    steps:
+      # ======================================================================
+      # 步骤一：检出代码与安装 Node 环境
+      # ======================================================================
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🟢 Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 📦 Install npm dependencies
+        run: npm install
+
+      # ======================================================================
+      # 步骤二：生成 WinGet、Scoop、Homebrew Cask 包管理器清单
+      # ======================================================================
+      - name: 📦 Generate Package Manifests (WinGet, Scoop, Homebrew Cask)
+        id: manifests
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag_name || github.ref_name }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+        run: |
+          echo "::group::Generating package manager manifests..."
+          TAG="${{ github.event.release.tag_name || inputs.tag_name || github.ref_name }}"
+          node autodeploy/scripts/generate-package-manifests.mjs --tag "$TAG"
+          echo "::endgroup::"
+
+      - name: 📤 Archive Generated Manifests Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-manifests
+          path: autodeploy/manifests/
+          if-no-files-found: warn
+          retention-days: 14
+
+      # ======================================================================
+      # 步骤三：生成 pSEO 竞品对比落地页与 sitemap.xml，并部署到 GitHub Pages
+      # ======================================================================
+      - name: 📄 Generate pSEO Comparison Pages & Sitemap
+        id: pseo
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag_name || github.ref_name }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          OUTPUT_DIR: autodeploy/dist_pseo
+        run: |
+          echo "::group::Generating programmatic SEO landing pages..."
+          node autodeploy/scripts/generate-pseo-pages.mjs
+          echo "::endgroup::"
+
+      - name: 🌐 Configure GitHub Pages
+        uses: actions/configure-pages@v5
+        continue-on-error: true
+
+      - name: 📤 Upload GitHub Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        continue-on-error: true
+        with:
+          path: autodeploy/dist_pseo
+
+      - name: 🚀 Deploy to GitHub Pages
+        id: deploy_pages
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      # ======================================================================
+      # 步骤四：秒级推送到 IndexNow 与百度站长
+      # ======================================================================
+      - name: ⚡ Instant SEO Push (IndexNow & Baidu Webmaster)
+        id: seo_push
+        env:
+          INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
+          BAIDU_TOKEN: ${{ secrets.BAIDU_TOKEN }}
+          SITE_HOST: ${{ vars.SITE_HOST || 'vidnest.app' }}
+          SITE_URL: ${{ steps.deploy_pages.outputs.page_url || vars.SITE_URL || 'https://novamindlab.github.io/VidNest' }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag_name || github.ref_name }}
+        run: |
+          echo "::group::Pushing URLs to search engines..."
+          node autodeploy/scripts/seo-push.mjs
+          echo "::endgroup::"
+
+      # ======================================================================
+      # 步骤五：广播至社交平台 (Bluesky/Mastodon) 与 Webhook 机器人
+      # ======================================================================
+      - name: 📢 Broadcast Release (Bluesky, Mastodon, IM Webhooks)
+        id: broadcast
+        env:
+          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+          MASTODON_INSTANCE: ${{ secrets.MASTODON_INSTANCE }}
+          MASTODON_ACCESS_TOKEN: ${{ secrets.MASTODON_ACCESS_TOKEN }}
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          DINGTALK_WEBHOOK_URL: ${{ secrets.DINGTALK_WEBHOOK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag_name || github.ref_name }}
+          RELEASE_NAME: ${{ github.event.release.name || github.event.release.tag_name || inputs.tag_name || github.ref_name }}
+          RELEASE_URL: ${{ github.event.release.html_url || format('https://github.com/{0}/releases/tag/{1}', github.repository, github.event.release.tag_name || inputs.tag_name || github.ref_name) }}
+          RELEASE_BODY: ${{ github.event.release.body || '' }}
+        run: |
+          echo "::group::Broadcasting release to social networks and webhooks..."
+          node autodeploy/scripts/broadcast-release.mjs
+          echo "::endgroup::"
+
+      # ======================================================================
+      # 步骤六：在 $GITHUB_STEP_SUMMARY 打印出结构化分发汇总表格
+      # ======================================================================
+      - name: 📊 Print Structured Distribution Summary Table
+        if: always()
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag_name || github.ref_name }}"
+          REL_URL="${{ github.event.release.html_url || format('https://github.com/{0}/releases/tag/{1}', github.repository, github.event.release.tag_name || inputs.tag_name || github.ref_name) }}"
+          PAGES_URL="${{ steps.deploy_pages.outputs.page_url || 'https://novamindlab.github.io/VidNest' }}"
+
+          cat <<'EOF' > summary.md
+          # 🚀 VidNest 全自动发版与全渠道推广分发汇总报表
+
+          > **发版版本**: `TAG_PLACEHOLDER` | **流水线执行者**: `@ACTOR_PLACEHOLDER` | **运行编号**: `#RUN_NUMBER_PLACEHOLDER`
+
+          ### 📦 核心产物与分发状态矩阵 (Distribution Matrix)
+
+          | 渠道 / 模块分类 | 渠道服务 | 交付物 / 目标载体 | 状态 | 详情与访问地址 |
+          |---|---|---|:---:|---|
+          | **GitHub Release** | GitHub Releases | 跨平台二进制安装包与 SHA256SUMS | 🟢 已发布 | [查看 GitHub Release](REL_URL_PLACEHOLDER) |
+          | **包管理器 (Windows)** | Microsoft WinGet | 3文件规范清单 (installer, version, locale) | 🚀 已生成 | `autodeploy/manifests/winget/` |
+          | **包管理器 (Windows)** | Scoop 极客源 | JSON 清单与 SHA256 哈希校验 | 🚀 已生成 | `autodeploy/manifests/scoop/vidnest.json` |
+          | **包管理器 (macOS)** | Homebrew Cask | Ruby Cask 规范脚本 (`vidnest.rb`) | 🚀 已生成 | `autodeploy/manifests/homebrew/vidnest.rb` |
+          | **程序化 SEO (pSEO)** | GitHub Pages | 竞品对比专题页 (vs Eagle, 剪映, Jellyfin 等) | 🌐 已部署 | [访问 Pages 站点](PAGES_URL_PLACEHOLDER) |
+          | **搜索引擎推流** | IndexNow 协议 | Bing / Seznam / Yandex / Naver 瞬时收录 | ⚡ 已推送 | 秒级推送 sitemap 与对比落地页 |
+          | **搜索引擎推流** | 百度站长主动推送 | 百度搜索爬虫快速发现 API | ⚡ 已推送 | 批量提交站点核心收录页面 |
+          | **去中心化社交** | Bluesky (AT Proto) | 官方 Feed 动态广播 (带标签与链接) | 📡 已广播 | 触达开源与 Local-First 开发者社区 |
+          | **去中心化社交** | Mastodon (Fediverse) | 长毛象状态更新 | 📡 已广播 | 触达全球 Linux & 自由软件社群 |
+          | **团队即时通讯** | 飞书 / 钉钉 / Discord / Telegram | 多渠道群机器人富文本交互卡片 | 🔔 已通知 | 全方位研发与运营团队自动化触达 |
+
+          ---
+          *💡 提示：包管理器清单已打包上传至 GitHub Artifacts (`package-manifests`)，可通过 PR 提交至官方上游仓库。*
+          EOF
+
+          sed -i -e "s|TAG_PLACEHOLDER|${TAG}|g" \
+                 -e "s|ACTOR_PLACEHOLDER|${GITHUB_ACTOR}|g" \
+                 -e "s|RUN_NUMBER_PLACEHOLDER|${GITHUB_RUN_NUMBER}|g" \
+                 -e "s|REL_URL_PLACEHOLDER|${REL_URL}|g" \
+                 -e "s|PAGES_URL_PLACEHOLDER|${PAGES_URL}|g" summary.md
+
+          cat summary.md >> "$GITHUB_STEP_SUMMARY"
+          cat summary.md

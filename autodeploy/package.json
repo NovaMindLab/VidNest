@@ -1,0 +1,29 @@
+{
+  "name": "vidnest-autodeploy",
+  "version": "1.0.0",
+  "description": "VidNest Universal Automated Release, Packaging & Omnichannel Promotion System",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "manifests": "node scripts/generate-package-manifests.mjs",
+    "seo": "node scripts/seo-push.mjs",
+    "broadcast": "node scripts/broadcast-release.mjs",
+    "pseo": "node scripts/generate-pseo-pages.mjs",
+    "test:all": "DRY_RUN=true node scripts/generate-package-manifests.mjs && DRY_RUN=true node scripts/seo-push.mjs && DRY_RUN=true node scripts/broadcast-release.mjs && DRY_RUN=true node scripts/generate-pseo-pages.mjs"
+  },
+  "keywords": [
+    "vidnest",
+    "autodeploy",
+    "release",
+    "tauri",
+    "winget",
+    "scoop",
+    "homebrew",
+    "indexnow",
+    "seo",
+    "pseo",
+    "bluesky"
+  ],
+  "author": "NovaMindLab",
+  "license": "MIT"
+}

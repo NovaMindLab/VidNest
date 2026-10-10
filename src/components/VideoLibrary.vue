@@ -2,7 +2,8 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
+import { revealItemInDir } from '@tauri-apps/plugin-opener';
+import VideoPlayerModal from './VideoPlayerModal.vue';
 import type { Video, VideoFilter, VideoListResponse, ScanSummary, ScanProgress } from '../types';
 
 const videos = ref<Video[]>([]);
@@ -22,6 +23,9 @@ const scanProgress = ref<ScanProgress | null>(null);
 const scanError = ref<string>('');
 const showScanner = ref<boolean>(false);
 
+const isPlayerVisible = ref<boolean>(false);
+const activePlayerVideo = ref<Video | null>(null);
+
 let unlistenScanProgress: UnlistenFn | null = null;
 let unlistenVideoEnriched: UnlistenFn | null = null;
 let resizeObserver: ResizeObserver | null = null;
@@ -38,12 +42,9 @@ const viewMode = ref<'grid' | 'list'>('grid');
 
 const copiedPath = ref<boolean>(false);
 
-async function openVideo(filePath: string) {
-  try {
-    await openPath(filePath);
-  } catch (err) {
-    console.error('Failed to open video:', err);
-  }
+function openVideo(video: Video) {
+  activePlayerVideo.value = video;
+  isPlayerVisible.value = true;
 }
 
 async function revealVideo(filePath: string) {
@@ -778,10 +779,10 @@ onUnmounted(() => {
                 v-for="video in item.row.videos"
                 :key="video.id"
                 class="video-grid-card"
-                @dblclick="openVideo(video.file_path)"
+                @dblclick="openVideo(video)"
               >
                 <!-- 16:9 Thumbnail -->
-                <div class="grid-thumb-box" @click="openVideo(video.file_path)" title="点击播放视频">
+                <div class="grid-thumb-box" @click="openVideo(video)" title="点击播放视频">
                   <img
                     v-if="video.thumbnail_data"
                     :src="video.thumbnail_data"
@@ -810,7 +811,7 @@ onUnmounted(() => {
 
                 <!-- Card Info -->
                 <div class="grid-card-info">
-                  <span class="grid-card-title" :title="video.file_name" @click="openVideo(video.file_path)">
+                  <span class="grid-card-title" :title="video.file_name" @click="openVideo(video)">
                     {{ video.file_name }}
                   </span>
                   <div class="grid-card-sub">
@@ -820,7 +821,7 @@ onUnmounted(() => {
 
                   <!-- Quick Actions Row -->
                   <div class="card-quick-actions">
-                    <button class="card-act-btn" title="播放" @click.stop="openVideo(video.file_path)">
+                    <button class="card-act-btn" title="播放" @click.stop="openVideo(video)">
                       ▶ 播放
                     </button>
                     <button class="card-act-btn" title="在文件夹中定位" @click.stop="revealVideo(video.file_path)">
@@ -841,9 +842,9 @@ onUnmounted(() => {
             <div
               v-else-if="item.row.type === 'list-row'"
               class="list-item-row"
-              @dblclick="openVideo(item.row.video.file_path)"
+              @dblclick="openVideo(item.row.video)"
             >
-              <div class="li-thumb" @click="openVideo(item.row.video.file_path)" title="点击播放">
+              <div class="li-thumb" @click="openVideo(item.row.video)" title="点击播放">
                 <img
                   v-if="item.row.video.thumbnail_data"
                   :src="item.row.video.thumbnail_data"
@@ -853,7 +854,7 @@ onUnmounted(() => {
                 <div v-else class="li-thumb-placeholder">▶</div>
               </div>
               <div class="li-title-col">
-                <span class="li-name" :title="item.row.video.file_name" @click="openVideo(item.row.video.file_path)">
+                <span class="li-name" :title="item.row.video.file_name" @click="openVideo(item.row.video)">
                   {{ item.row.video.file_name }}
                 </span>
                 <span class="li-path font-mono" :title="item.row.video.file_path">
@@ -865,7 +866,7 @@ onUnmounted(() => {
               <div class="li-codec font-mono">{{ item.row.video.codec || '-' }}</div>
               <div class="li-size font-mono">{{ formatFileSize(item.row.video.file_size) }}</div>
               <div class="li-actions">
-                <button class="li-btn" title="播放" @click.stop="openVideo(item.row.video.file_path)">▶</button>
+                <button class="li-btn" title="播放" @click.stop="openVideo(item.row.video)">▶</button>
                 <button class="li-btn" title="定位文件" @click.stop="revealVideo(item.row.video.file_path)">📁</button>
                 <button class="li-btn" title="复制路径" @click.stop="copyToClipboard(item.row.video.file_path)">📋</button>
                 <button class="li-btn btn-act-del" title="从媒体库移除" @click.stop="removeVideo(item.row.video, false)">✕</button>
@@ -886,6 +887,13 @@ onUnmounted(() => {
         </div>
       </section>
     </div>
+
+    <!-- Video Player Modal Component -->
+    <VideoPlayerModal
+      :video="activePlayerVideo"
+      :visible="isPlayerVisible"
+      @close="isPlayerVisible = false"
+    />
   </div>
 </template>
 

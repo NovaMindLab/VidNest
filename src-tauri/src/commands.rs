@@ -247,3 +247,25 @@ pub async fn resume_download_task(
 pub async fn cancel_download_task(task_id: String) -> Result<bool, String> {
     cancel_download(task_id).await
 }
+
+#[tauri::command]
+pub async fn check_app_update(mock: Option<bool>) -> Result<crate::models::AppUpdateInfo, String> {
+    let mock_mode = mock.unwrap_or(true);
+    crate::updater::check_app_update_internal(mock_mode).await
+}
+
+#[tauri::command]
+pub async fn download_and_install_update(
+    app: AppHandle,
+    download_url: String,
+    total_bytes: u64,
+    sha256: Option<String>,
+) -> Result<crate::models::UpdateInstallResult, String> {
+    crate::updater::download_and_install_update_internal(app, download_url, total_bytes, sha256).await
+}
+
+#[tauri::command]
+pub fn relaunch_app(app: AppHandle) {
+    app.restart();
+}
+

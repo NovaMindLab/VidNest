@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>VidNest - 扫码智能分流与下载</title>
+  <meta name="description" content="VidNest 本地视频智能管理中心 - 移动端扫码智能唤起与全平台下载">
+  <meta name="theme-color" content="#080c14">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  <style>
+    :root {
+      --bg-app: #080c14;
+      --bg-card: rgba(17, 26, 45, 0.85);
+      --bg-card-hover: rgba(23, 34, 56, 0.95);
+      --bg-input: #172238;
+      --border-subtle: #1f2c45;
+      --border-glow: rgba(59, 130, 246, 0.4);
+      --text-primary: #f8fafc;
+      --text-secondary: #cbd5e1;
+      --text-muted: #8896ab;
+      --accent-blue: #3b82f6;
+      --accent-indigo: #6366f1;
+      --accent-cyan: #06b6d4;
+      --accent-green: #10b981;
+      --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+      --accent-glow: 0 0 24px rgba(59, 130, 246, 0.45);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background-color: var(--bg-app);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: env(safe-area-inset-top, 20px) 1.25rem env(safe-area-inset-bottom, 24px);
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* Ambient Tech Cyber Background */
+    .bg-ambient-light {
+      position: fixed;
+      top: -120px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 420px;
+      height: 420px;
+      background: radial-gradient(circle, rgba(59, 130, 246, 0.18) 0%, rgba(99, 102, 241, 0.08) 50%, transparent 75%);
+      filter: blur(50px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .bg-grid {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image: linear-gradient(to right, rgba(31, 44, 69, 0.15) 1px, transparent 1px),
+                        linear-gradient(to bottom, rgba(31, 44, 69, 0.15) 1px, transparent 1px);
+      background-size: 32px 32px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Main Container */
+    .app-container {
+      width: 100%;
+      max-width: 440px;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.25rem;
+      margin: auto 0;
+    }
+
+    /* Brand Header */
+    .brand-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      margin-top: 1rem;
+    }
+
+    .brand-logo-wrap {
+      position: relative;
+      width: 76px;
+      height: 76px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 0.85rem;
+    }
+
+    .brand-logo {
+      width: 68px;
+      height: 68px;
+      border-radius: 18px;
+      background: var(--accent-gradient);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      box-shadow: var(--accent-glow);
+      position: relative;
+      z-index: 2;
+    }
+
+    .brand-logo svg {
+      width: 34px;
+      height: 34px;
+    }
+
+    .pulse-ring {
+      position: absolute;
+      width: 76px;
+      height: 76px;
+      border-radius: 22px;
+      border: 2px solid var(--accent-blue);
+      animation: pulse-ring-anim 2.4s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+      opacity: 0;
+      z-index: 1;
+    }
+
+    @keyframes pulse-ring-anim {
+      0% { transform: scale(0.85); opacity: 0.8; }
+      50% { opacity: 0.3; }
+      100% { transform: scale(1.35); opacity: 0; }
+    }
+
+    .brand-title {
+      font-size: 1.6rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      background: linear-gradient(180deg, #ffffff 0%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-subtitle {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+      font-weight: 500;
+    }
+
+    /* Wakeup Status Card */
+    .wakeup-card {
+      width: 100%;
+      background: var(--bg-card);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border-subtle);
+      border-radius: 18px;
+      padding: 1.4rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+      transition: all 0.3s ease;
+    }
+
+    .status-loader {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-size: 0.9rem;
+      color: var(--accent-cyan);
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(6, 182, 212, 0.25);
+      border-top-color: var(--accent-cyan);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .status-desc {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    /* Fallback Panel (Appears when watchdog fires) */
+    .fallback-panel {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 1.1rem;
+      animation: fade-slide-up 0.4s ease-out forwards;
+    }
+
+    @keyframes fade-slide-up {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Feature Badges Grid */
+    .features-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.6rem;
+      width: 100%;
+    }
+
+    .feature-pill {
+      background: rgba(23, 34, 56, 0.7);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 0.65rem 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+    }
+
+    .feature-pill svg {
+      width: 16px;
+      height: 16px;
+      color: var(--accent-blue);
+      flex-shrink: 0;
+    }
+
+    /* Action Buttons */
+    .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      width: 100%;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 0.9rem 1.25rem;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      border: none;
+    }
+
+    .btn-primary {
+      background: var(--accent-gradient);
+      color: #ffffff;
+      box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4);
+    }
+
+    .btn-primary:active {
+      transform: scale(0.98);
+      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.6);
+    }
+
+    .btn-secondary {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+    }
+
+    .btn-secondary:active {
+      background: var(--bg-card-hover);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      padding: 0.5rem;
+    }
+
+    .btn-ghost:active {
+      color: var(--text-primary);
+    }
+
+    /* Environment Pills */
+    .env-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.72rem;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--accent-green);
+      font-weight: 500;
+      margin-top: 0.2rem;
+    }
+
+    /* Footer Info */
+    .app-footer {
+      text-align: center;
+      margin-top: auto;
+      padding-top: 1rem;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .app-footer a {
+      color: var(--accent-blue);
+      text-decoration: none;
+    }
+
+    /* ========================================================= */
+    /* WECHAT / QQ ANTI-BLOCK OVERLAY (微信/QQ防拦截引导遮罩) */
+    /* ========================================================= */
+    .wechat-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(4, 7, 13, 0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      z-index: 9999;
+      flex-direction: column;
+      align-items: flex-end;
+      padding: 1rem 1.5rem;
+    }
+
+    .wechat-overlay.active {
+      display: flex;
+    }
+
+    .wechat-pointer-box {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      width: 100%;
+      max-width: 320px;
+      margin-top: 0.5rem;
+    }
+
+    .wechat-arrow-svg {
+      width: 72px;
+      height: 72px;
+      color: #38bdf8;
+      filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.8));
+      animation: float-pointer 1.4s ease-in-out infinite alternate;
+      margin-right: 0.5rem;
+    }
+
+    @keyframes float-pointer {
+      0% { transform: translate(4px, 4px) rotate(-5deg); }
+      100% { transform: translate(-4px, -6px) rotate(5deg); }
+    }
+
+    .wechat-tip-card {
+      background: rgba(17, 26, 45, 0.95);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      border-radius: 16px;
+      padding: 1.25rem 1.4rem;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+      text-align: left;
+      width: 100%;
+      margin-top: 0.5rem;
+    }
+
+    .wechat-tip-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .wechat-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+      font-size: 0.88rem;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+
+    .wechat-step-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+
+    .step-badge {
+      width: 20px;
+      height: 20px;
+      background: var(--accent-blue);
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 700;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .highlight-yellow {
+      color: #facc15;
+      font-weight: 600;
+    }
+
+    .wechat-dismiss-btn {
+      margin-top: 1.5rem;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      border-radius: 8px;
+      padding: 0.6rem 1rem;
+      font-size: 0.8rem;
+      align-self: center;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Ambient background glow & grid -->
+  <div class="bg-ambient-light"></div>
+  <div class="bg-grid"></div>
+
+  <!-- WeChat / QQ Anti-blocking Overlay -->
+  <div id="wechatOverlay" class="wechat-overlay">
+    <div class="wechat-pointer-box">
+      <!-- Curved pointing arrow SVG -->
+      <svg class="wechat-arrow-svg" viewBox="0 0 100 100" fill="none">
+        <path d="M20 80 Q 55 75, 75 30" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+        <polyline points="50,22 78,28 72,56" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+
+      <div class="wechat-tip-card">
+        <div class="wechat-tip-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <span id="wechatTitle">微信环境安全拦截提示</span>
+        </div>
+
+        <div class="wechat-steps">
+          <div class="wechat-step-item">
+            <span class="step-badge">1</span>
+            <span>点击右上角 <strong class="highlight-yellow">「···」</strong> 菜单按钮</span>
+          </div>
+          <div class="wechat-step-item">
+            <span class="step-badge">2</span>
+            <span id="wechatActionStep">在弹出的菜单中，选择 <strong class="highlight-yellow">「在默认浏览器中打开」</strong></span>
+          </div>
+          <div class="wechat-step-item">
+            <span class="step-badge">3</span>
+            <span>即可自动深度唤起 VidNest 客户端或高速下载安装包</span>
+          </div>
+        </div>
+      </div>
+
+      <button type="button" class="wechat-dismiss-btn" onclick="dismissOverlay()">已在浏览器打开，关闭遮罩</button>
+    </div>
+  </div>
+
+  <!-- Main Mobile Content -->
+  <div class="app-container">
+    <!-- Brand Header -->
+    <header class="brand-header">
+      <div class="brand-logo-wrap">
+        <div class="pulse-ring"></div>
+        <div class="brand-logo">
+          <!-- VidNest Polygon Play Icon -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polygon points="6 3 20 12 6 21 6 3"></polygon>
+          </svg>
+        </div>
+      </div>
+      <h1 class="brand-title">VidNest</h1>
+      <p class="brand-subtitle">极速本地视频智能管理中心</p>
+      <div class="env-tag">
+        <span>⚡</span>
+        <span id="osLabel">检测设备中...</span>
+      </div>
+    </header>
+
+    <!-- Watchdog State Card: Waking App -->
+    <div id="wakingCard" class="wakeup-card">
+      <div class="status-loader">
+        <div class="spinner"></div>
+        <span id="wakingStatusText">正在唤醒本地 VidNest 客户端...</span>
+      </div>
+      <p class="status-desc" id="wakingDesc">
+        正在尝试通过安全协议唤起已安装应用，请稍候。若未安装客户端，系统将自动切入极速下载面板。
+      </p>
+    </div>
+
+    <!-- Watchdog Fallback Panel (Hidden initially, displayed upon timeout) -->
+    <div id="fallbackPanel" class="fallback-panel" style="display: none;">
+      <!-- Feature Pills -->
+      <div class="features-grid">
+        <div class="feature-pill">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          <span>本地优先 · 0 隐私泄露</span>
+        </div>
+        <div class="feature-pill">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+          </svg>
+          <span>yt-dlp 4K 极速解析</span>
+        </div>
+        <div class="feature-pill">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <span>SQLite FTS5 毫秒搜</span>
+        </div>
+        <div class="feature-pill">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+          </svg>
+          <span>全平台原生架构</span>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="btn-group">
+        <!-- Manual Wakeup Re-trigger -->
+        <button type="button" class="btn btn-secondary" onclick="tryWakeupApp(true)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          <span>再次尝试调起客户端</span>
+        </button>
+
+        <!-- Android APK Direct Download -->
+        <a id="btnPrimaryDownload" href="https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest-Universal.apk" class="btn btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span id="primaryDownloadLabel">下载 Android Universal 安装包</span>
+        </a>
+
+        <!-- Desktop Download Center Entry -->
+        <a href="download.html" class="btn btn-secondary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="2" width="20" height="20" rx="3"></rect>
+            <line x1="7" y1="2" x2="7" y2="22"></line>
+            <line x1="17" y1="2" x2="17" y2="22"></line>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+          </svg>
+          <span>前往 macOS / Windows / Linux 官网下载</span>
+        </a>
+
+        <!-- Web Experience Link -->
+        <a href="https://vidnest.app" class="btn btn-ghost">
+          <span>免安装 Web 纯网页版在线体验 &rarr;</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <p>&copy; 2026 VidNest Core Team · NovaMindLab</p>
+      <p style="margin-top: 0.2rem;">Powered by Tauri 2 &amp; Rust Engine</p>
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      const ua = navigator.userAgent.toLowerCase();
+      const isWeChat = /micromessenger/i.test(ua);
+      const isQQ = /qq\//i.test(ua) || /mqqbrowser/i.test(ua);
+      const isIOS = /iphone|ipad|ipod/i.test(ua);
+      const isAndroid = /android/i.test(ua);
+      const isMac = /macintosh|mac os x/i.test(ua) && !isIOS;
+      const isWindows = /windows|win32/i.test(ua);
+
+      // Environment Detection Display
+      const osLabel = document.getElementById('osLabel');
+      if (isIOS) osLabel.textContent = 'iOS 设备';
+      else if (isAndroid) osLabel.textContent = 'Android 移动端';
+      else if (isMac) osLabel.textContent = 'macOS 桌面端';
+      else if (isWindows) osLabel.textContent = 'Windows 桌面端';
+      else osLabel.textContent = '移动端智能识别';
+
+      // Parse Query String to pass deep link parameters
+      const urlParams = window.location.search || '';
+      const schemeUrl = 'vidnest://open' + urlParams;
+      const androidIntentUrl = 'intent://open' + urlParams + '#Intent;scheme=vidnest;package=com.vidnest.localvideointelligence;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end';
+
+      // Elements
+      const wechatOverlay = document.getElementById('wechatOverlay');
+      const wechatTitle = document.getElementById('wechatTitle');
+      const wechatActionStep = document.getElementById('wechatActionStep');
+      const wakingCard = document.getElementById('wakingCard');
+      const fallbackPanel = document.getElementById('fallbackPanel');
+      const wakingStatusText = document.getElementById('wakingStatusText');
+      const btnPrimaryDownload = document.getElementById('btnPrimaryDownload');
+      const primaryDownloadLabel = document.getElementById('primaryDownloadLabel');
+
+      // Adjust primary download link depending on OS
+      if (isIOS) {
+        primaryDownloadLabel.textContent = '前往桌面端下载 (VidNest 暂无 iOS 原生包)';
+        btnPrimaryDownload.href = 'download.html';
+      } else if (isAndroid) {
+        primaryDownloadLabel.textContent = '立即下载 Android APK (v0.1.0 Universal)';
+        btnPrimaryDownload.href = 'https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest-Universal.apk';
+      } else {
+        primaryDownloadLabel.textContent = '前往桌面端全平台下载中心';
+        btnPrimaryDownload.href = 'download.html';
+      }
+
+      // 1. WeChat / QQ Environment Interception
+      if (isWeChat || isQQ) {
+        wechatOverlay.classList.add('active');
+        if (isQQ) {
+          wechatTitle.textContent = 'QQ 内置浏览器拦截提示';
+        }
+        if (isIOS) {
+          wechatActionStep.innerHTML = '在弹出的菜单中，选择 <strong class="highlight-yellow">「在 Safari 中打开」</strong>';
+        } else {
+          wechatActionStep.innerHTML = '在弹出的菜单中，选择 <strong class="highlight-yellow">「在系统浏览器中打开」</strong>';
+        }
+      }
+
+      window.dismissOverlay = function () {
+        wechatOverlay.classList.remove('active');
+      };
+
+      // 2. Watchdog Timer & App Wakeup Mechanism (1.8s timeout)
+      let appAwakened = false;
+      let watchdogTimer = null;
+      const WATCHDOG_DELAY = 1800; // 1.8s watchdog
+
+      function onVisibilityChange() {
+        if (document.hidden || document.webkitHidden) {
+          appAwakened = true;
+          if (watchdogTimer) clearTimeout(watchdogTimer);
+        }
+      }
+      document.addEventListener('visibilitychange', onVisibilityChange);
+      document.addEventListener('webkitvisibilitychange', onVisibilityChange);
+      window.addEventListener('pagehide', function () {
+        appAwakened = true;
+        if (watchdogTimer) clearTimeout(watchdogTimer);
+      });
+      window.addEventListener('blur', function () {
+        appAwakened = true;
+        if (watchdogTimer) clearTimeout(watchdogTimer);
+      });
+
+      window.tryWakeupApp = function (manualClick) {
+        if (manualClick) {
+          wakingCard.style.display = 'flex';
+          wakingStatusText.textContent = '正在重新唤起客户端...';
+        }
+
+        const startTimestamp = Date.now();
+
+        // Android native intent preferred on modern Chrome/Android, fallback to custom scheme
+        if (isAndroid) {
+          try {
+            window.location.href = androidIntentUrl;
+          } catch (e) {
+            window.location.href = schemeUrl;
+          }
+        } else {
+          // iOS or desktop custom scheme
+          window.location.href = schemeUrl;
+        }
+
+        // Start Watchdog Timer
+        watchdogTimer = setTimeout(function () {
+          const elapsed = Date.now() - startTimestamp;
+          // If browser stayed in foreground for full timeout period, app was not opened
+          if (!appAwakened && elapsed >= WATCHDOG_DELAY - 100) {
+            triggerGracefulFallback();
+          }
+        }, WATCHDOG_DELAY);
+      };
+
+      function triggerGracefulFallback() {
+        wakingCard.style.display = 'none';
+        fallbackPanel.style.display = 'flex';
+      }
+
+      // If not in WeChat/QQ, automatically attempt wakeup
+      if (!isWeChat && !isQQ) {
+        tryWakeupApp(false);
+      } else {
+        // If in WeChat, don't auto-redirect, show fallback behind overlay
+        setTimeout(function () {
+          triggerGracefulFallback();
+        }, 1200);
+      }
+    })();
+  </script>
+</body>
+</html>

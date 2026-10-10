@@ -4,10 +4,13 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "bash scripts/run-node.sh vite",
-    "build": "bash scripts/run-node.sh vue-tsc --noEmit && bash scripts/run-node.sh vite build",
-    "preview": "bash scripts/run-node.sh vite preview",
-    "tauri": "bash scripts/run-node.sh tauri"
+    "dev": "node scripts/run-node.cjs vite",
+    "build": "node scripts/run-node.cjs vue-tsc --noEmit && node scripts/run-node.cjs vite build",
+    "preview": "node scripts/run-node.cjs vite preview",
+    "tauri": "node scripts/run-node.cjs tauri",
+    "seo:generate": "node autodeploy/scripts/generate-pseo-pages.mjs",
+    "seo:push": "node autodeploy/scripts/seo-push.mjs",
+    "broadcast:release": "node autodeploy/scripts/broadcast-release.mjs"
   },
   "dependencies": {
     "vue": "^3.5.13",

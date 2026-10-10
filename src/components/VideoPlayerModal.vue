@@ -1,0 +1,1032 @@
+<script setup lang="ts">
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { convertFileSrc } from '@tauri-apps/api/core';
+import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
+import type { Video } from '../types';
+
+const props = defineProps<{
+  video: Video | null;
+  visible: boolean;
+}>();
+
+const emit = defineEmits<{
+  (e: 'close'): void;
+}>();
+
+const videoRef = ref<HTMLVideoElement | null>(null);
+const containerRef = ref<HTMLDivElement | null>(null);
+
+const isPlaying = ref(false);
+const currentTime = ref(0);
+const duration = ref(0);
+const volume = ref(1);
+const isMuted = ref(false);
+const playbackRate = ref(1);
+const isLooping = ref(false);
+const isFullscreen = ref(false);
+const isLoading = ref(true);
+const errorMessage = ref('');
+const showBigPlayIcon = ref(false);
+const copiedPath = ref(false);
+
+const speedOptions = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+const showSpeedMenu = ref(false);
+
+const videoSrc = computed(() => {
+  if (!props.video?.file_path) return '';
+  return convertFileSrc(props.video.file_path);
+});
+
+function formatTime(seconds: number): string {
+  if (isNaN(seconds) || seconds < 0) return '00:00';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const mm = m.toString().padStart(2, '0');
+  const ss = s.toString().padStart(2, '0');
+  if (h > 0) {
+    return `${h}:${mm}:${ss}`;
+  }
+  return `${mm}:${ss}`;
+}
+
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
+}
+
+function togglePlay() {
+  const el = videoRef.value;
+  if (!el) return;
+  if (el.paused) {
+    el.play().catch((err) => {
+      console.warn('Autoplay prevented or playback error:', err);
+    });
+    isPlaying.value = true;
+  } else {
+    el.pause();
+    isPlaying.value = false;
+  }
+  triggerPlayIndicator();
+}
+
+function triggerPlayIndicator() {
+  showBigPlayIcon.value = true;
+  setTimeout(() => {
+    showBigPlayIcon.value = false;
+  }, 500);
+}
+
+function handleTimeUpdate() {
+  if (!videoRef.value) return;
+  currentTime.value = videoRef.value.currentTime;
+}
+
+function handleLoadedMetadata() {
+  if (!videoRef.value) return;
+  duration.value = videoRef.value.duration || 0;
+  isLoading.value = false;
+  errorMessage.value = '';
+}
+
+function handleWaiting() {
+  isLoading.value = true;
+}
+
+function handleCanPlay() {
+  isLoading.value = false;
+}
+
+function handleError(e: Event) {
+  isLoading.value = false;
+  const mediaError = (e.target as HTMLVideoElement)?.error;
+  errorMessage.value = mediaError ? `解码错误: ${mediaError.message} (代码: ${mediaError.code})` : '无法解析此视频格式';
+}
+
+function onSeekInput(e: Event) {
+  const target = e.target as HTMLInputElement;
+  const val = parseFloat(target.value);
+  if (videoRef.value) {
+    videoRef.value.currentTime = val;
+    currentTime.value = val;
+  }
+}
+
+function seekRelative(delta: number) {
+  if (!videoRef.value) return;
+  const newTime = Math.max(0, Math.min(duration.value, videoRef.value.currentTime + delta));
+  videoRef.value.currentTime = newTime;
+  currentTime.value = newTime;
+}
+
+function toggleMute() {
+  if (!videoRef.value) return;
+  isMuted.value = !isMuted.value;
+  videoRef.value.muted = isMuted.value;
+}
+
+function onVolumeInput(e: Event) {
+  const target = e.target as HTMLInputElement;
+  const val = parseFloat(target.value);
+  volume.value = val;
+  if (videoRef.value) {
+    videoRef.value.volume = val;
+    isMuted.value = val === 0;
+    videoRef.value.muted = isMuted.value;
+  }
+}
+
+function adjustVolume(delta: number) {
+  const newVol = Math.max(0, Math.min(1, volume.value + delta));
+  volume.value = newVol;
+  if (videoRef.value) {
+    videoRef.value.volume = newVol;
+    isMuted.value = newVol === 0;
+    videoRef.value.muted = isMuted.value;
+  }
+}
+
+function setPlaybackRate(rate: number) {
+  playbackRate.value = rate;
+  if (videoRef.value) {
+    videoRef.value.playbackRate = rate;
+  }
+  showSpeedMenu.value = false;
+}
+
+function toggleLoop() {
+  isLooping.value = !isLooping.value;
+  if (videoRef.value) {
+    videoRef.value.loop = isLooping.value;
+  }
+}
+
+async function togglePiP() {
+  if (!videoRef.value) return;
+  try {
+    if (document.pictureInPictureElement) {
+      await document.exitPictureInPicture();
+    } else if (document.pictureInPictureEnabled) {
+      await videoRef.value.requestPictureInPicture();
+    }
+  } catch (err) {
+    console.warn('PiP error:', err);
+  }
+}
+
+async function toggleFullscreen() {
+  if (!containerRef.value) return;
+  try {
+    if (!document.fullscreenElement) {
+      await containerRef.value.requestFullscreen();
+      isFullscreen.value = true;
+    } else {
+      await document.exitFullscreen();
+      isFullscreen.value = false;
+    }
+  } catch (err) {
+    console.warn('Fullscreen toggle failed:', err);
+  }
+}
+
+function handleKeydown(e: KeyboardEvent) {
+  if (!props.visible) return;
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+  switch (e.code) {
+    case 'Space':
+      e.preventDefault();
+      togglePlay();
+      break;
+    case 'ArrowLeft':
+      e.preventDefault();
+      seekRelative(-5);
+      break;
+    case 'ArrowRight':
+      e.preventDefault();
+      seekRelative(5);
+      break;
+    case 'ArrowUp':
+      e.preventDefault();
+      adjustVolume(0.1);
+      break;
+    case 'ArrowDown':
+      e.preventDefault();
+      adjustVolume(-0.1);
+      break;
+    case 'KeyM':
+      e.preventDefault();
+      toggleMute();
+      break;
+    case 'KeyF':
+      e.preventDefault();
+      toggleFullscreen();
+      break;
+    case 'Escape':
+      e.preventDefault();
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        close();
+      }
+      break;
+  }
+}
+
+function close() {
+  if (videoRef.value) {
+    videoRef.value.pause();
+  }
+  emit('close');
+}
+
+async function openExternal() {
+  if (!props.video?.file_path) return;
+  try {
+    await openPath(props.video.file_path);
+  } catch (err) {
+    console.error('Failed to open externally:', err);
+  }
+}
+
+async function revealFile() {
+  if (!props.video?.file_path) return;
+  try {
+    await revealItemInDir(props.video.file_path);
+  } catch (err) {
+    console.error('Failed to reveal file:', err);
+  }
+}
+
+async function copyPath() {
+  if (!props.video?.file_path) return;
+  try {
+    await navigator.clipboard.writeText(props.video.file_path);
+    copiedPath.value = true;
+    setTimeout(() => {
+      copiedPath.value = false;
+    }, 1800);
+  } catch (err) {
+    console.error('Failed to copy path:', err);
+  }
+}
+
+watch(
+  () => props.visible,
+  (val) => {
+    if (val) {
+      isLoading.value = true;
+      errorMessage.value = '';
+      currentTime.value = 0;
+      setTimeout(() => {
+        if (videoRef.value) {
+          videoRef.value.play().catch(() => {});
+          isPlaying.value = true;
+        }
+      }, 150);
+    } else {
+      if (videoRef.value) {
+        videoRef.value.pause();
+        isPlaying.value = false;
+      }
+    }
+  }
+);
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown);
+  document.addEventListener('fullscreenchange', () => {
+    isFullscreen.value = !!document.fullscreenElement;
+  });
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown);
+});
+</script>
+
+<template>
+  <div v-if="visible" class="player-modal-backdrop" @click.self="close">
+    <div ref="containerRef" class="player-modal-container">
+      <!-- Modal Header -->
+      <div class="player-modal-header">
+        <div class="modal-title-box">
+          <span class="player-icon">🎬</span>
+          <h3 class="player-title" :title="video?.file_name || '播放视频'">
+            {{ video?.file_name || '未知视频' }}
+          </h3>
+          <span v-if="video?.width && video?.height" class="badge-pill badge-res">
+            {{ video.width >= 3840 ? '4K UHD' : video.width >= 1920 ? '1080P' : `${video.width}x${video.height}` }}
+          </span>
+          <span v-if="video?.codec" class="badge-pill badge-codec">
+            {{ video.codec.toUpperCase() }}
+          </span>
+        </div>
+
+        <div class="modal-header-actions">
+          <button class="head-act-btn" title="在系统播放器中打开" @click="openExternal">
+            <svg class="h-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            <span>系统播放器</span>
+          </button>
+          <button class="head-act-btn" title="画中画模式 (PiP)" @click="togglePiP">
+            <svg class="h-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
+            </svg>
+          </button>
+          <button class="btn-close-modal" title="关闭播放器 (Esc)" @click="close">
+            ✕
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Video Screen -->
+      <div class="player-viewport" @click="togglePlay">
+        <video
+          ref="videoRef"
+          class="video-element"
+          :src="videoSrc"
+          playsinline
+          @timeupdate="handleTimeUpdate"
+          @loadedmetadata="handleLoadedMetadata"
+          @waiting="handleWaiting"
+          @canplay="handleCanPlay"
+          @error="handleError"
+          @ended="isPlaying = false"
+        ></video>
+
+        <!-- Loading spinner -->
+        <div v-if="isLoading" class="player-center-overlay">
+          <div class="spinner-player"></div>
+          <span class="loading-label">正在缓冲视频数据...</span>
+        </div>
+
+        <!-- Big Play Indicator Anim -->
+        <transition name="pop">
+          <div v-if="showBigPlayIcon" class="big-indicator-badge">
+            <span v-if="isPlaying">▶</span>
+            <span v-else>❚❚</span>
+          </div>
+        </transition>
+
+        <!-- Error Banner -->
+        <div v-if="errorMessage" class="player-error-overlay">
+          <div class="error-box">
+            <span class="err-icon">⚠️</span>
+            <p class="err-text">{{ errorMessage }}</p>
+            <button class="btn-err-fallback" @click.stop="openExternal">
+              尝试使用系统播放器打开
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controls Bar -->
+      <div class="player-controls-bar" @click.stop>
+        <!-- Scrubber Progress Bar -->
+        <div class="scrubber-wrapper">
+          <input
+            type="range"
+            class="scrubber-slider"
+            min="0"
+            :max="duration || 100"
+            step="0.1"
+            :value="currentTime"
+            @input="onSeekInput"
+          />
+          <div
+            class="scrubber-progress-fill"
+            :style="{ width: duration ? `${(currentTime / duration) * 100}%` : '0%' }"
+          ></div>
+        </div>
+
+        <!-- Buttons Row -->
+        <div class="controls-row">
+          <!-- Left Controls -->
+          <div class="ctrl-group ctrl-left">
+            <button class="ctrl-btn play-pause-btn" :title="isPlaying ? '暂停 (Space)' : '播放 (Space)'" @click="togglePlay">
+              <span v-if="isPlaying">❚❚</span>
+              <span v-else>▶</span>
+            </button>
+
+            <button class="ctrl-btn" title="后退 5 秒 (←)" @click="seekRelative(-5)">
+              ↺ 5s
+            </button>
+            <button class="ctrl-btn" title="快进 5 秒 (→)" @click="seekRelative(5)">
+              5s ↻
+            </button>
+
+            <div class="time-readout">
+              <span class="t-cur">{{ formatTime(currentTime) }}</span>
+              <span class="t-sep">/</span>
+              <span class="t-dur">{{ formatTime(duration) }}</span>
+            </div>
+          </div>
+
+          <!-- Right Controls -->
+          <div class="ctrl-group ctrl-right">
+            <!-- Speed Menu -->
+            <div class="speed-menu-wrap">
+              <button class="ctrl-btn speed-btn" title="播放速度" @click="showSpeedMenu = !showSpeedMenu">
+                {{ playbackRate }}x
+              </button>
+              <div v-if="showSpeedMenu" class="speed-dropdown">
+                <button
+                  v-for="s in speedOptions"
+                  :key="s"
+                  class="speed-opt"
+                  :class="{ active: playbackRate === s }"
+                  @click="setPlaybackRate(s)"
+                >
+                  {{ s }}x
+                </button>
+              </div>
+            </div>
+
+            <!-- Volume Slider -->
+            <div class="volume-box">
+              <button class="ctrl-btn vol-btn" :title="isMuted ? '取消静音 (M)' : '静音 (M)'" @click="toggleMute">
+                <span v-if="isMuted || volume === 0">🔇</span>
+                <span v-else-if="volume < 0.5">🔉</span>
+                <span v-else>🔊</span>
+              </button>
+              <input
+                type="range"
+                class="vol-slider"
+                min="0"
+                max="1"
+                step="0.05"
+                :value="isMuted ? 0 : volume"
+                @input="onVolumeInput"
+              />
+            </div>
+
+            <!-- Loop -->
+            <button
+              class="ctrl-btn"
+              :class="{ 'ctrl-active': isLooping }"
+              title="循环播放"
+              @click="toggleLoop"
+            >
+              🔁
+            </button>
+
+            <!-- Fullscreen -->
+            <button class="ctrl-btn" :title="isFullscreen ? '退出全屏 (F)' : '全屏 (F)'" @click="toggleFullscreen">
+              <span v-if="isFullscreen">⛶</span>
+              <span v-else>⛶</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Specs & Details Footer -->
+      <div class="player-footer-strip">
+        <div class="meta-tag-list">
+          <div class="meta-unit">
+            <span class="m-k">格式:</span>
+            <span class="m-v">{{ video?.codec?.toUpperCase() || 'MP4' }}</span>
+          </div>
+          <div class="meta-unit">
+            <span class="m-k">分辨率:</span>
+            <span class="m-v">{{ video?.width && video?.height ? `${video.width} × ${video.height}` : '未知' }}</span>
+          </div>
+          <div class="meta-unit">
+            <span class="m-k">大小:</span>
+            <span class="m-v">{{ formatBytes(video?.file_size || 0) }}</span>
+          </div>
+          <div class="meta-unit">
+            <span class="m-k">时长:</span>
+            <span class="m-v">{{ formatTime(video?.duration || duration) }}</span>
+          </div>
+        </div>
+
+        <div class="footer-actions">
+          <button class="btn-foot-act" title="复制完整文件路径" @click="copyPath">
+            {{ copiedPath ? '✓ 已复制路径' : '📋 复制路径' }}
+          </button>
+          <button class="btn-foot-act" title="在系统资源管理器中定位" @click="revealFile">
+            📁 定位文件
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.player-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(14px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.player-modal-container {
+  width: 100%;
+  max-width: 1100px;
+  height: 85vh;
+  max-height: 800px;
+  background: #090e18;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Modal Header */
+.player-modal-header {
+  height: 52px;
+  min-height: 52px;
+  padding: 0 1.25rem;
+  background: #0d1526;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.modal-title-box {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.player-icon {
+  font-size: 1.15rem;
+}
+
+.player-title {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge-pill {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.badge-res {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+}
+
+.badge-codec {
+  background: rgba(16, 185, 129, 0.18);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.head-act-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  border-radius: 6px;
+  padding: 4px 9px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: all 0.15s ease;
+}
+
+.head-act-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.h-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.btn-close-modal {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 1.15rem;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.btn-close-modal:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+/* Viewport */
+.player-viewport {
+  flex: 1;
+  position: relative;
+  background: #03060a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.video-element {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.player-center-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  gap: 0.75rem;
+  pointer-events: none;
+}
+
+.spinner-player {
+  width: 44px;
+  height: 44px;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.loading-label {
+  font-size: 0.82rem;
+  color: #94a3b8;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.big-indicator-badge {
+  position: absolute;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: rgba(59, 130, 246, 0.85);
+  color: #ffffff;
+  font-size: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.pop-enter-active, .pop-leave-active {
+  transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.25s ease;
+}
+.pop-enter-from, .pop-leave-to {
+  transform: scale(0.6);
+  opacity: 0;
+}
+
+.player-error-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.error-box {
+  background: #1e1520;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 10px;
+  padding: 1.5rem 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 420px;
+}
+
+.err-icon {
+  font-size: 2.2rem;
+  margin-bottom: 0.5rem;
+}
+
+.err-text {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+  color: #fca5a5;
+  line-height: 1.45;
+}
+
+.btn-err-fallback {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 7px 14px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+/* Controls Bar */
+.player-controls-bar {
+  background: #0b1120;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.6rem 1.15rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.scrubber-wrapper {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.scrubber-slider {
+  position: absolute;
+  width: 100%;
+  height: 6px;
+  margin: 0;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.scrubber-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #3b82f6;
+  border: 2px solid #ffffff;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  transition: transform 0.1s ease;
+}
+
+.scrubber-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.scrubber-progress-fill {
+  position: absolute;
+  height: 6px;
+  background: #3b82f6;
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ctrl-group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ctrl-btn {
+  background: transparent;
+  border: none;
+  color: #cbd5e1;
+  padding: 5px 8px;
+  border-radius: 5px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.ctrl-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.play-pause-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #3b82f6;
+  color: #ffffff;
+  font-size: 0.95rem;
+}
+
+.play-pause-btn:hover {
+  background: #2563eb;
+}
+
+.time-readout {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  margin-left: 0.5rem;
+}
+
+.t-cur {
+  color: #f8fafc;
+  font-weight: 600;
+}
+
+.t-sep {
+  color: #64748b;
+}
+
+.t-dur {
+  color: #94a3b8;
+}
+
+.speed-menu-wrap {
+  position: relative;
+}
+
+.speed-btn {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 3px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.speed-dropdown {
+  position: absolute;
+  bottom: 120%;
+  right: 0;
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 10;
+}
+
+.speed-opt {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  padding: 4px 12px;
+  text-align: left;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.speed-opt:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.speed-opt.active {
+  color: #3b82f6;
+  font-weight: 700;
+}
+
+.volume-box {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.vol-slider {
+  width: 65px;
+  height: 4px;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.vol-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.ctrl-active {
+  color: #3b82f6 !important;
+}
+
+/* Footer Strip */
+.player-footer-strip {
+  height: 40px;
+  min-height: 40px;
+  padding: 0 1.25rem;
+  background: #090e18;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.75rem;
+}
+
+.meta-tag-list {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+}
+
+.meta-unit {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.m-k {
+  color: #64748b;
+}
+
+.m-v {
+  color: #cbd5e1;
+  font-weight: 500;
+}
+
+.footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-foot-act {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-foot-act:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #3b82f6;
+  border-color: rgba(59, 130, 246, 0.4);
+}
+</style>

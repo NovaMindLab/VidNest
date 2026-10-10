@@ -136,3 +136,33 @@ export interface DownloadTask {
   created_at: number;
   updated_at: number;
 }
+
+export interface AppUpdateInfo {
+  has_update: boolean;
+  current_version: string;
+  latest_version: string;
+  release_name: string;
+  release_notes: string;
+  download_url: string;
+  is_differential: boolean;
+  download_size_bytes: number;
+  original_size_bytes: number;
+  sha256: string | null;
+  published_at: string | null;
+}
+
+export interface UpdateProgressPayload {
+  status: 'downloading' | 'verifying' | 'ready' | 'error';
+  downloaded_bytes: number;
+  total_bytes: number;
+  percentage: number;
+  speed_mbps: number;
+  message: string;
+}
+
+export interface UpdateInstallResult {
+  success: boolean;
+  message: string;
+  requires_restart: boolean;
+}
+

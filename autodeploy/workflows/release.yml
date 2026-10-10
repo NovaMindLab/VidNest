@@ -1,0 +1,229 @@
+name: 🚀 Multi-Platform Release Build
+
+'on':
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: 🔨 Build (${{ matrix.platform }} - ${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            platform: windows
+            arch: x64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            platform: macos
+            arch: arm64
+          - os: macos-13
+            target: x86_64-apple-darwin
+            platform: macos
+            arch: x64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            platform: linux
+            arch: x64
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🦀 Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: 🟢 Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: ⚡ Rust Cargo Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: 🐧 Install Linux system dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libasound2-dev \
+            libssl-dev \
+            build-essential \
+            curl \
+            wget \
+            file
+
+      - name: 📦 Install npm dependencies
+        run: npm install
+
+      - name: 🔨 Build Tauri application
+        run: npm run tauri build -- --target ${{ matrix.target }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: 🔏 Apply Windows Authenticode Self-Signing (Optional)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          if (Test-Path "autodeploy/scripts/self-sign-windows.ps1") {
+            Write-Host "Checking for built Windows installers to sign..."
+            $installers = Get-ChildItem -Path "src-tauri/target" -Recurse -Filter "*.exe" | Where-Object { $_.FullName -like "*bundle*nsis*" }
+            foreach ($installer in $installers) {
+              Write-Host "Signing $($installer.FullName)..."
+              & .\autodeploy\scripts\self-sign-windows.ps1 -Action FullPipeline -TargetBinary $installer.FullName
+            }
+          }
+
+      - name: 📦 Collect and package platform artifacts
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          echo "Scanning for built bundle artifacts for ${{ matrix.platform }} (${{ matrix.target }})..."
+          
+          SEARCH_DIRS=(
+            "src-tauri/target/${{ matrix.target }}/release/bundle"
+            "src-tauri/target/release/bundle"
+          )
+          
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            # 1. Windows: NSIS .exe 安装包
+            for dir in "${SEARCH_DIRS[@]}"; do
+              if [ -d "$dir/nsis" ]; then
+                cp -v "$dir"/nsis/*.exe artifacts/ 2>/dev/null || true
+              fi
+            done
+          elif [ "${{ matrix.platform }}" = "macos" ]; then
+            # 2. macOS: .dmg 与 .zip
+            for dir in "${SEARCH_DIRS[@]}"; do
+              # Collect .dmg
+              if [ -d "$dir/dmg" ]; then
+                for dmg_file in "$dir"/dmg/*.dmg; do
+                  [ -f "$dmg_file" ] || continue
+                  dmg_name=$(basename "$dmg_file")
+                  # Ensure filename specifies architecture
+                  if [[ "$dmg_name" != *"${{ matrix.arch }}"* ]] && [[ "$dmg_name" != *"arm64"* ]] && [[ "$dmg_name" != *"x64"* ]] && [[ "$dmg_name" != *"aarch64"* ]] && [[ "$dmg_name" != *"x86_64"* ]]; then
+                    cp -v "$dmg_file" "artifacts/${dmg_name%.dmg}_${{ matrix.arch }}.dmg"
+                  else
+                    cp -v "$dmg_file" artifacts/
+                  fi
+                done
+              fi
+              # Collect .app and compress to .zip
+              if [ -d "$dir/macos" ]; then
+                for app_path in "$dir"/macos/*.app; do
+                  [ -d "$app_path" ] || continue
+                  app_name=$(basename "$app_path")
+                  app_dir=$(dirname "$app_path")
+                  base_name="${app_name%.app}"
+                  zip_target="${GITHUB_WORKSPACE}/artifacts/${base_name}_${{ matrix.arch }}.zip"
+                  echo "Creating macOS zip archive: $zip_target from $app_path"
+                  (cd "$app_dir" && zip -r -y "$zip_target" "$app_name")
+                done
+              fi
+            done
+          elif [ "${{ matrix.platform }}" = "linux" ]; then
+            # 3. Linux: .AppImage 与 .deb
+            for dir in "${SEARCH_DIRS[@]}"; do
+              if [ -d "$dir/appimage" ]; then
+                cp -v "$dir"/appimage/*.AppImage artifacts/ 2>/dev/null || true
+              fi
+              if [ -d "$dir/deb" ]; then
+                cp -v "$dir"/deb/*.deb artifacts/ 2>/dev/null || true
+              fi
+            done
+          fi
+
+          echo "Listing all collected artifacts:"
+          ls -lh artifacts/
+
+      - name: 🔏 Sigstore Rekor Build Provenance Attestation
+        uses: actions/attest-build-provenance@v2
+        continue-on-error: true
+        with:
+          subject-path: 'artifacts/*'
+
+      - name: 📤 Upload Platform Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-${{ matrix.platform }}-${{ matrix.arch }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: 📦 Aggregate & Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📥 Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: 'artifacts-*'
+          path: dist-release
+          merge-multiple: true
+
+      - name: 📋 Generate SHA256 Checksums
+        run: |
+          cd dist-release
+          echo "Generating SHA256SUMS.txt for all assets..."
+          sha256sum * > SHA256SUMS.txt 2>/dev/null || true
+          cat SHA256SUMS.txt
+
+      - name: 📝 Extract Tag Changelog / Release Notes
+        id: tag_changelog
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          echo "Processing changelog for tag: ${TAG}"
+          
+          # Extract git tag annotation message
+          TAG_MSG=$(git tag -l --format='%(contents)' "${TAG}" 2>/dev/null | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' || true)
+          
+          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64 | tr -dc 'a-zA-Z0-9')
+          echo "changelog<<$EOF" >> "$GITHUB_OUTPUT"
+          if [ -n "$TAG_MSG" ]; then
+            echo "$TAG_MSG" >> "$GITHUB_OUTPUT"
+          fi
+          echo "$EOF" >> "$GITHUB_OUTPUT"
+
+      - name: 🚀 Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist-release/*
+          name: Release ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          body: ${{ steps.tag_changelog.outputs.changelog }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false

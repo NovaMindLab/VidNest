@@ -31,3 +31,16 @@ npm run tauri dev
 ```bash
 npm run tauri build
 ```
+
+## 📚 项目官方 Wiki 知识库
+
+全套工程架构、核心算法、媒体流播放与自动化发布运维文档请参阅 [wiki/](wiki/README.md)：
+
+- 📐 [系统架构与设计理念](wiki/architecture_and_design.md)
+- ⚡ [跨平台全盘极速扫描与毫秒级索引](wiki/full_disk_scanner_and_indexing.md)
+- 🎬 [媒体资产库与独立弹窗视频播放器](wiki/video_library_and_player.md)
+- 🔄 [应用内差分增量升级指南](wiki/in_app_differential_update.md)
+- 📥 [yt-dlp 在线视频解析与混流引擎](wiki/ytdlp_and_downloader.md)
+- 🚀 [autodeploy 全自动发版与全渠道推广实践指南](wiki/autodeploy_guide.md)
+- 🌐 [全自动发版与推广实战蓝皮书](wiki/universal_release_and_promotion_blueprint.md)
+
