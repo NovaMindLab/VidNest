@@ -255,7 +255,7 @@ pub async fn cancel_download_task(task_id: String) -> Result<bool, String> {
 
 #[tauri::command]
 pub async fn check_app_update(mock: Option<bool>) -> Result<crate::models::AppUpdateInfo, String> {
-    let mock_mode = mock.unwrap_or(true);
+    let mock_mode = mock.unwrap_or(false);
     crate::updater::check_app_update_internal(mock_mode).await
 }
 
@@ -270,8 +270,102 @@ pub async fn download_and_install_update(
 }
 
 #[tauri::command]
+pub fn install_update_and_relaunch(app: AppHandle) -> Result<(), String> {
+    let installer_path = {
+        let lock = crate::updater::DOWNLOADED_INSTALLER_PATH.lock().map_err(|e| e.to_string())?;
+        lock.clone()
+    };
+
+    let path = match installer_path {
+        Some(p) if p.exists() => p,
+        _ => {
+            let temp_dir = std::env::temp_dir();
+            #[cfg(target_os = "windows")]
+            let candidate = temp_dir.join("vidnest-update-setup.exe");
+            #[cfg(target_os = "macos")]
+            let candidate = temp_dir.join("vidnest-update-setup.dmg");
+            #[cfg(target_os = "linux")]
+            let candidate = temp_dir.join("vidnest-update-setup.AppImage");
+
+            if candidate.exists() {
+                candidate
+            } else {
+                app.restart();
+            }
+        }
+    };
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new(&path)
+            .spawn()
+            .map_err(|e| format!("启动安装程序失败: {}", e))?;
+        std::process::exit(0);
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("打开安装包失败: {}", e))?;
+        std::process::exit(0);
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(metadata) = std::fs::metadata(&path) {
+                let mut perms = metadata.permissions();
+                perms.set_mode(0o755);
+                let _ = std::fs::set_permissions(&path, perms);
+            }
+        }
+        std::process::Command::new(&path)
+            .spawn()
+            .map_err(|e| format!("启动新版本失败: {}", e))?;
+        std::process::exit(0);
+    }
+
+    #[allow(unreachable_code)]
+    Ok(())
+}
+
+#[tauri::command]
+pub fn open_update_installer_folder() -> Result<(), String> {
+    let installer_path = {
+        let lock = crate::updater::DOWNLOADED_INSTALLER_PATH.lock().map_err(|e| e.to_string())?;
+        lock.clone()
+    };
+    let target = installer_path.unwrap_or_else(|| std::env::temp_dir());
+    let folder = if target.is_file() {
+        target.parent().unwrap_or(&target).to_path_buf()
+    } else {
+        target
+    };
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("explorer").arg(&folder).spawn();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg(&folder).spawn();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(&folder).spawn();
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub fn relaunch_app(app: AppHandle) {
-    app.restart();
+    if let Err(_) = install_update_and_relaunch(app.clone()) {
+        app.restart();
+    }
 }
 
 #[derive(Default)]

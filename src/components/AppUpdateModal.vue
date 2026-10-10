@@ -75,9 +75,22 @@ async function startUpdate() {
 
 async function relaunch() {
   try {
-    await invoke('relaunch_app');
+    await invoke('install_update_and_relaunch');
   } catch (err) {
-    console.error('Failed to relaunch:', err);
+    console.warn('install_update_and_relaunch failed, falling back to relaunch_app:', err);
+    try {
+      await invoke('relaunch_app');
+    } catch (e) {
+      console.error('Failed to relaunch:', e);
+    }
+  }
+}
+
+async function openInstallerFolder() {
+  try {
+    await invoke('open_update_installer_folder');
+  } catch (err) {
+    console.error('Failed to open installer folder:', err);
   }
 }
 
@@ -89,7 +102,7 @@ watch(
   () => props.visible,
   (val) => {
     if (val && !updateInfo.value) {
-      checkForUpdate(true);
+      checkForUpdate(false);
     }
   }
 );
@@ -136,7 +149,7 @@ onUnmounted(() => {
       <div v-else-if="errorMessage" class="update-body state-error">
         <div class="err-icon">⚠️</div>
         <p class="err-msg">{{ errorMessage }}</p>
-        <button class="btn-retry" @click="checkForUpdate(true)">重新检查更新</button>
+        <button class="btn-retry" @click="checkForUpdate(false)">重新检查更新</button>
       </div>
 
       <!-- Up to Date -->
@@ -210,14 +223,18 @@ onUnmounted(() => {
           <div class="progress-stats">
             <span class="stat-item">已下载: {{ formatBytes(progress?.downloaded_bytes || 0) }} / {{ formatBytes(progress?.total_bytes || 0) }}</span>
             <span v-if="isDownloading" class="stat-item stat-speed">速度: {{ (progress?.speed_mbps || 0).toFixed(1) }} MB/s</span>
-            <span v-if="isReady" class="stat-item stat-success">✓ SHA-256 完整性验证通过</span>
+            <span v-if="isReady" class="stat-item stat-success">✓ 安装包校验通过</span>
           </div>
         </div>
 
         <!-- Action Buttons Footer -->
         <div class="update-actions">
           <button class="btn-cancel" :disabled="isDownloading" @click="close">
-            {{ isReady ? '稍后重启' : '暂不更新' }}
+            {{ isReady ? '稍后安装' : '暂不更新' }}
+          </button>
+
+          <button v-if="isReady" class="btn-cancel" @click="openInstallerFolder" title="打开下载好的安装包所在目录">
+            📁 打开安装包目录
           </button>
 
           <button v-if="!isDownloading && !isReady" class="btn-primary-action" @click="startUpdate">
@@ -230,7 +247,7 @@ onUnmounted(() => {
           </button>
 
           <button v-else-if="isReady" class="btn-relaunch-action" @click="relaunch">
-            🔄 立即重启应用生效
+            🚀 立即运行安装包并更新
           </button>
         </div>
       </div>

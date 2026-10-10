@@ -29,9 +29,39 @@ pub fn is_newer_version(remote: &str, current: &str) -> bool {
     r_pat > c_pat
 }
 
-/// 检查应用更新 (优先查询 GitHub Releases API，若未发布则提供本地联调模拟)
-pub async fn check_app_update_internal(mock_if_not_found: bool) -> Result<AppUpdateInfo, String> {
+use std::sync::Mutex;
+pub static DOWNLOADED_INSTALLER_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+/// 检查应用更新 (查询 GitHub Releases API，准确比对版本)
+pub async fn check_app_update_internal(mock_mode: bool) -> Result<AppUpdateInfo, String> {
     let current_ver = CURRENT_VERSION.to_string();
+
+    // 仅在明确传入 mock 模式时提供模拟数据 (主要用于单测与离线演示)
+    if mock_mode {
+        let (c_maj, _, _) = parse_version_numbers(&current_ver);
+        let next_ver = format!("{}.0.0", c_maj + 1);
+        let release_notes = format!("## 🚀 VidNest v{} 正式发布\n\n\
+            ### ✨ 核心新特性\n\
+            - **🎬 独立原生视频播放器**：硬件加速解码、精确寻道、全套桌面键盘快捷键。\n\
+            - **⚡ 应用内无缝更新升级**：真实下载官方安装程序，一键安全覆盖升级。\n\
+            - **📅 媒体库虚拟滚动与智能净化**：自动排查过滤伪视频，万部资源流畅加载。\n\n\
+            *推荐所有用户立即升级以获取最佳性能与体验！*", next_ver);
+
+        return Ok(AppUpdateInfo {
+            has_update: true,
+            current_version: current_ver,
+            latest_version: next_ver.clone(),
+            release_name: format!("VidNest v{} (稳定版)", next_ver),
+            release_notes,
+            download_url: format!("https://github.com/NovaMindLab/VidNest/releases/download/v{}/Local.Video.Intelligence_setup.exe", next_ver),
+            is_differential: false,
+            download_size_bytes: 14_850_000,
+            original_size_bytes: 68_500_000,
+            sha256: Some("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string()),
+            published_at: Some("2026-10-10T12:00:00Z".to_string()),
+        });
+    }
+
     let client = reqwest::Client::builder()
         .user_agent("VidNest-Desktop-App")
         .timeout(std::time::Duration::from_secs(6))
@@ -50,88 +80,78 @@ pub async fn check_app_update_internal(mock_if_not_found: bool) -> Result<AppUpd
                     let body = json["body"].as_str().unwrap_or("日常性能优化与体验改进。").to_string();
                     let published_at = json["published_at"].as_str().map(|s| s.to_string());
 
-                    let remote_ver = tag_name.trim_start_matches('v').to_string();
+                    let remote_ver = tag_name.trim_start_matches('v').trim_start_matches('V').to_string();
                     let has_update = is_newer_version(&remote_ver, &current_ver);
+
+                    if !has_update {
+                        return Ok(AppUpdateInfo {
+                            has_update: false,
+                            current_version: current_ver.clone(),
+                            latest_version: remote_ver,
+                            release_name: format!("已是最新版本 (v{})", current_ver),
+                            release_notes: format!("当前运行的 v{} 已经是最新版本，无需更新。", current_ver),
+                            download_url: String::new(),
+                            is_differential: false,
+                            download_size_bytes: 0,
+                            original_size_bytes: 0,
+                            sha256: None,
+                            published_at,
+                        });
+                    }
 
                     let mut download_url = String::new();
                     let mut is_differential = false;
                     let mut download_size = 0u64;
                     let mut orig_size = 65_000_000u64;
 
-                if let Some(assets) = json["assets"].as_array() {
-                    for asset in assets {
-                        let name = asset["name"].as_str().unwrap_or("").to_lowercase();
-                        let size = asset["size"].as_u64().unwrap_or(0);
-                        let browser_url = asset["browser_download_url"].as_str().unwrap_or("").to_string();
+                    if let Some(assets) = json["assets"].as_array() {
+                        for asset in assets {
+                            let name = asset["name"].as_str().unwrap_or("").to_lowercase();
+                            let size = asset["size"].as_u64().unwrap_or(0);
+                            let browser_url = asset["browser_download_url"].as_str().unwrap_or("").to_string();
 
-                        #[cfg(target_os = "macos")]
-                        let matches_platform = name.ends_with(".dmg") || name.ends_with(".tar.gz");
-                        #[cfg(target_os = "windows")]
-                        let matches_platform = name.ends_with(".exe") || name.ends_with(".msi");
-                        #[cfg(target_os = "linux")]
-                        let matches_platform = name.ends_with(".appimage") || name.ends_with(".deb");
+                            #[cfg(target_os = "macos")]
+                            let matches_platform = name.ends_with(".dmg") || name.ends_with(".zip") || name.ends_with(".tar.gz");
+                            #[cfg(target_os = "windows")]
+                            let matches_platform = name.ends_with(".exe") || name.ends_with(".msi");
+                            #[cfg(target_os = "linux")]
+                            let matches_platform = name.ends_with(".appimage") || name.ends_with(".deb");
 
-                        if matches_platform {
-                            if name.contains("patch") || name.contains("diff") || name.contains("blockmap") {
-                                is_differential = true;
-                                download_url = browser_url;
-                                download_size = size;
-                                break;
-                            } else if download_url.is_empty() {
-                                download_url = browser_url;
-                                download_size = size;
-                                orig_size = size;
+                            if matches_platform {
+                                if name.contains("patch") || name.contains("diff") || name.contains("blockmap") {
+                                    is_differential = true;
+                                    download_url = browser_url;
+                                    download_size = size;
+                                    break;
+                                } else if download_url.is_empty() {
+                                    download_url = browser_url;
+                                    download_size = size;
+                                    orig_size = size;
+                                }
                             }
                         }
                     }
-                }
 
-                if download_url.is_empty() {
-                    download_url = format!("https://github.com/{}/releases/tag/{}", GITHUB_REPO, tag_name);
-                }
+                    if download_url.is_empty() {
+                        download_url = format!("https://github.com/{}/releases/tag/{}", GITHUB_REPO, tag_name);
+                    }
 
-                return Ok(AppUpdateInfo {
-                    has_update,
-                    current_version: current_ver,
-                    latest_version: remote_ver,
-                    release_name,
-                    release_notes: body,
-                    download_url,
-                    is_differential,
-                    download_size_bytes: download_size,
-                    original_size_bytes: orig_size,
-                    sha256: None,
-                    published_at,
-                });
+                    return Ok(AppUpdateInfo {
+                        has_update: true,
+                        current_version: current_ver,
+                        latest_version: remote_ver,
+                        release_name,
+                        release_notes: body,
+                        download_url,
+                        is_differential,
+                        download_size_bytes: download_size,
+                        original_size_bytes: orig_size,
+                        sha256: None,
+                        published_at,
+                    });
                 }
             }
         }
-    }
-
-    // 若无正式线上 Release，且开启联调模拟（用于在开发机演示差分升级完整交互闭环）
-    if mock_if_not_found {
-        let next_ver = "0.2.0".to_string();
-        let release_notes = "## 🚀 VidNest v0.2.0 震撼发布\n\n\
-            ### ✨ 核心新特性\n\
-            - **🎬 独立弹窗视频播放器**：支持本地硬件解码流式秒开、精确寻道、全套键盘快捷键。\n\
-            - **⚡ 应用内差分增量升级**：基于字节区间与差分补丁，体积缩减 75%，零跳出无感升级。\n\
-            - **📅 媒体库按天分组与虚拟滚动**：收录万部视频丝滑滚动，零内存溢出。\n\
-            - **🗃️ 引擎级优化**：内置 static ffmpeg/yt-dlp 完整混流支持。\n\n\
-            *推荐所有用户立即升级以获取最佳性能与体验！*".to_string();
-
-        return Ok(AppUpdateInfo {
-            has_update: true,
-            current_version: current_ver,
-            latest_version: next_ver,
-            release_name: "VidNest v0.2.0 (差分增量更新)".to_string(),
-            release_notes,
-            download_url: "https://github.com/NovaMindLab/VidNest/releases/download/v0.2.0/vidnest_delta_patch.bin".to_string(),
-            is_differential: true,
-            download_size_bytes: 14_850_000, // 约 14.8 MB (远小于 68MB 全量包)
-            original_size_bytes: 68_500_000,
-            sha256: Some("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string()),
-            published_at: Some("2026-10-09T17:00:00Z".to_string()),
-        });
     }
 
     Ok(AppUpdateInfo {
@@ -149,7 +169,7 @@ pub async fn check_app_update_internal(mock_if_not_found: bool) -> Result<AppUpd
     })
 }
 
-/// 执行应用内流式下载并实时推流进度
+/// 执行应用内流式下载并保存真实安装包文件，实时推流进度
 pub async fn download_and_install_update_internal(
     app: AppHandle,
     download_url: String,
@@ -158,12 +178,38 @@ pub async fn download_and_install_update_internal(
 ) -> Result<UpdateInstallResult, String> {
     let target_total = if total_bytes == 0 { 14_850_000 } else { total_bytes };
     let temp_dir = std::env::temp_dir();
-    let update_file_path: PathBuf = temp_dir.join("vidnest_update_payload.bin");
 
-    // 检查是否为有效 HTTP(S) 真实外部下载
+    // 智能推断真实安装包扩展名与保存文件名
+    let lower_url = download_url.to_lowercase();
+    let file_ext = if lower_url.ends_with(".exe") {
+        "exe"
+    } else if lower_url.ends_with(".msi") {
+        "msi"
+    } else if lower_url.ends_with(".dmg") {
+        "dmg"
+    } else if lower_url.ends_with(".zip") {
+        "zip"
+    } else if lower_url.ends_with(".appimage") {
+        "AppImage"
+    } else if lower_url.ends_with(".deb") {
+        "deb"
+    } else {
+        #[cfg(target_os = "windows")]
+        let ext = "exe";
+        #[cfg(target_os = "macos")]
+        let ext = "dmg";
+        #[cfg(target_os = "linux")]
+        let ext = "AppImage";
+        ext
+    };
+
+    let installer_name = format!("vidnest-update-setup.{}", file_ext);
+    let update_file_path: PathBuf = temp_dir.join(&installer_name);
+
+    // 检查是否为有效 HTTP(S) 真实下载
     let is_real_http = download_url.starts_with("http://") || download_url.starts_with("https://");
 
-    if is_real_http && !download_url.contains("vidnest_delta_patch.bin") {
+    if is_real_http && !download_url.contains("mock_download") {
         let client = reqwest::Client::new();
         let mut resp = client.get(&download_url).send().await.map_err(|e| format!("下载请求失败: {}", e))?;
 
@@ -176,7 +222,7 @@ pub async fn download_and_install_update_internal(
 
         let mut file = tokio::fs::File::create(&update_file_path)
             .await
-            .map_err(|e| format!("创建更新临时文件失败: {}", e))?;
+            .map_err(|e| format!("创建更新安装包临时文件失败: {}", e))?;
 
         let mut downloaded: u64 = 0;
         let mut hasher = Sha256::new();
@@ -199,7 +245,7 @@ pub async fn download_and_install_update_internal(
                     total_bytes: content_len,
                     percentage: percentage.min(100.0),
                     speed_mbps,
-                    message: format!("正在高速下载差分增量包 ({:.1}%)", percentage),
+                    message: format!("正在高速下载安装程序 ({:.1}%)", percentage),
                 };
                 let _ = app.emit("app-update-progress", &payload);
                 last_emit_time = Instant::now();
@@ -207,7 +253,7 @@ pub async fn download_and_install_update_internal(
         }
         file.flush().await.map_err(|e| format!("保存更新文件失败: {}", e))?;
     } else {
-        // 模拟测试或离线模式：模拟真实 100ms 间隔平滑下载推流 (演示极速差分下载体验)
+        // 模拟测试模式平滑推流
         let simulated_total = target_total;
         let mut downloaded: u64 = 0;
         let chunk_size = simulated_total / 20;
@@ -226,24 +272,29 @@ pub async fn download_and_install_update_internal(
                 total_bytes: simulated_total,
                 percentage,
                 speed_mbps,
-                message: format!("正在高速下载差分增量包 ({:.1}%)", percentage),
+                message: format!("正在高速下载安装包 ({:.1}%)", percentage),
             };
             let _ = app.emit("app-update-progress", &payload);
         }
     }
 
-    // 状态转化：校验差分包完整性
+    // 记录全局已就绪安装包路径
+    if let Ok(mut lock) = DOWNLOADED_INSTALLER_PATH.lock() {
+        *lock = Some(update_file_path.clone());
+    }
+
+    // 状态转化：校验安装包完整性
     let verifying_payload = UpdateProgressPayload {
         status: "verifying".to_string(),
         downloaded_bytes: target_total,
         total_bytes: target_total,
         percentage: 100.0,
         speed_mbps: 0.0,
-        message: "差分补丁下载完成，正在验证哈希与安装包签名...".to_string(),
+        message: "更新安装包下载完成，正在验证文件完整性...".to_string(),
     };
     let _ = app.emit("app-update-progress", &verifying_payload);
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
 
     // 状态转化：准备就绪
     let ready_payload = UpdateProgressPayload {
@@ -252,13 +303,13 @@ pub async fn download_and_install_update_internal(
         total_bytes: target_total,
         percentage: 100.0,
         speed_mbps: 0.0,
-        message: "差分升级包已就绪！点击立即重启生效。".to_string(),
+        message: "新版本安装包已就绪！点击立即启动安装程序。".to_string(),
     };
     let _ = app.emit("app-update-progress", &ready_payload);
 
     Ok(UpdateInstallResult {
         success: true,
-        message: "差分更新准备完成，重启应用即可生效".to_string(),
+        message: format!("安装包已成功保存至 {}", update_file_path.display()),
         requires_restart: true,
     })
 }

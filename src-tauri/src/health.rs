@@ -224,7 +224,7 @@ mod tests {
     fn test_health_report_generation() {
         let report = run_health_check(None);
         assert_eq!(report.app_name, "Local Video Intelligence");
-        assert_eq!(report.app_version, "0.1.0");
+        assert_eq!(report.app_version, env!("CARGO_PKG_VERSION"));
         assert!(report.timestamp_ms > 0);
         assert_eq!(report.tools.len(), 3);
         assert!(report.storage.temp_writable);

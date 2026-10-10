@@ -11,10 +11,11 @@ pub mod ytdlp;
 use commands::{
     cancel_download, cancel_download_task, cancel_full_disk_scan, check_app_update, check_ytdlp_update,
     clear_completed_tasks, delete_video, download_and_install_update, echo, get_download_tasks,
-    get_player_init_video, get_video_detail, inspect_url, inspect_video_url, list_videos,
-    open_video_player_window, open_ytd_window, pause_download, pause_download_task, ping, relaunch_app, resume_download,
-    resume_download_task, scan_video_directory, set_player_always_on_top, start_download,
-    start_full_disk_scan, system_health_check, update_ytdlp, PlayerState,
+    get_player_init_video, get_video_detail, inspect_url, inspect_video_url, install_update_and_relaunch,
+    list_videos, open_update_installer_folder, open_video_player_window, open_ytd_window, pause_download,
+    pause_download_task, ping, relaunch_app, resume_download, resume_download_task, scan_video_directory,
+    set_player_always_on_top, start_download, start_full_disk_scan, system_health_check, update_ytdlp,
+    PlayerState,
 };
 use db::Database;
 use std::path::PathBuf;
@@ -82,6 +83,8 @@ pub fn run() {
             echo,
             check_app_update,
             download_and_install_update,
+            install_update_and_relaunch,
+            open_update_installer_folder,
             relaunch_app,
             open_video_player_window,
             get_player_init_video,
