@@ -63,6 +63,7 @@ async function startUpdate() {
     });
     if (res.success) {
       isReady.value = true;
+      triggerAutoRelaunch();
     } else {
       errorMessage.value = res.message;
     }
@@ -73,7 +74,33 @@ async function startUpdate() {
   }
 }
 
+const autoRelaunchCountdown = ref<number | null>(null);
+let autoRelaunchInterval: number | null = null;
+
+function triggerAutoRelaunch() {
+  if (autoRelaunchInterval) clearInterval(autoRelaunchInterval);
+  autoRelaunchCountdown.value = 2;
+  autoRelaunchInterval = window.setInterval(async () => {
+    if (autoRelaunchCountdown.value === null) return;
+    autoRelaunchCountdown.value -= 1;
+    if (autoRelaunchCountdown.value <= 0) {
+      if (autoRelaunchInterval) clearInterval(autoRelaunchInterval);
+      autoRelaunchInterval = null;
+      await relaunch();
+    }
+  }, 1000);
+}
+
+function cancelAutoRelaunch() {
+  if (autoRelaunchInterval) {
+    clearInterval(autoRelaunchInterval);
+    autoRelaunchInterval = null;
+  }
+  autoRelaunchCountdown.value = null;
+}
+
 async function relaunch() {
+  cancelAutoRelaunch();
   try {
     await invoke('install_update_and_relaunch');
   } catch (err) {
@@ -86,15 +113,8 @@ async function relaunch() {
   }
 }
 
-async function openInstallerFolder() {
-  try {
-    await invoke('open_update_installer_folder');
-  } catch (err) {
-    console.error('Failed to open installer folder:', err);
-  }
-}
-
 function close() {
+  cancelAutoRelaunch();
   emit('close');
 }
 
@@ -113,11 +133,13 @@ onMounted(async () => {
     if (event.payload.status === 'ready') {
       isReady.value = true;
       isDownloading.value = false;
+      triggerAutoRelaunch();
     }
   });
 });
 
 onUnmounted(() => {
+  cancelAutoRelaunch();
   if (unlistenProgress) {
     unlistenProgress();
   }
@@ -132,8 +154,8 @@ onUnmounted(() => {
         <div class="header-title-box">
           <span class="header-icon">🚀</span>
           <div>
-            <h3 class="update-title">应用内差分增量升级</h3>
-            <span class="update-subtitle">VidNest 现代化软件更新交付中心</span>
+            <h3 class="update-title">应用内极速升级</h3>
+            <span class="update-subtitle">全自动进度覆盖升级 · 无需手动选择与烦琐向导</span>
           </div>
         </div>
         <button class="btn-close" title="关闭 (Esc)" @click="close">✕</button>
@@ -142,7 +164,7 @@ onUnmounted(() => {
       <!-- Loading State -->
       <div v-if="isChecking" class="update-body state-loading">
         <div class="spinner-lg"></div>
-        <p class="loading-text">正在查询并计算增量差分补丁，请稍候...</p>
+        <p class="loading-text">正在查询最新版本与增量补丁，请稍候...</p>
       </div>
 
       <!-- Error State -->
@@ -223,31 +245,31 @@ onUnmounted(() => {
           <div class="progress-stats">
             <span class="stat-item">已下载: {{ formatBytes(progress?.downloaded_bytes || 0) }} / {{ formatBytes(progress?.total_bytes || 0) }}</span>
             <span v-if="isDownloading" class="stat-item stat-speed">速度: {{ (progress?.speed_mbps || 0).toFixed(1) }} MB/s</span>
-            <span v-if="isReady" class="stat-item stat-success">✓ 安装包校验通过</span>
+            <span v-if="isReady" class="stat-item stat-success">
+              ✓ 校验完成！即将直接自动覆盖安装并重启
+              <span v-if="autoRelaunchCountdown !== null">({{ autoRelaunchCountdown }}s)</span>...
+            </span>
           </div>
         </div>
 
         <!-- Action Buttons Footer -->
         <div class="update-actions">
           <button class="btn-cancel" :disabled="isDownloading" @click="close">
-            {{ isReady ? '稍后安装' : '暂不更新' }}
-          </button>
-
-          <button v-if="isReady" class="btn-cancel" @click="openInstallerFolder" title="打开下载好的安装包所在目录">
-            📁 打开安装包目录
+            {{ isReady ? '暂不重启' : '暂不更新' }}
           </button>
 
           <button v-if="!isDownloading && !isReady" class="btn-primary-action" @click="startUpdate">
-            ⚡ 立即在应用内升级 ({{ formatBytes(updateInfo.download_size_bytes) }})
+            ⚡ 一键直接升级 ({{ formatBytes(updateInfo.download_size_bytes) }})
           </button>
 
           <button v-else-if="isDownloading" class="btn-primary-action disabled" disabled>
             <span class="spinner-sm"></span>
-            正在下载中...
+            正在全速下载并准备自动安装...
           </button>
 
           <button v-else-if="isReady" class="btn-relaunch-action" @click="relaunch">
-            🚀 立即运行安装包并更新
+            🚀 立即重启生效
+            <span v-if="autoRelaunchCountdown !== null">({{ autoRelaunchCountdown }}s)</span>
           </button>
         </div>
       </div>

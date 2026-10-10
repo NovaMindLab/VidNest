@@ -366,35 +366,88 @@ pub fn install_update_and_relaunch(app: AppHandle) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new(&path)
-            .spawn()
-            .map_err(|e| format!("启动安装程序失败: {}", e))?;
+        let current_exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("Local Video Intelligence.exe"));
+        // 自动静默覆盖升级：
+        // 1. 等待1秒确保当前旧进程退出并释放 exe/dll 文件句柄
+        // 2. 运行安装包 /S 静默直接覆盖安装，跳过所有选择向导与路径选择
+        // 3. 安装完成后自动启动新版本
+        let batch_cmd = format!(
+            "timeout /t 1 /nobreak >nul & \"{}\" /S & start \"\" \"{}\"",
+            path.display(),
+            current_exe.display()
+        );
+
+        let _ = std::process::Command::new("cmd")
+            .args(["/C", &batch_cmd])
+            .spawn();
+
         std::process::exit(0);
     }
 
     #[cfg(target_os = "macos")]
     {
-        let _ = std::process::Command::new("open")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| format!("打开安装包失败: {}", e))?;
+        // macOS 自动直接覆盖安装：
+        // 若为 dmg 则静默挂载并直接覆盖替换 /Applications/ 下的应用，跳过手动拖拽，完成后直接拉起新版
+        let script = format!(
+            r#"
+            sleep 1
+            if echo "{}" | grep -q "\.dmg$"; then
+                MOUNT_DIR=$(mktemp -d -t vidnest_mount)
+                if hdiutil attach -nobrowse "{}" -mountpoint "$MOUNT_DIR" >/dev/null 2>&1; then
+                    APP_DIR=$(find "$MOUNT_DIR" -maxdepth 2 -name "*.app" | head -n 1)
+                    if [ -n "$APP_DIR" ]; then
+                        APP_NAME=$(basename "$APP_DIR")
+                        DEST="/Applications/$APP_NAME"
+                        rm -rf "$DEST"
+                        cp -R "$APP_DIR" "/Applications/"
+                        xattr -rd com.apple.quarantine "$DEST" 2>/dev/null || true
+                        hdiutil detach "$MOUNT_DIR" -force >/dev/null 2>&1 || true
+                        rm -rf "$MOUNT_DIR"
+                        open "$DEST"
+                        exit 0
+                    fi
+                    hdiutil detach "$MOUNT_DIR" -force >/dev/null 2>&1 || true
+                    rm -rf "$MOUNT_DIR"
+                fi
+            fi
+            open "{}"
+            "#,
+            path.display(),
+            path.display(),
+            path.display()
+        );
+
+        let _ = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&script)
+            .spawn();
+
         std::process::exit(0);
     }
 
     #[cfg(target_os = "linux")]
     {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            if let Ok(metadata) = std::fs::metadata(&path) {
-                let mut perms = metadata.permissions();
-                perms.set_mode(0o755);
-                let _ = std::fs::set_permissions(&path, perms);
-            }
-        }
-        std::process::Command::new(&path)
-            .spawn()
-            .map_err(|e| format!("启动新版本失败: {}", e))?;
+        let current_exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("LocalVideoIntelligence"));
+        let script = format!(
+            r#"
+            sleep 1
+            chmod +x "{}"
+            cp -f "{}" "{}"
+            chmod +x "{}"
+            "{}" &
+            "#,
+            path.display(),
+            path.display(),
+            current_exe.display(),
+            current_exe.display(),
+            current_exe.display()
+        );
+
+        let _ = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&script)
+            .spawn();
+
         std::process::exit(0);
     }
 
