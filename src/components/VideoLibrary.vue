@@ -40,7 +40,22 @@ const selectedCodec = ref<string>('');
 const selectedSort = ref<string>('created_desc');
 const viewMode = ref<'grid' | 'list'>('grid');
 
-const copiedPath = ref<boolean>(false);
+const toastMessage = ref<string>('');
+let toastTimer: number | null = null;
+
+function showToast(msg: string) {
+  toastMessage.value = msg;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => {
+    toastMessage.value = '';
+  }, 2500);
+}
+
+const showDeleteConfirmModal = ref<boolean>(false);
+const videoToDelete = ref<Video | null>(null);
+const alsoDeleteDiskFile = ref<boolean>(false);
+const isDeletingVideo = ref<boolean>(false);
+
 let searchTimer: number | null = null;
 
 function onSearchInput() {
@@ -63,6 +78,7 @@ function clearSearch() {
 
 async function openVideo(video: Video) {
   try {
+    showToast(`▶ 正在启动播放: ${video.file_name}`);
     await invoke('open_video_player_window', { video });
   } catch (err) {
     console.warn('Failed to open native player window, falling back to modal:', err);
@@ -73,9 +89,16 @@ async function openVideo(video: Video) {
 
 async function revealVideo(filePath: string) {
   try {
-    await revealItemInDir(filePath);
+    await invoke('reveal_in_explorer', { path: filePath });
+    showToast('📂 已在系统文件管理器中定位');
   } catch (err) {
-    console.error('Failed to reveal video:', err);
+    try {
+      await revealItemInDir(filePath);
+      showToast('📂 已在系统文件管理器中定位');
+    } catch (e) {
+      console.error('Failed to reveal video:', e);
+      showToast(`定位失败: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 }
 
@@ -408,28 +431,39 @@ async function triggerScan() {
   }
 }
 
-async function removeVideo(v: Video, deleteFile = false) {
-  const confirmMsg = deleteFile
-    ? `确定要从本地磁盘永久删除视频文件 "${v.file_name}" 吗？此操作无法撤销！`
-    : `确定要将 "${v.file_name}" 从媒体库中移除吗？（磁盘文件将被保留）`;
-  if (!window.confirm(confirmMsg)) return;
+function promptRemoveVideo(video: Video) {
+  videoToDelete.value = video;
+  alsoDeleteDiskFile.value = false;
+  showDeleteConfirmModal.value = true;
+}
 
+async function confirmRemoveVideo() {
+  if (!videoToDelete.value) return;
+  const v = videoToDelete.value;
+  const deleteFile = alsoDeleteDiskFile.value;
+  isDeletingVideo.value = true;
   try {
-    await invoke('delete_video', { id: v.id, deleteFile });
+    await invoke('delete_video', {
+      id: v.id,
+      delete_file: deleteFile,
+      deleteFile: deleteFile,
+    });
     videos.value = videos.value.filter((item) => item.id !== v.id);
     totalVideos.value = Math.max(0, totalVideos.value - 1);
+    showToast(deleteFile ? `已永久删除文件: ${v.file_name}` : `已从媒体库移除: ${v.file_name}`);
+    showDeleteConfirmModal.value = false;
+    videoToDelete.value = null;
   } catch (err: unknown) {
-    alert(`移除失败: ${err instanceof Error ? err.message : String(err)}`);
+    showToast(`移除失败: ${err instanceof Error ? err.message : String(err)}`);
+  } finally {
+    isDeletingVideo.value = false;
   }
 }
 
 async function copyToClipboard(text: string) {
   try {
     await navigator.clipboard.writeText(text);
-    copiedPath.value = true;
-    setTimeout(() => {
-      copiedPath.value = false;
-    }, 2000);
+    showToast('📋 文件路径已复制到剪贴板');
   } catch {
     const el = document.createElement('textarea');
     el.value = text;
@@ -437,10 +471,7 @@ async function copyToClipboard(text: string) {
     el.select();
     document.execCommand('copy');
     document.body.removeChild(el);
-    copiedPath.value = true;
-    setTimeout(() => {
-      copiedPath.value = false;
-    }, 2000);
+    showToast('📋 文件路径已复制到剪贴板');
   }
 }
 
@@ -511,6 +542,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  if (toastTimer) clearTimeout(toastTimer);
   if (searchTimer) clearTimeout(searchTimer);
   if (resizeObserver) resizeObserver.disconnect();
   if (unlistenScanProgress) unlistenScanProgress();
@@ -875,7 +907,7 @@ onUnmounted(() => {
                     <button class="card-act-btn" title="复制路径" @click.stop="copyToClipboard(video.file_path)">
                       📋 复制
                     </button>
-                    <button class="card-act-btn btn-act-del" title="从媒体库移除" @click.stop="removeVideo(video, false)">
+                    <button class="card-act-btn btn-act-del" title="从媒体库移除" @click.stop="promptRemoveVideo(video)">
                       ✕ 移除
                     </button>
                   </div>
@@ -914,7 +946,7 @@ onUnmounted(() => {
                 <button class="li-btn" title="播放" @click.stop="openVideo(item.row.video)">▶</button>
                 <button class="li-btn" title="定位文件" @click.stop="revealVideo(item.row.video.file_path)">📁</button>
                 <button class="li-btn" title="复制路径" @click.stop="copyToClipboard(item.row.video.file_path)">📋</button>
-                <button class="li-btn btn-act-del" title="从媒体库移除" @click.stop="removeVideo(item.row.video, false)">✕</button>
+                <button class="li-btn btn-act-del" title="从媒体库移除" @click.stop="promptRemoveVideo(item.row.video)">✕</button>
               </div>
             </div>
           </div>
@@ -939,6 +971,63 @@ onUnmounted(() => {
       :visible="isPlayerVisible"
       @close="isPlayerVisible = false"
     />
+
+    <!-- Confirm Delete Modal (彻底替换被系统拦截的 window.confirm) -->
+    <div v-if="showDeleteConfirmModal" class="confirm-modal-overlay" @click.self="showDeleteConfirmModal = false">
+      <div class="confirm-modal-card">
+        <div class="confirm-modal-header">
+          <div class="confirm-icon-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              <line x1="10" y1="11" x2="10" y2="17"></line>
+              <line x1="14" y1="11" x2="14" y2="17"></line>
+            </svg>
+          </div>
+          <div class="confirm-header-text">
+            <h3 class="confirm-title">从媒体库移除视频</h3>
+            <p class="confirm-subtitle">请确认对该视频的操作</p>
+          </div>
+          <button class="confirm-close-btn" @click="showDeleteConfirmModal = false">✕</button>
+        </div>
+
+        <div class="confirm-modal-body">
+          <div class="video-info-preview">
+            <span class="preview-name" :title="videoToDelete?.file_name">{{ videoToDelete?.file_name }}</span>
+            <span class="preview-path font-mono" :title="videoToDelete?.file_path">{{ videoToDelete?.file_path }}</span>
+          </div>
+
+          <label class="confirm-checkbox-row">
+            <input type="checkbox" v-model="alsoDeleteDiskFile" />
+            <span class="checkbox-label-text">
+              同时从本地磁盘彻底删除原视频文件
+              <strong class="text-danger">（不可撤销）</strong>
+            </span>
+          </label>
+        </div>
+
+        <div class="confirm-modal-footer">
+          <button
+            class="btn btn-secondary"
+            :disabled="isDeletingVideo"
+            @click="showDeleteConfirmModal = false"
+          >
+            取消
+          </button>
+          <button
+            class="btn btn-danger"
+            :disabled="isDeletingVideo"
+            @click="confirmRemoveVideo"
+          >
+            {{ isDeletingVideo ? '正在处理...' : (alsoDeleteDiskFile ? '彻底删除原文件' : '确认仅从媒体库移除') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Floating Toast Notification -->
+    <div v-if="toastMessage" class="toast-popup">
+      {{ toastMessage }}
+    </div>
   </div>
 </template>
 
@@ -1896,6 +1985,211 @@ onUnmounted(() => {
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   display: inline-block;
+}
+
+/* Floating Toast Notification */
+.toast-popup {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: rgba(15, 23, 42, 0.95);
+  color: #ffffff;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  z-index: 99999;
+  animation: toastFadeIn 0.2s ease-out;
+  pointer-events: none;
+}
+
+@keyframes toastFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Custom Confirmation Modal */
+.confirm-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99998;
+  animation: modalFadeIn 0.15s ease-out;
+}
+
+.confirm-modal-card {
+  width: 480px;
+  max-width: 90vw;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.confirm-modal-header {
+  padding: 1.1rem 1.25rem;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  position: relative;
+}
+
+.confirm-icon-box {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.confirm-icon-box svg {
+  width: 20px;
+  height: 20px;
+}
+
+.confirm-header-text {
+  flex: 1;
+}
+
+.confirm-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.confirm-subtitle {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 2px 0 0;
+}
+
+.confirm-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.1rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+}
+
+.confirm-close-btn:hover {
+  color: var(--text-primary);
+}
+
+.confirm-modal-body {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.video-info-preview {
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.preview-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-path {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.confirm-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.confirm-checkbox-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #ef4444;
+}
+
+.text-danger {
+  color: #ef4444;
+}
+
+.confirm-modal-footer {
+  padding: 0.85rem 1.25rem;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-header);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+.btn-danger {
+  background: #ef4444;
+  color: #ffffff;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #dc2626;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
+}
+
+.btn-danger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
 }
 </style>
 

@@ -148,17 +148,69 @@ pub async fn get_video_detail(
 }
 
 #[tauri::command]
+#[allow(non_snake_case)]
 pub async fn delete_video(
     id: i64,
-    delete_file: bool,
+    delete_file: Option<bool>,
+    deleteFile: Option<bool>,
     db: State<'_, Database>,
 ) -> Result<bool, String> {
+    let should_delete = delete_file.or(deleteFile).unwrap_or(false);
     let db_clone = (*db).clone();
     tokio::task::spawn_blocking(move || {
         let conn_arc = db_clone.get_connection();
         let conn = conn_arc.lock().map_err(|e| e.to_string())?;
 
-        crate::db::videos::delete_video(&conn, id, delete_file)
+        crate::db::videos::delete_video(&conn, id, should_delete)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn reveal_in_explorer(path: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let p = std::path::PathBuf::from(&path);
+        if !p.exists() {
+            return Err("文件路径在本地磁盘上不存在".to_string());
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            let status = std::process::Command::new("open")
+                .arg("-R")
+                .arg(&p)
+                .status()
+                .map_err(|e| format!("打开访达失败: {}", e))?;
+            if !status.success() {
+                return Err("访达未能成功定位文件".to_string());
+            }
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            let status = std::process::Command::new("explorer")
+                .arg(format!("/select,\"{}\"", p.display()))
+                .status()
+                .map_err(|e| format!("打开资源管理器失败: {}", e))?;
+            if !status.success() {
+                return Err("资源管理器未能成功定位文件".to_string());
+            }
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            let parent = p.parent().unwrap_or(&p);
+            let status = std::process::Command::new("xdg-open")
+                .arg(parent)
+                .status()
+                .map_err(|e| format!("打开文件管理器失败: {}", e))?;
+            if !status.success() {
+                return Err("未能成功定位文件".to_string());
+            }
+        }
+
+        Ok(())
     })
     .await
     .map_err(|e| e.to_string())?

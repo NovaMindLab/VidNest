@@ -13,9 +13,9 @@ use commands::{
     clear_completed_tasks, delete_video, download_and_install_update, echo, get_download_tasks,
     get_player_init_video, get_video_detail, inspect_url, inspect_video_url, install_update_and_relaunch,
     list_videos, open_update_installer_folder, open_video_player_window, open_ytd_window, pause_download,
-    pause_download_task, ping, relaunch_app, resume_download, resume_download_task, scan_video_directory,
-    set_player_always_on_top, start_download, start_full_disk_scan, system_health_check, update_ytdlp,
-    PlayerState,
+    pause_download_task, ping, relaunch_app, resume_download, resume_download_task, reveal_in_explorer,
+    scan_video_directory, set_player_always_on_top, start_download, start_full_disk_scan,
+    system_health_check, update_ytdlp, PlayerState,
 };
 use db::Database;
 use std::path::PathBuf;
@@ -104,6 +104,7 @@ pub fn run() {
             get_player_init_video,
             set_player_always_on_top,
             open_ytd_window,
+            reveal_in_explorer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
