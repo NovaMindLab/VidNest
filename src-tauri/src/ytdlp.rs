@@ -108,7 +108,7 @@ pub async fn fetch_latest_release_version() -> Result<String, String> {
     let download_url = format!("https://github.com/yt-dlp/yt-dlp/releases/latest/download/{asset_name}");
 
     let client = reqwest::Client::builder()
-        .user_agent("LocalVideoIntelligence/2.0.0")
+        .user_agent("LocalVideoIntelligence/2.1.0")
         .timeout(std::time::Duration::from_millis(3500))
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -129,7 +129,7 @@ pub async fn fetch_latest_release_version() -> Result<String, String> {
     // 2. Fallback: Query GitHub API
     let api_url = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest";
     let api_client = reqwest::Client::builder()
-        .user_agent("LocalVideoIntelligence/2.0.0")
+        .user_agent("LocalVideoIntelligence/2.1.0")
         .timeout(std::time::Duration::from_millis(3500))
         .build()
         .map_err(|e| format!("Failed to build HTTP client for API: {}", e))?;
