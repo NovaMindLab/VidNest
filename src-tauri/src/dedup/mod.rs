@@ -5,63 +5,248 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+/// Normalizes Chinese full-width characters and punctuation to standard ASCII.
+fn normalize_chinese_and_fullwidth(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '（' | '〔' => out.push('('),
+            '）' | '〕' => out.push(')'),
+            '【' => out.push('['),
+            '】' => out.push(']'),
+            '《' | '》' => out.push(' '),
+            '\u{3000}' => out.push(' '), // Full-width space
+            '－' => out.push('-'),
+            '＿' => out.push('_'),
+            '：' | '，' | '。' => out.push(' '),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 /// Normalizes video file name for fuzzy similarity comparison.
-/// Strips extension, lowercases, and strips common duplicate suffixes like ` (1)`, ` - 副本`, `_copy`.
+/// Strips extension, lowercases, handles full-width punctuation, and removes common copy markers
+/// (e.g. ` (1)`, ` - 副本`, `_copy`, `复件`). Also strips common quality/release tags (e.g. `1080p`).
 pub fn normalize_file_name_for_fuzzy(name: &str) -> String {
     let stem = Path::new(name)
         .file_stem()
         .and_then(|s| s.to_str())
-        .unwrap_or(name)
-        .to_lowercase();
+        .unwrap_or(name);
 
-    let mut cleaned = stem.trim().to_string();
+    let stem_normalized = normalize_chinese_and_fullwidth(stem).to_lowercase();
+    let mut cleaned = stem_normalized.trim().to_string();
 
-    // Strip common duplicate suffixes iteratively
-    let patterns = [
-        " - 副本",
-        " 副本",
-        "-副本",
-        "_副本",
-        "_copy",
-        "-copy",
-        " copy",
+    let explicit_prefixes = [
+        "copy of ", "复件 ", "复件-", "复件_", "复件",
+        "备份 ", "备份-", "备份_",
     ];
 
-    for pat in patterns {
-        if let Some(pos) = cleaned.rfind(pat) {
-            cleaned.truncate(pos);
-            cleaned = cleaned.trim().to_string();
-        }
-    }
+    let explicit_suffixes = [
+        " - 副本", " -副本", "-副本", "_副本", " 副本", "副本",
+        " - 备份", "-备份", "_备份", " 备份", "备份",
+        " - copy", "-copy", "_copy", " copy", "copy",
+    ];
 
-    // Strip trailing regex-like patterns e.g. " (1)", " (2)", "_1", "_2", " (copy)"
-    if let Some(open_paren) = cleaned.rfind('(') {
-        if cleaned.ends_with(')') {
-            let inner = &cleaned[open_paren + 1..cleaned.len() - 1];
-            if inner.chars().all(|c| c.is_ascii_digit()) || inner == "copy" || inner == "副本" {
-                cleaned.truncate(open_paren);
-                cleaned = cleaned.trim().to_string();
+    loop {
+        let before = cleaned.clone();
+
+        // 1. Strip explicit copy prefixes
+        for pre in &explicit_prefixes {
+            if cleaned.starts_with(pre) {
+                let cand = cleaned[pre.len()..].trim().to_string();
+                if cand.len() >= 2 {
+                    cleaned = cand;
+                }
             }
         }
-    }
 
-    // Strip trailing "_1", "_2"
-    if let Some(idx) = cleaned.rfind('_') {
-        let suffix = &cleaned[idx + 1..];
-        if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()) {
-            cleaned.truncate(idx);
-            cleaned = cleaned.trim().to_string();
+        // 2. Strip explicit copy suffixes
+        for suf in &explicit_suffixes {
+            if cleaned.ends_with(suf) {
+                let cand = cleaned[..cleaned.len() - suf.len()].trim().to_string();
+                if cand.len() >= 2 {
+                    cleaned = cand;
+                }
+            }
+        }
+
+        // 3. Strip bracket indices: (1), [1], (copy), (副本), (备份)
+        for &(open, close) in &[('(', ')'), ('[', ']')] {
+            if cleaned.ends_with(close) {
+                if let Some(start) = cleaned.rfind(open) {
+                    let inner = cleaned[start + 1..cleaned.len() - 1].trim();
+                    let is_copy_index = (inner.len() <= 2 && inner.chars().all(|c| c.is_ascii_digit()))
+                        || inner == "copy"
+                        || inner == "副本"
+                        || inner == "备份";
+                    if is_copy_index {
+                        let cand = cleaned[..start].trim().to_string();
+                        if cand.len() >= 2 {
+                            cleaned = cand;
+                        }
+                    }
+                }
+            }
+        }
+
+        if cleaned == before {
+            break;
         }
     }
 
-    cleaned
+    // 4. Strip common quality/release tags & normalize separators
+    let quality_tags = [
+        "1080p", "720p", "4k", "2160p", "480p", "360p", "1080i", "uhd", "fhd", "hd",
+        "bluray", "bdrip", "web-dl", "webrip", "hdtv", "dvdrip",
+        "x264", "x265", "h264", "h265", "hevc",
+    ];
+
+    let words: Vec<&str> = cleaned
+        .split(|c: char| c.is_whitespace() || c == '.' || c == '_' || c == '-' || c == '+')
+        .filter(|w| !w.is_empty())
+        .collect();
+
+    let mut filtered = Vec::new();
+    for w in words {
+        let w_clean = w.trim_matches(|c: char| c == '(' || c == ')' || c == '[' || c == ']' || c == '{' || c == '}');
+        if quality_tags.contains(&w_clean) {
+            continue;
+        }
+        if !w_clean.is_empty() {
+            filtered.push(w_clean);
+        }
+    }
+
+    if filtered.is_empty() {
+        cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
+    } else {
+        filtered.join(" ")
+    }
+}
+
+/// Checks whether a normalized filename is a common non-distinctive/generic name
+/// (e.g. "video", "1", "clip", "未命名"). Generic names require stricter matching.
+pub fn is_generic_name(name: &str) -> bool {
+    let trimmed = name.trim();
+    if trimmed.len() <= 2 {
+        return true;
+    }
+    if trimmed.chars().all(|c| c.is_ascii_digit()) {
+        return true;
+    }
+
+    let generic_words = [
+        "video", "vid", "movie", "film", "clip", "test", "demo", "output", "temp",
+        "record", "recording", "screen", "screencast", "cam", "camera", "untitled",
+        "new video", "sample", "preview", "download",
+        "新建视频", "未命名", "视频", "录像", "录屏", "无题", "未命名视频", "测试", "剪辑",
+    ];
+
+    for gw in &generic_words {
+        if trimmed == *gw {
+            return true;
+        }
+    }
+    false
+}
+
+/// Evaluates whether two videos with the same normalized name are actually duplicate copies.
+pub fn are_videos_similar(v1: &Video, v2: &Video, is_generic: bool) -> bool {
+    // 1. If exact hash matches, they are definitively identical
+    if !v1.file_hash.is_empty() && v1.file_hash == v2.file_hash {
+        return true;
+    }
+
+    let min_size = v1.file_size.min(v2.file_size);
+    let max_size = v1.file_size.max(v2.file_size);
+
+    // 2. Generic names (e.g. "video", "1", "未命名"): require strict verification
+    // to prevent unrelated clips from falsely colliding.
+    if is_generic {
+        if let (Some(dur1), Some(dur2)) = (v1.duration, v2.duration) {
+            let dur_diff = (dur1 - dur2).abs();
+            if dur_diff <= 0.5 {
+                let size_diff_pct = (max_size - min_size) as f64 / (max_size.max(1) as f64);
+                if size_diff_pct <= 0.05 {
+                    if let ((Some(w1), Some(h1)), (Some(w2), Some(h2))) =
+                        ((v1.width, v1.height), (v2.width, v2.height))
+                    {
+                        return w1 == w2 && h1 == h2;
+                    }
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // 3. Non-generic names:
+    // Reject if sizes differ by > 20x (e.g. 10GB full movie vs 50MB thumbnail/sample)
+    if min_size > 0 && max_size / min_size > 20 {
+        return false;
+    }
+
+    // If both have durations, use adaptive tolerance:
+    if let (Some(dur1), Some(dur2)) = (v1.duration, v2.duration) {
+        if dur1 <= 0.0 || dur2 <= 0.0 {
+            return min_size > 0 && (max_size - min_size) as f64 / max_size as f64 <= 0.15;
+        }
+
+        let dur_diff = (dur1 - dur2).abs();
+        let max_dur = dur1.max(dur2);
+
+        // Closeness criteria:
+        // Short clips (<= 60s): difference within 2.0s or within 3%
+        // Medium clips (<= 600s): difference within 3.5s or within 2%
+        // Long movies (> 600s): difference within 6.0s or within 1%
+        let dur_matches = if max_dur <= 60.0 {
+            dur_diff <= 2.0 || (dur_diff / max_dur) <= 0.03
+        } else if max_dur <= 600.0 {
+            dur_diff <= 3.5 || (dur_diff / max_dur) <= 0.02
+        } else {
+            dur_diff <= 6.0 || (dur_diff / max_dur) <= 0.01
+        };
+
+        if !dur_matches {
+            return false;
+        }
+
+        // Check aspect ratio orientation (landscape vs portrait)
+        if let ((Some(w1), Some(h1)), (Some(w2), Some(h2))) =
+            ((v1.width, v1.height), (v2.width, v2.height))
+        {
+            if w1 > 0 && h1 > 0 && w2 > 0 && h2 > 0 {
+                let v1_portrait = h1 > w1 * 12 / 10;
+                let v2_portrait = h2 > w2 * 12 / 10;
+                // If one is portrait and other is landscape, only match if duration is virtually identical (<= 0.5s)
+                if v1_portrait != v2_portrait && dur_diff > 0.5 {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    // If one or both lack duration (e.g. ffprobe pending or failed):
+    // Fall back to size closeness or exact size
+    if v1.file_size == v2.file_size && v1.file_size > 0 {
+        return true;
+    }
+
+    if min_size > 0 && (max_size - min_size) as f64 / max_size as f64 <= 0.10 {
+        return true;
+    }
+
+    false
 }
 
 /// Discovers duplicate video groups from database according to the given strategy.
 /// Supported strategies:
 /// - "exact_hash": Byte-for-byte exact duplicate (Identical file_hash & file_size)
 /// - "metadata": Stream specs match (Identical duration rounded to 0.5s, width, height, codec)
-/// - "fuzzy_name": Normalized file stem match + identical duration
+/// - "fuzzy_name": Adaptive normalized name similarity + intelligent duration/size clustering
 pub fn find_duplicates(conn: &Connection, strategy: &str) -> Result<Vec<DuplicateGroup>, String> {
     let mut stmt = conn
         .prepare(
@@ -98,12 +283,96 @@ pub fn find_duplicates(conn: &Connection, strategy: &str) -> Result<Vec<Duplicat
         all_videos.push(v.map_err(|e| e.to_string())?);
     }
 
-    let mut group_map: HashMap<String, Vec<Video>> = HashMap::new();
+    let mut result_groups = Vec::new();
+    let mut group_counter = 1;
 
     match strategy {
-        "metadata" => {
+        "fuzzy_name" => {
+            // Group videos by normalized filename
+            let mut name_map: HashMap<String, Vec<Video>> = HashMap::new();
             for v in all_videos {
-                // Must have duration and resolution to be safely matched by specs
+                let norm_name = normalize_file_name_for_fuzzy(&v.file_name);
+                if norm_name.len() < 2 {
+                    continue;
+                }
+                name_map.entry(norm_name).or_default().push(v);
+            }
+
+            for (norm_name, group_videos) in name_map {
+                let n = group_videos.len();
+                if n < 2 {
+                    continue;
+                }
+
+                let is_generic = is_generic_name(&norm_name);
+
+                // Build adjacency list for connected-component clustering
+                let mut adj = vec![vec![]; n];
+                for i in 0..n {
+                    for j in (i + 1)..n {
+                        if are_videos_similar(&group_videos[i], &group_videos[j], is_generic) {
+                            adj[i].push(j);
+                            adj[j].push(i);
+                        }
+                    }
+                }
+
+                let mut visited = vec![false; n];
+                for i in 0..n {
+                    if visited[i] {
+                        continue;
+                    }
+
+                    let mut component = Vec::new();
+                    let mut queue = std::collections::VecDeque::new();
+                    visited[i] = true;
+                    queue.push_back(i);
+
+                    while let Some(curr) = queue.pop_front() {
+                        component.push(group_videos[curr].clone());
+                        for &nbr in &adj[curr] {
+                            if !visited[nbr] {
+                                visited[nbr] = true;
+                                queue.push_back(nbr);
+                            }
+                        }
+                    }
+
+                    if component.len() > 1 {
+                        // Sort videos within the group:
+                        // 1. Higher resolution first
+                        // 2. Larger size first
+                        // 3. Newest updated_at first
+                        component.sort_by(|a, b| {
+                            let res_a = a.width.unwrap_or(0) * a.height.unwrap_or(0);
+                            let res_b = b.width.unwrap_or(0) * b.height.unwrap_or(0);
+                            res_b
+                                .cmp(&res_a)
+                                .then_with(|| b.file_size.cmp(&a.file_size))
+                                .then_with(|| b.updated_at.cmp(&a.updated_at))
+                        });
+
+                        let total_size: u64 = component.iter().map(|v| v.file_size).sum();
+                        let keep_size = component[0].file_size;
+                        let reclaimable_size = total_size.saturating_sub(keep_size);
+
+                        result_groups.push(DuplicateGroup {
+                            group_id: format!("grp_{}_fuzzy_{}", group_counter, norm_name),
+                            match_reason: "fuzzy_name".to_string(),
+                            match_label: format!("同名副本 (主体: {})", norm_name),
+                            total_size,
+                            reclaimable_size,
+                            videos: component,
+                        });
+                        group_counter += 1;
+                    }
+                }
+            }
+        }
+
+        "metadata" => {
+            let mut group_map: HashMap<String, Vec<Video>> = HashMap::new();
+            for v in all_videos {
                 if let (Some(dur), Some(w), Some(h)) = (v.duration, v.width, v.height) {
                     if dur > 1.0 && w > 0 && h > 0 {
                         let dur_bucket = (dur * 2.0).round() as i64; // 0.5s precision
@@ -113,80 +382,76 @@ pub fn find_duplicates(conn: &Connection, strategy: &str) -> Result<Vec<Duplicat
                     }
                 }
             }
-        }
-        "fuzzy_name" => {
-            for v in all_videos {
-                let norm_name = normalize_file_name_for_fuzzy(&v.file_name);
-                if !norm_name.is_empty() {
-                    let dur_bucket = v.duration.map(|d| (d * 2.0).round() as i64).unwrap_or(0);
-                    let key = format!("fuzzy_{}_{}", norm_name, dur_bucket);
-                    group_map.entry(key).or_default().push(v);
+
+            for (key, mut group_videos) in group_map {
+                if group_videos.len() > 1 {
+                    group_videos.sort_by(|a, b| {
+                        let res_a = a.width.unwrap_or(0) * a.height.unwrap_or(0);
+                        let res_b = b.width.unwrap_or(0) * b.height.unwrap_or(0);
+                        res_b
+                            .cmp(&res_a)
+                            .then_with(|| b.file_size.cmp(&a.file_size))
+                            .then_with(|| b.updated_at.cmp(&a.updated_at))
+                    });
+
+                    let total_size: u64 = group_videos.iter().map(|v| v.file_size).sum();
+                    let keep_size = group_videos[0].file_size;
+                    let reclaimable_size = total_size.saturating_sub(keep_size);
+
+                    result_groups.push(DuplicateGroup {
+                        group_id: format!("grp_{}_{}", group_counter, key),
+                        match_reason: "metadata".to_string(),
+                        match_label: format!(
+                            "规格一致 ({}x{}, {})",
+                            group_videos[0].width.unwrap_or(0),
+                            group_videos[0].height.unwrap_or(0),
+                            group_videos[0].codec.as_deref().unwrap_or("未知")
+                        ),
+                        total_size,
+                        reclaimable_size,
+                        videos: group_videos,
+                    });
+                    group_counter += 1;
                 }
             }
         }
+
         _ => {
             // Default: "exact_hash"
+            let mut group_map: HashMap<String, Vec<Video>> = HashMap::new();
             for v in all_videos {
                 if !v.file_hash.is_empty() && v.file_size > 0 {
                     let key = format!("hash_{}_{}", v.file_size, v.file_hash);
                     group_map.entry(key).or_default().push(v);
                 }
             }
-        }
-    }
 
-    let mut result_groups = Vec::new();
-    let mut group_counter = 1;
+            for (key, mut group_videos) in group_map {
+                if group_videos.len() > 1 {
+                    group_videos.sort_by(|a, b| {
+                        let res_a = a.width.unwrap_or(0) * a.height.unwrap_or(0);
+                        let res_b = b.width.unwrap_or(0) * b.height.unwrap_or(0);
+                        res_b
+                            .cmp(&res_a)
+                            .then_with(|| b.file_size.cmp(&a.file_size))
+                            .then_with(|| b.updated_at.cmp(&a.updated_at))
+                    });
 
-    for (key, mut group_videos) in group_map {
-        if group_videos.len() > 1 {
-            // Sort videos within the group:
-            // 1. Higher resolution first
-            // 2. Larger size first
-            // 3. Newest updated_at first
-            group_videos.sort_by(|a, b| {
-                let res_a = a.width.unwrap_or(0) * a.height.unwrap_or(0);
-                let res_b = b.width.unwrap_or(0) * b.height.unwrap_or(0);
-                res_b
-                    .cmp(&res_a)
-                    .then_with(|| b.file_size.cmp(&a.file_size))
-                    .then_with(|| b.updated_at.cmp(&a.updated_at))
-            });
+                    let total_size: u64 = group_videos.iter().map(|v| v.file_size).sum();
+                    let keep_size = group_videos[0].file_size;
+                    let reclaimable_size = total_size.saturating_sub(keep_size);
 
-            let total_size: u64 = group_videos.iter().map(|v| v.file_size).sum();
-            // Primary recommendation is the first item; reclaimable space is all other items
-            let keep_size = group_videos[0].file_size;
-            let reclaimable_size = total_size.saturating_sub(keep_size);
-
-            let (reason, label) = match strategy {
-                "metadata" => (
-                    "metadata".to_string(),
-                    format!(
-                        "规格一致 ({}x{}, {})",
-                        group_videos[0].width.unwrap_or(0),
-                        group_videos[0].height.unwrap_or(0),
-                        group_videos[0].codec.as_deref().unwrap_or("未知")
-                    ),
-                ),
-                "fuzzy_name" => (
-                    "fuzzy_name".to_string(),
-                    format!("同名副本 (主体: {})", normalize_file_name_for_fuzzy(&group_videos[0].file_name)),
-                ),
-                _ => (
-                    "exact_hash".to_string(),
-                    format!("完全一致 (哈希采样吻合, {} 份)", group_videos.len()),
-                ),
-            };
-
-            result_groups.push(DuplicateGroup {
-                group_id: format!("grp_{}_{}", group_counter, key),
-                match_reason: reason,
-                match_label: label,
-                total_size,
-                reclaimable_size,
-                videos: group_videos,
-            });
-            group_counter += 1;
+                    result_groups.push(DuplicateGroup {
+                        group_id: format!("grp_{}_{}", group_counter, key),
+                        match_reason: "exact_hash".to_string(),
+                        match_label: format!("完全一致 (哈希采样吻合, {} 份)", group_videos.len()),
+                        total_size,
+                        reclaimable_size,
+                        videos: group_videos,
+                    });
+                    group_counter += 1;
+                }
+            }
         }
     }
 
@@ -369,13 +634,60 @@ mod tests {
 
     #[test]
     fn test_normalize_file_name_for_fuzzy() {
+        // Basic: strip extension and lowercase
         assert_eq!(normalize_file_name_for_fuzzy("MyVideo.mp4"), "myvideo");
+
+        // Copy marker suffixes — should be stripped
         assert_eq!(normalize_file_name_for_fuzzy("MyVideo - 副本.mp4"), "myvideo");
+        assert_eq!(normalize_file_name_for_fuzzy("MyVideo 副本.mp4"), "myvideo");
+        assert_eq!(normalize_file_name_for_fuzzy("MyVideo_副本.mp4"), "myvideo");
+        assert_eq!(normalize_file_name_for_fuzzy("MyVideo_copy.mp4"), "myvideo");
+        assert_eq!(normalize_file_name_for_fuzzy("MyVideo-copy.mp4"), "myvideo");
+        assert_eq!(normalize_file_name_for_fuzzy("MyVideo copy.mp4"), "myvideo");
+        assert_eq!(normalize_file_name_for_fuzzy("copy of myvideo.mp4"), "myvideo");
+        assert_eq!(normalize_file_name_for_fuzzy("复件 MyVideo.mp4"), "myvideo");
+
+        // Bracket index — 1-2 digits should be stripped
         assert_eq!(normalize_file_name_for_fuzzy("MyVideo (1).mp4"), "myvideo");
         assert_eq!(normalize_file_name_for_fuzzy("MyVideo (2).mp4"), "myvideo");
-        assert_eq!(normalize_file_name_for_fuzzy("MyVideo_copy.mp4"), "myvideo");
-        assert_eq!(normalize_file_name_for_fuzzy("MyVideo_1.mp4"), "myvideo");
+        assert_eq!(normalize_file_name_for_fuzzy("MyVideo[1].mp4"), "myvideo");
+        assert_eq!(normalize_file_name_for_fuzzy("MyVideo（1）.mp4"), "myvideo");
+
+        // Multi-layer nested copy markers — should all be stripped
+        assert_eq!(normalize_file_name_for_fuzzy("MyVideo - 副本 (1).mp4"), "myvideo");
+
+        // Quality/resolution tag stripping
+        assert_eq!(normalize_file_name_for_fuzzy("MyVideo.1080p.mp4"), "myvideo");
+        assert_eq!(normalize_file_name_for_fuzzy("MyVideo.720p.mkv"), "myvideo");
+
+        // Title with year and tags
+        assert_eq!(normalize_file_name_for_fuzzy("大鱼海棠_2016.mp4"), "大鱼海棠 2016");
+        assert_eq!(normalize_file_name_for_fuzzy("大鱼海棠 (2016) [1080p].mp4"), "大鱼海棠 2016");
+
+        // Separator normalization
+        assert_eq!(normalize_file_name_for_fuzzy("Episode_01.mkv"), "episode 01");
+        assert_eq!(normalize_file_name_for_fuzzy("Avengers_4.mp4"), "avengers 4");
+        assert_eq!(normalize_file_name_for_fuzzy("ab_1.mp4"), "ab 1");
     }
+
+    #[test]
+    fn test_find_fuzzy_name_duplicates() {
+        let conn = setup_test_db();
+        conn.execute(
+            "INSERT INTO videos (file_path, file_name, file_hash, file_size, duration, width, height, codec, created_at, updated_at, status)
+             VALUES ('/path/vlog.mp4', 'vlog.mp4', 'hash_v1', 50000000, 60.2, 1920, 1080, 'h264', 100, 100, 'ready'),
+                    ('/path/vlog_copy.mp4', 'vlog - 副本.mp4', 'hash_v2', 49900000, 60.4, 1920, 1080, 'h264', 200, 200, 'ready'),
+                    ('/path/other.mp4', 'other.mp4', 'hash_v3', 50000000, 60.3, 1920, 1080, 'h264', 300, 300, 'ready')",
+            [],
+        ).unwrap();
+
+        let duplicates = find_duplicates(&conn, "fuzzy_name").unwrap();
+        assert_eq!(duplicates.len(), 1);
+        assert_eq!(duplicates[0].videos.len(), 2);
+        assert_eq!(duplicates[0].match_reason, "fuzzy_name");
+        assert!(duplicates[0].match_label.contains("vlog"));
+    }
+
 
     #[test]
     fn test_find_exact_hash_duplicates() {
