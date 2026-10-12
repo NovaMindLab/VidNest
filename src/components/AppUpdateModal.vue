@@ -121,7 +121,7 @@ function close() {
 watch(
   () => props.visible,
   (val) => {
-    if (val && !updateInfo.value) {
+    if (val) {
       checkForUpdate(false);
     }
   }
@@ -179,7 +179,10 @@ onUnmounted(() => {
         <div class="success-icon">✓</div>
         <h4 class="uptodate-h4">当前已是最新版本</h4>
         <p class="uptodate-p">当前版本 v{{ updateInfo.current_version }}，无需更新。</p>
-        <button class="btn-primary" @click="close">好的</button>
+        <div class="uptodate-actions" style="display: flex; gap: 12px; justify-content: center; margin-top: 1rem;">
+          <button class="btn-retry" style="margin: 0;" @click="checkForUpdate(false)">↻ 重新检查</button>
+          <button class="btn-primary" @click="close">好的</button>
+        </div>
       </div>
 
       <!-- Has Update Content -->

@@ -123,6 +123,11 @@ export default {
     close: 'OK',
     cancel: 'Not Now',
     later: 'Install Later',
+    newVersionFound: 'New Version Available',
+    newVersionFoundDesc: 'VidNest v{version} is now available with new features and performance enhancements.',
+    upgradeNow: 'View & Upgrade',
+    dismiss: 'Later',
+    badgeNew: 'NEW',
   },
   dedup: {
     title: 'Smart Video Deduplication & Merge',

@@ -406,21 +406,40 @@ pub fn install_update_and_relaunch(app: AppHandle) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         let current_exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("Local Video Intelligence.exe"));
-        // 自动静默覆盖升级：
-        // 1. 等待1秒确保当前旧进程退出并释放 exe/dll 文件句柄
-        // 2. 运行安装包 /S 静默直接覆盖安装，跳过所有选择向导与路径选择
-        // 3. 安装完成后自动启动新版本
-        let batch_cmd = format!(
-            "timeout /t 1 /nobreak >nul & \"{}\" /S & start \"\" \"{}\"",
-            path.display(),
-            current_exe.display()
-        );
+        let clean_installer = path.to_string_lossy().replace('/', "\\");
+        let clean_exe = current_exe.to_string_lossy().replace('/', "\\");
 
-        let _ = std::process::Command::new("cmd")
-            .args(["/C", &batch_cmd])
-            .spawn();
+        // Write a dedicated, robust updater batch script in temp dir
+        // This avoids any cmd.exe /C inline argument quoting and backslash parsing bugs
+        let temp_dir = std::env::temp_dir();
+        let bat_path = temp_dir.join("vidnest_silent_updater.bat");
 
-        std::process::exit(0);
+        let bat_lines = [
+            "@echo off",
+            "chcp 65001 >nul",
+            "timeout /t 1 /nobreak >nul",
+            "taskkill /F /IM \"Local Video Intelligence.exe\" >nul 2>&1",
+            "taskkill /F /IM \"local-video-intelligence.exe\" >nul 2>&1",
+            &format!("start /wait \"\" \"{}\" /S", clean_installer),
+            "timeout /t 1 /nobreak >nul",
+            &format!("start \"\" \"{}\"", clean_exe),
+            "del \"%~f0\" >nul 2>&1",
+        ];
+        let bat_content = bat_lines.join("\r\n");
+
+        if let Ok(_) = std::fs::write(&bat_path, bat_content) {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            let mut cmd = std::process::Command::new("cmd.exe");
+            cmd.args(["/C", &bat_path.to_string_lossy().to_string()]);
+            cmd.creation_flags(CREATE_NO_WINDOW);
+            let _ = cmd.spawn();
+            std::process::exit(0);
+        } else {
+            // Fallback: direct spawn of installer with /S
+            let _ = std::process::Command::new(&path).arg("/S").spawn();
+            std::process::exit(0);
+        }
     }
 
     #[cfg(target_os = "macos")]

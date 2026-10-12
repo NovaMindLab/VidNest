@@ -123,6 +123,11 @@ export default {
     close: '好的',
     cancel: '暂不更新',
     later: '稍后安装',
+    newVersionFound: '发现新版本',
+    newVersionFoundDesc: 'VidNest 发布了新版本 v{version}，包含多项性能提升与问题修复。',
+    upgradeNow: '立即查看并升级',
+    dismiss: '稍后提醒',
+    badgeNew: '新版本',
   },
   dedup: {
     title: '智能视频查重与合并清理',

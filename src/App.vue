@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
-import type { HealthReport, YtDlpUpdateCheck, YtDlpUpdateResult } from './types';
+import type { HealthReport, YtDlpUpdateCheck, YtDlpUpdateResult, AppUpdateInfo } from './types';
 import VideoLibrary from './components/VideoLibrary.vue';
 import VideoDeduplication from './components/VideoDeduplication.vue';
 import ExtractedAudiosView from './components/ExtractedAudiosView.vue';
@@ -19,6 +19,8 @@ const isYtdWindow = ref(urlParams.get('window') === 'ytd');
 const currentTab = ref<'library' | 'dedup' | 'audios' | 'downloads' | 'system' | 'settings'>('library');
 const activeDownloadsCount = ref<number>(0);
 const showUpdateModal = ref<boolean>(false);
+const discoveredUpdate = ref<AppUpdateInfo | null>(null);
+const showStartupUpdateNotice = ref<boolean>(false);
 
 function onActiveCountChange(count: number) {
   activeDownloadsCount.value = count;
@@ -119,6 +121,18 @@ function formatTime(timestampMs: number): string {
   return d.toLocaleTimeString();
 }
 
+async function checkAppUpdateOnLaunch() {
+  try {
+    const res = await invoke<AppUpdateInfo>('check_app_update', { mock: false });
+    if (res && res.has_update) {
+      discoveredUpdate.value = res;
+      showStartupUpdateNotice.value = true;
+    }
+  } catch (err: unknown) {
+    console.warn('[VidNest Startup Update Check] Failed silently:', err);
+  }
+}
+
 onMounted(() => {
   initTheme();
   if (isPlayerWindow.value || isYtdWindow.value) {
@@ -133,6 +147,10 @@ onMounted(() => {
       checkYtdlpUpdate();
     }, 1500);
   }
+  // 延迟 2.5s 在后台静默检查应用版本更新并轻量提示
+  setTimeout(() => {
+    checkAppUpdateOnLaunch();
+  }, 2500);
 });
 </script>
 
@@ -255,6 +273,7 @@ onMounted(() => {
             </svg>
           </div>
           <span class="nav-item-label">{{ t('nav.settings') }}</span>
+          <span v-if="discoveredUpdate?.has_update" class="nav-update-dot" :title="t('update.newVersionFound')"></span>
         </button>
       </nav>
 
@@ -325,9 +344,17 @@ onMounted(() => {
             <span class="lang-text">{{ currentLocale === 'zh-CN' ? '🇺🇸 EN' : '🇨🇳 中' }}</span>
           </button>
 
-          <button class="btn-check-update" :title="t('header.checkUpdate')" @click="showUpdateModal = true">
+          <button
+            class="btn-check-update"
+            :class="{ 'has-new-update': discoveredUpdate?.has_update }"
+            :title="t('header.checkUpdate')"
+            @click="showUpdateModal = true"
+          >
             <span class="update-icon">⚡</span>
             <span>{{ t('header.checkUpdate') }}</span>
+            <span v-if="discoveredUpdate?.has_update" class="update-badge-pill">
+              {{ t('update.badgeNew') }}
+            </span>
           </button>
           <span class="engine-badge" v-if="ytdlpCheck?.current_version">
             yt-dlp: {{ ytdlpCheck.current_version }}
@@ -555,6 +582,34 @@ onMounted(() => {
 
     <!-- In-App Differential Updater Modal -->
     <AppUpdateModal :visible="showUpdateModal" @close="showUpdateModal = false" />
+
+    <!-- Startup Update Notification Floating Toast -->
+    <transition name="toast-slide">
+      <div v-if="showStartupUpdateNotice && discoveredUpdate?.has_update" class="startup-update-toast">
+        <div class="toast-glow"></div>
+        <div class="toast-body">
+          <div class="toast-icon-box">🚀</div>
+          <div class="toast-content">
+            <div class="toast-header-row">
+              <span class="toast-title">{{ t('update.newVersionFound') }}</span>
+              <span class="toast-ver-badge">v{{ discoveredUpdate.latest_version }}</span>
+            </div>
+            <p class="toast-desc">
+              {{ t('update.newVersionFoundDesc', { version: discoveredUpdate.latest_version }) }}
+            </p>
+          </div>
+          <button class="toast-btn-close" @click="showStartupUpdateNotice = false" title="关闭">✕</button>
+        </div>
+        <div class="toast-action-row">
+          <button class="btn-toast-dismiss" @click="showStartupUpdateNotice = false">
+            {{ t('update.dismiss') }}
+          </button>
+          <button class="btn-toast-upgrade" @click="showStartupUpdateNotice = false; showUpdateModal = true">
+            {{ t('update.upgradeNow') }}
+          </button>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -696,6 +751,22 @@ onMounted(() => {
   font-weight: 700;
   padding: 0.1rem 0.45rem;
   border-radius: 999px;
+}
+
+.nav-update-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.85);
+  animation: pulse-update-dot 2s infinite ease-in-out;
+  margin-left: auto;
+}
+
+@keyframes pulse-update-dot {
+  0% { transform: scale(0.9); opacity: 0.8; }
+  50% { transform: scale(1.3); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.8; }
 }
 
 .sidebar-footer {
@@ -860,6 +931,23 @@ onMounted(() => {
   border-color: rgba(59, 130, 246, 0.5);
   color: #ffffff;
   transform: translateY(-1px);
+}
+
+.btn-check-update.has-new-update {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #f87171;
+}
+
+.update-badge-pill {
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  margin-left: 0.2rem;
+  animation: pulse-update-dot 2s infinite ease-in-out;
 }
 
 .btn-quick-action {
@@ -1389,5 +1477,164 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.45);
+}
+
+/* Startup Update Floating Toast Card */
+.startup-update-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 360px;
+  max-width: calc(100vw - 48px);
+  background: var(--bg-card, #1e293b);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), 0 0 20px rgba(59, 130, 246, 0.15);
+  overflow: hidden;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  backdrop-filter: blur(12px);
+}
+
+.toast-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899);
+}
+
+.toast-body {
+  display: flex;
+  align-items: flex-start;
+  padding: 1rem 1rem 0.75rem;
+  gap: 0.75rem;
+  position: relative;
+}
+
+.toast-icon-box {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.toast-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.toast-header-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+
+.toast-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.toast-ver-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #60a5fa;
+  background: rgba(59, 130, 246, 0.15);
+  padding: 0.1rem 0.4rem;
+  border-radius: 6px;
+}
+
+.toast-desc {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin: 0;
+  word-break: break-word;
+}
+
+.toast-btn-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0.2rem;
+  line-height: 1;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.toast-btn-close:hover {
+  color: var(--text-primary);
+  background: var(--btn-hover);
+}
+
+.toast-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0 1rem 0.85rem;
+}
+
+.btn-toast-dismiss {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.78rem;
+  border-radius: 7px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-toast-dismiss:hover {
+  background: var(--btn-hover);
+  color: var(--text-primary);
+}
+
+.btn-toast-upgrade {
+  padding: 0.35rem 0.9rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: 7px;
+  border: none;
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+  color: #ffffff;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+  transition: all 0.15s ease;
+}
+
+.btn-toast-upgrade:hover {
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.5);
+  transform: translateY(-1px);
+}
+
+/* Toast Transition */
+.toast-slide-enter-active,
+.toast-slide-leave-active {
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toast-slide-enter-from {
+  transform: translateY(20px) scale(0.95);
+  opacity: 0;
+}
+
+.toast-slide-leave-to {
+  transform: translateY(20px) scale(0.95);
+  opacity: 0;
 }
 </style>

@@ -64,91 +64,145 @@ pub async fn check_app_update_internal(mock_mode: bool) -> Result<AppUpdateInfo,
 
     let client = reqwest::Client::builder()
         .user_agent("VidNest-Desktop-App")
-        .timeout(std::time::Duration::from_secs(6))
+        .timeout(std::time::Duration::from_secs(8))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-    let api_url = format!("https://api.github.com/repos/{}/releases/latest", GITHUB_REPO);
-    let resp = client.get(&api_url).send().await;
+    let now_ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let api_url = format!("https://api.github.com/repos/{}/releases/latest?_nocache={}", GITHUB_REPO, now_ts);
+    let resp = client.get(&api_url)
+        .header("Cache-Control", "no-cache, no-store, must-revalidate")
+        .header("Pragma", "no-cache")
+        .send().await;
+
+    let mut release_json: Option<serde_json::Value> = None;
 
     if let Ok(response) = resp {
         if response.status().is_success() {
             if let Ok(text) = response.text().await {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
-                    let tag_name = json["tag_name"].as_str().unwrap_or("").to_string();
-                    let release_name = json["name"].as_str().unwrap_or("新版本更新").to_string();
-                    let body = json["body"].as_str().unwrap_or("日常性能优化与体验改进。").to_string();
-                    let published_at = json["published_at"].as_str().map(|s| s.to_string());
+                    release_json = Some(json);
+                }
+            }
+        }
+    }
 
-                    let remote_ver = tag_name.trim_start_matches('v').trim_start_matches('V').to_string();
-                    let has_update = is_newer_version(&remote_ver, &current_ver);
+    if let Some(json) = release_json {
+        let tag_name = json["tag_name"].as_str().unwrap_or("").to_string();
+        let release_name = json["name"].as_str().unwrap_or("新版本更新").to_string();
+        let body = json["body"].as_str().unwrap_or("日常性能优化与体验改进。").to_string();
+        let published_at = json["published_at"].as_str().map(|s| s.to_string());
 
-                    if !has_update {
-                        return Ok(AppUpdateInfo {
-                            has_update: false,
-                            current_version: current_ver.clone(),
-                            latest_version: remote_ver,
-                            release_name: format!("已是最新版本 (v{})", current_ver),
-                            release_notes: format!("当前运行的 v{} 已经是最新版本，无需更新。", current_ver),
-                            download_url: String::new(),
-                            is_differential: false,
-                            download_size_bytes: 0,
-                            original_size_bytes: 0,
-                            sha256: None,
-                            published_at,
-                        });
+        let remote_ver = tag_name.trim_start_matches('v').trim_start_matches('V').to_string();
+        let has_update = is_newer_version(&remote_ver, &current_ver);
+
+        if !has_update {
+            return Ok(AppUpdateInfo {
+                has_update: false,
+                current_version: current_ver.clone(),
+                latest_version: remote_ver,
+                release_name: format!("已是最新版本 (v{})", current_ver),
+                release_notes: format!("当前运行的 v{} 已经是最新版本，无需更新。", current_ver),
+                download_url: String::new(),
+                is_differential: false,
+                download_size_bytes: 0,
+                original_size_bytes: 0,
+                sha256: None,
+                published_at,
+            });
+        }
+
+        let mut download_url = String::new();
+        let mut is_differential = false;
+        let mut download_size = 0u64;
+        let mut orig_size = 65_000_000u64;
+
+        if let Some(assets) = json["assets"].as_array() {
+            for asset in assets {
+                let name = asset["name"].as_str().unwrap_or("").to_lowercase();
+                let size = asset["size"].as_u64().unwrap_or(0);
+                let browser_url = asset["browser_download_url"].as_str().unwrap_or("").to_string();
+
+                #[cfg(target_os = "macos")]
+                let matches_platform = name.ends_with(".dmg") || name.ends_with(".zip") || name.ends_with(".tar.gz");
+                #[cfg(target_os = "windows")]
+                let matches_platform = name.ends_with(".exe") || name.ends_with(".msi");
+                #[cfg(target_os = "linux")]
+                let matches_platform = name.ends_with(".appimage") || name.ends_with(".deb");
+
+                if matches_platform {
+                    if name.contains("patch") || name.contains("diff") || name.contains("blockmap") {
+                        is_differential = true;
+                        download_url = browser_url;
+                        download_size = size;
+                        break;
+                    } else if download_url.is_empty() {
+                        download_url = browser_url;
+                        download_size = size;
+                        orig_size = size;
                     }
+                }
+            }
+        }
 
-                    let mut download_url = String::new();
-                    let mut is_differential = false;
-                    let mut download_size = 0u64;
-                    let mut orig_size = 65_000_000u64;
+        if download_url.is_empty() {
+            download_url = format!("https://github.com/{}/releases/tag/{}", GITHUB_REPO, tag_name);
+        }
 
-                    if let Some(assets) = json["assets"].as_array() {
-                        for asset in assets {
-                            let name = asset["name"].as_str().unwrap_or("").to_lowercase();
-                            let size = asset["size"].as_u64().unwrap_or(0);
-                            let browser_url = asset["browser_download_url"].as_str().unwrap_or("").to_string();
+        return Ok(AppUpdateInfo {
+            has_update: true,
+            current_version: current_ver,
+            latest_version: remote_ver,
+            release_name,
+            release_notes: body,
+            download_url,
+            is_differential,
+            download_size_bytes: download_size,
+            original_size_bytes: orig_size,
+            sha256: None,
+            published_at,
+        });
+    }
 
-                            #[cfg(target_os = "macos")]
-                            let matches_platform = name.ends_with(".dmg") || name.ends_with(".zip") || name.ends_with(".tar.gz");
+    // 2. Fallback: If GitHub API failed or was rate limited, query HTML redirect on github.com
+    let redirect_url = format!("https://github.com/{}/releases/latest", GITHUB_REPO);
+    if let Ok(resp) = client.head(&redirect_url).send().await {
+        if resp.status().is_redirection() {
+            if let Some(loc) = resp.headers().get("location") {
+                if let Ok(loc_str) = loc.to_str() {
+                    if let Some(tag) = loc_str.split("/tag/").nth(1) {
+                        let tag_name = tag.trim();
+                        let remote_ver = tag_name.trim_start_matches('v').trim_start_matches('V').to_string();
+                        if is_newer_version(&remote_ver, &current_ver) {
                             #[cfg(target_os = "windows")]
-                            let matches_platform = name.ends_with(".exe") || name.ends_with(".msi");
+                            let asset_name = format!("Local.Video.Intelligence_{}_x64-setup.exe", remote_ver);
+                            #[cfg(target_os = "macos")]
+                            let asset_name = format!("Local.Video.Intelligence_{}_aarch64.dmg", remote_ver);
                             #[cfg(target_os = "linux")]
-                            let matches_platform = name.ends_with(".appimage") || name.ends_with(".deb");
+                            let asset_name = format!("Local.Video.Intelligence_{}_amd64.AppImage", remote_ver);
 
-                            if matches_platform {
-                                if name.contains("patch") || name.contains("diff") || name.contains("blockmap") {
-                                    is_differential = true;
-                                    download_url = browser_url;
-                                    download_size = size;
-                                    break;
-                                } else if download_url.is_empty() {
-                                    download_url = browser_url;
-                                    download_size = size;
-                                    orig_size = size;
-                                }
-                            }
+                            let download_url = format!("https://github.com/{}/releases/download/{}/{}", GITHUB_REPO, tag_name, asset_name);
+
+                            return Ok(AppUpdateInfo {
+                                has_update: true,
+                                current_version: current_ver,
+                                latest_version: remote_ver.clone(),
+                                release_name: format!("VidNest v{} (稳定版)", remote_ver),
+                                release_notes: format!("检测到全新稳定版本 v{} 已在 GitHub 发布，推荐升级以获取最新功能与稳定性改进。", remote_ver),
+                                download_url,
+                                is_differential: false,
+                                download_size_bytes: 65_000_000,
+                                original_size_bytes: 65_000_000,
+                                sha256: None,
+                                published_at: None,
+                            });
                         }
                     }
-
-                    if download_url.is_empty() {
-                        download_url = format!("https://github.com/{}/releases/tag/{}", GITHUB_REPO, tag_name);
-                    }
-
-                    return Ok(AppUpdateInfo {
-                        has_update: true,
-                        current_version: current_ver,
-                        latest_version: remote_ver,
-                        release_name,
-                        release_notes: body,
-                        download_url,
-                        is_differential,
-                        download_size_bytes: download_size,
-                        original_size_bytes: orig_size,
-                        sha256: None,
-                        published_at,
-                    });
                 }
             }
         }
