@@ -99,13 +99,7 @@ async function handleDeleteCollection(coll: Collection, event: Event) {
   }
 }
 
-function formatBytes(bytes: number): string {
-  if (!bytes || bytes <= 0) return '0 B';
-  const gb = bytes / (1024 * 1024 * 1024);
-  if (gb >= 1) return `${gb.toFixed(1)} GB`;
-  const mb = bytes / (1024 * 1024);
-  return `${Math.round(mb)} MB`;
-}
+
 </script>
 
 <template>
@@ -317,27 +311,7 @@ function formatBytes(bytes: number): string {
         </div>
       </div>
 
-      <!-- SECTION 4: 来源文件夹 (Source Folders) -->
-      <div class="sidebar-section">
-        <div class="section-title">来源文件夹</div>
-        <div class="nav-list folders-list">
-          <button
-            v-for="folder in props.stats?.source_folders || []"
-            :key="folder.folder_path"
-            class="category-nav-btn folder-btn"
-            :class="{ active: isSelected('folder', folder.folder_path) }"
-            :title="`${folder.folder_path} · ${formatBytes(folder.total_size_bytes)}`"
-            @click="selectItem('folder', folder.folder_path, folder.folder_name)"
-          >
-            <span class="btn-icon">📁</span>
-            <span class="btn-label truncate">{{ folder.folder_name }}</span>
-            <span class="btn-badge">{{ folder.video_count }}</span>
-          </button>
-          <div v-if="!props.stats?.source_folders?.length" class="empty-hint">暂无来源目录</div>
-        </div>
-      </div>
-
-      <!-- SECTION 5: 自定义合集 (Collections) -->
+      <!-- SECTION 4: 自定义合集 (Collections) -->
       <div class="sidebar-section">
         <div class="section-title-row">
           <span class="section-title">合集与播单</span>
