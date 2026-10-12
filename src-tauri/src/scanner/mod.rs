@@ -17,7 +17,18 @@ use walkdir::WalkDir;
 pub use platform::{discover_all_videos, DEFAULT_MIN_SIZE_BYTES};
 
 pub const SUPPORTED_EXTENSIONS: &[&str] = &[
-    "mp4", "mkv", "avi", "mov", "flv", "wmv", "webm", "m4v", "ts", "rmvb", "m2ts",
+    // Most common
+    "mp4", "mkv", "avi", "mov", "flv", "wmv", "webm", "m4v",
+    // Transport stream variants
+    "ts", "m2ts", "mts",
+    // Legacy / multimedia
+    "rmvb", "rm", "divx", "xvid",
+    // Disc / professional formats
+    "vob", "ifo", "mxf",
+    // Mobile / 3G formats
+    "3gp", "3g2",
+    // Other
+    "ogv", "f4v", "asf", "mpg", "mpeg", "mp2", "m2v", "dv", "qt",
 ];
 
 /// Global atomic cancellation flag for current scan operation.

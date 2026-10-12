@@ -8,46 +8,52 @@ use walkdir::WalkDir;
 
 pub const DEFAULT_MIN_SIZE_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
 
+/// Directory names that should NEVER contain user media — system internals, package managers, IDEs.
+/// Keep this list conservative: only skip directories that are CERTAIN to be non-user-media.
+/// Broad terms like "dist", "build", "out", "target" must NOT be here — users routinely name
+/// their video folders with those words.
 pub const BLACKLIST_DIR_NAMES: &[&str] = &[
-    "node_modules",
-    ".git",
-    ".svn",
-    ".hg",
+    // OS Trash / Recycle
     ".Trash",
     "$RECYCLE.BIN",
     "System Volume Information",
-    "Library",
+    // macOS OS directories
     "Applications",
+    "Library",           // macOS /Library, not user-facing
     "System",
-    "AppData",
+    // Windows OS directories
     "Windows",
+    "WinSxS",
+    // Windows App data (hidden developer paths)
+    "AppData",
+    "ProgramData",
     "Program Files",
     "Program Files (x86)",
-    "ProgramData",
+    // Version control
+    ".git",
+    ".svn",
+    ".hg",
+    // Dependency / build tool directories (with strong signals these are dev artifacts)
+    "node_modules",
     ".cargo",
     ".rustup",
     ".gradle",
-    ".vscode",
-    ".idea",
-    "Pods",
-    "DerivedData",
     ".npm",
     ".yarn",
     ".pnpm-store",
-    "Caches",
     ".cache",
-    "dist",
-    "build",
-    "target",
-    "out",
+    // IDE config
+    ".vscode",
+    ".idea",
+    // iOS / macOS dev
+    "Pods",
+    "DerivedData",
+    // Framework magic dirs
     ".next",
     ".nuxt",
     ".turbo",
+    // Test coverage output
     "coverage",
-    "typings",
-    "@types",
-    "vendor",
-    "packages",
 ];
 
 /// Checks if a folder name matches common system/cache/dependency blacklists.
@@ -162,9 +168,16 @@ pub fn validate_video_file(path: &Path, min_size_bytes: u64) -> bool {
         return false;
     }
 
-    // Check file size
+    // Check file size — but relax for disc format containers (ifo, vob can be small menus)
+    let size_threshold = if ext == "ifo" || ext == "vob" {
+        // Only skip tiny IFO/VOB files (< 512 bytes are clearly metadata stubs)
+        512
+    } else {
+        min_size_bytes
+    };
+
     if let Ok(meta) = path.metadata() {
-        if meta.len() < min_size_bytes {
+        if meta.len() < size_threshold {
             return false;
         }
     } else {
@@ -176,17 +189,28 @@ pub fn validate_video_file(path: &Path, min_size_bytes: u64) -> bool {
         return false;
     }
 
-    // Skip paths that contain blacklisted components
+    // Skip paths that traverse a blacklisted directory component.
+    // Only check normal directory Name components (skip drive roots like "C:", prefix slashes, etc.)
+    use std::path::Component;
     for comp in path.components() {
-        if let Some(comp_str) = comp.as_os_str().to_str() {
-            if is_blacklisted_dir(comp_str) {
-                return false;
+        let dir_name = match comp {
+            Component::Normal(os_str) => os_str.to_string_lossy(),
+            _ => continue, // Skip CurDir, ParentDir, Prefix (drive letters), RootDir
+        };
+        // Only blacklist non-file components (i.e., skip checking the filename itself)
+        // We skip the last component which is the filename
+        if is_blacklisted_dir(&dir_name) {
+            // Make sure this component is actually a directory segment, not the filename
+            if path.file_name().map(|f| f == comp.as_os_str()).unwrap_or(false) {
+                continue; // Don't reject a file just because its name looks like a blacklisted dir
             }
+            return false;
         }
     }
 
     true
 }
+
 
 /// Discovers video files using macOS Spotlight (`mdfind`) for sub-second zero-I/O discovery.
 #[cfg(target_os = "macos")]
@@ -238,28 +262,71 @@ pub fn discover_videos_windows(
     cancel_flag: &Arc<AtomicBool>,
 ) -> Result<Vec<PathBuf>, String> {
     let mut results = Vec::new();
-    let mut roots = Vec::new();
+    let mut roots: Vec<PathBuf> = Vec::new();
+    let mut seen_roots = std::collections::HashSet::<PathBuf>::new();
 
-    // 1. Prioritize user profile media directories
+    let mut add_root = |p: PathBuf| {
+        if p.exists() && seen_roots.insert(p.clone()) {
+            roots.push(p);
+        }
+    };
+
+    // 1. Current user profile — prioritize these so they appear first in results
     if let Ok(user_profile) = std::env::var("USERPROFILE") {
-        let p = PathBuf::from(user_profile);
-        for sub in &["Videos", "Downloads", "Documents", "Desktop"] {
-            let user_dir = p.join(sub);
-            if user_dir.exists() {
-                roots.push(user_dir);
+        let p = PathBuf::from(&user_profile);
+        for sub in &[
+            "Videos", "Downloads", "Documents", "Desktop",
+            "Music", "Pictures", "3D Objects", "Saved Games",
+        ] {
+            add_root(p.join(sub));
+        }
+        // OneDrive personal folder (and variants like "OneDrive - Personal" / "OneDrive - Company")
+        if let Ok(entries) = std::fs::read_dir(&p) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with("OneDrive") && entry.path().is_dir() {
+                    add_root(entry.path());
+                }
             }
         }
     }
 
-    // 2. Discover available drive letters (C:\, D:\, etc.)
-    for letter in b'C'..=b'Z' {
+    // 2. Scan all user profiles under C:\Users\ (covers multi-user PCs and Public folder)
+    let users_dir = PathBuf::from("C:\\Users");
+    if users_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&users_dir) {
+            for entry in entries.flatten() {
+                let user_path = entry.path();
+                if !user_path.is_dir() { continue; }
+                let user_name = entry.file_name().to_string_lossy().to_string();
+                // Skip system pseudo-accounts
+                if matches!(user_name.as_str(), "Default" | "Default User" | "All Users") {
+                    continue;
+                }
+                for sub in &["Videos", "Downloads", "Documents", "Desktop", "Music", "Pictures"] {
+                    add_root(user_path.join(sub));
+                }
+                // OneDrive per-user profile
+                if let Ok(entries2) = std::fs::read_dir(&user_path) {
+                    for e2 in entries2.flatten() {
+                        let n = e2.file_name().to_string_lossy().to_string();
+                        if n.starts_with("OneDrive") && e2.path().is_dir() {
+                            add_root(e2.path());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Discover all drive letters A:\..Z:\ — catches USB drives, external HDDs, SD cards
+    for letter in b'A'..=b'Z' {
         let drive = format!("{}:\\", letter as char);
         let path = PathBuf::from(&drive);
-        if path.exists() {
-            // For C drive, user dirs are already prioritized; for secondary data drives, scan root
-            if letter != b'C' {
-                roots.push(path);
-            }
+        if !path.exists() { continue; }
+        // For C drive, user directories have already been prioritized above.
+        if letter != b'C' {
+            add_root(path);
         }
     }
 
@@ -324,7 +391,8 @@ fn walk_and_collect(
     results: &mut Vec<PathBuf>,
 ) {
     let walker = WalkDir::new(root)
-        .follow_links(false)
+        .follow_links(true)  // Follow symlinks to catch OneDrive, NAS mounts, junction points
+        .same_file_system(false) // Allow crossing filesystem boundaries (external drives)
         .into_iter()
         .filter_entry(|e| {
             let name = e.file_name().to_string_lossy();
