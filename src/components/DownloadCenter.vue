@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { UrlInspectResult, DownloadTask } from '../types';
 
 interface QualityOptionItem {
@@ -39,6 +40,9 @@ const activeFilter = ref<'all' | 'active' | 'completed' | 'failed'>('all');
 const toastMessage = ref<string>('');
 let toastTimer: number | null = null;
 let pollTimer: number | null = null;
+let unlistenPickerUrl: UnlistenFn | null = null;
+let unlistenPickerTask: UnlistenFn | null = null;
+const thumbMap = ref<Record<string, string>>({});
 
 // Supported sites list (Matching Image 1)
 const supportedSites = [
@@ -134,8 +138,13 @@ const videoOptions = computed<QualityOptionItem[]>(() => {
   const formats = inspectResult.value.formats || [];
 
   return standardTiers.map((tier) => {
-    // Find if specific format exists in inspect results
+    // Find if specific format exists in inspect results (prefer direct non-HLS streams)
     const matchedFmt = formats.find((f) => {
+      const res = f.resolution || '';
+      const note = f.note || '';
+      const isM3u8 = note.toLowerCase().includes('m3u8') || note.toLowerCase().includes('hls');
+      return !isM3u8 && (res.includes(`${tier.height}`) || note.includes(`${tier.height}p`));
+    }) || formats.find((f) => {
       const res = f.resolution || '';
       return res.includes(`${tier.height}`) || (f.note && f.note.includes(`${tier.height}p`));
     });
@@ -150,8 +159,8 @@ const videoOptions = computed<QualityOptionItem[]>(() => {
     }
 
     const formatId = matchedFmt?.format_id
-      ? `${matchedFmt.format_id}+bestaudio/bestvideo[height<=${tier.height}]+bestaudio/best`
-      : `bestvideo[height<=${tier.height}]+bestaudio/best[height<=${tier.height}]/best`;
+      ? `${matchedFmt.format_id}+bestaudio/bestvideo[height<=${tier.height}][protocol!=m3u8_native][protocol!=m3u8]+bestaudio/bestvideo[height<=${tier.height}]+bestaudio/best[height<=${tier.height}]/best`
+      : `bestvideo[height<=${tier.height}][protocol!=m3u8_native][protocol!=m3u8]+bestaudio/bestvideo[height<=${tier.height}]+bestaudio/best[height<=${tier.height}]/best`;
 
     return {
       id: `video-${tier.height}p`,
@@ -180,7 +189,7 @@ const musicOptions = computed<QualityOptionItem[]>(() => {
       category: 'music',
       label: tier.label,
       sizeStr: formatFileSize(estBytes),
-      formatId: `bestaudio[abr<=${tier.kbps}]/bestaudio/best`,
+      formatId: `bestaudio[abr<=${tier.kbps}][protocol!=m3u8_native][protocol!=m3u8]/bestaudio[abr<=${tier.kbps}]/bestaudio/best`,
     };
   });
 });
@@ -206,6 +215,9 @@ async function inspectVideoUrl() {
   try {
     const res = await invoke<UrlInspectResult>('inspect_url', { url });
     inspectResult.value = res;
+    if (res.thumbnail) {
+      thumbMap.value[res.url] = res.thumbnail;
+    }
     // Default to 1080P or the first video option
     if (videoOptions.value.length > 0) {
       selectedOptionId.value = videoOptions.value[0].id;
@@ -224,14 +236,19 @@ const isStartingDownload = ref<boolean>(false);
 async function startSelectedDownload() {
   if (!inspectResult.value) return;
   const targetOption = currentSelectedOption.value;
-  const formatId = targetOption ? targetOption.formatId : 'bestvideo+bestaudio/best';
+  const formatId = targetOption ? targetOption.formatId : 'bestvideo[protocol!=m3u8_native][protocol!=m3u8]+bestaudio/bestvideo+bestaudio/best';
 
   isStartingDownload.value = true;
   try {
+    if (inspectResult.value.thumbnail) {
+      thumbMap.value[inspectResult.value.url] = inspectResult.value.thumbnail;
+    }
     await invoke<DownloadTask>('start_download', {
       url: inspectResult.value.url,
       format_id: formatId,
       formatId: formatId,
+      title: inspectResult.value.title || undefined,
+      author: inspectResult.value.uploader || undefined,
     });
     showToast(`已开始下载: ${targetOption?.label || '最佳画质'}`);
     await fetchTasks();
@@ -246,9 +263,23 @@ async function startSelectedDownload() {
   }
 }
 
-// Use supported site sample link
+// Open dedicated Webview Video Sniffer / Picker
+async function openWebviewPicker(url?: string) {
+  try {
+    const targetUrl = url || inputUrl.value.trim() || 'https://www.youtube.com';
+    await invoke('open_video_picker_window', { initialUrl: targetUrl });
+    showToast('已打开 YouTube 网页嗅探窗口，可直接在网页中挑选视频下载');
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    showToast(`打开网页嗅探窗口失败: ${msg}`);
+  }
+}
+
+// Use supported site sample link or open dedicated browser
 function handleSiteClick(site: typeof supportedSites[0]) {
-  if (site.exampleUrl) {
+  if (site.name === 'YouTube' || site.iconType === 'youtube') {
+    openWebviewPicker('https://www.youtube.com');
+  } else if (site.exampleUrl) {
     inputUrl.value = site.exampleUrl;
     inspectVideoUrl();
   } else {
@@ -330,12 +361,24 @@ function viewInLibrary(task: DownloadTask) {
   });
 }
 
+function getTaskThumbnail(task: DownloadTask): string | undefined {
+  if (task.thumbnail) return task.thumbnail;
+  if (thumbMap.value[task.url]) return thumbMap.value[task.url];
+  if (inspectResult.value && inspectResult.value.url === task.url && inspectResult.value.thumbnail) {
+    return inspectResult.value.thumbnail;
+  }
+  return undefined;
+}
+
 async function retryTask(task: DownloadTask) {
   try {
     showToast(`正在重试下载: ${task.title || '视频'}`);
     await invoke('start_download', {
       url: task.url,
+      format_id: task.format_id || undefined,
       formatId: task.format_id || undefined,
+      title: task.title || undefined,
+      author: task.author || undefined,
     });
     currentView.value = 'tasks';
     activeFilter.value = 'active';
@@ -384,11 +427,38 @@ function scheduleNextPoll() {
 onMounted(async () => {
   await fetchTasks();
   scheduleNextPoll();
+
+  try {
+    unlistenPickerUrl = await listen<string>('picker-select-url', (event) => {
+      if (event.payload) {
+        inputUrl.value = event.payload;
+        currentView.value = 'parser';
+        inspectVideoUrl();
+        showToast('已从网页嗅探器载入视频链接');
+      }
+    });
+
+    unlistenPickerTask = await listen<DownloadTask>('picker-task-started', async () => {
+      showToast('网页嗅探：新下载任务已加入队列');
+      await fetchTasks();
+      scheduleNextPoll();
+    });
+  } catch (err) {
+    console.warn('Failed to listen to picker events:', err);
+  }
 });
 
 onUnmounted(() => {
   if (pollTimer) clearTimeout(pollTimer);
   if (toastTimer) clearTimeout(toastTimer);
+  if (unlistenPickerUrl) {
+    unlistenPickerUrl();
+    unlistenPickerUrl = null;
+  }
+  if (unlistenPickerTask) {
+    unlistenPickerTask();
+    unlistenPickerTask = null;
+  }
 });
 </script>
 
@@ -429,6 +499,19 @@ onUnmounted(() => {
       </div>
 
       <div class="topbar-right">
+        <button
+          class="action-pill-btn browser-picker-btn"
+          title="打开 YouTube 网页浏览与视频嗅探窗口"
+          @click="openWebviewPicker()"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+          </svg>
+          <span>YouTube 网页嗅探</span>
+        </button>
+
         <button
           v-if="!props.isStandaloneWindow"
           class="action-pill-btn"
@@ -495,6 +578,28 @@ onUnmounted(() => {
 
       <!-- STATE 1: Not Inspected Yet -> Show Supported Sites (Image 1) -->
       <div v-if="!inspectResult && !isInspecting" class="uninspected-state">
+        <!-- Quick Webview Picker Banner -->
+        <div class="quick-picker-banner" @click="openWebviewPicker('https://www.youtube.com')">
+          <div class="picker-banner-left">
+            <div class="picker-banner-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polygon points="10 8 16 12 10 16 10 8" fill="currentColor"></polygon>
+              </svg>
+            </div>
+            <div class="picker-banner-info">
+              <div class="picker-banner-title">打开 YouTube 网页直接挑选视频</div>
+              <div class="picker-banner-sub">内嵌悬浮嗅探助手，支持一键识别、画质选择与后台极速下载</div>
+            </div>
+          </div>
+          <button class="picker-banner-action" type="button">
+            <span>立即打开</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </button>
+        </div>
+
         <p class="copy-hint-text">Copy link from supported sites.</p>
 
         <h2 class="supported-heading">Supported sites</h2>
@@ -504,6 +609,7 @@ onUnmounted(() => {
             v-for="site in supportedSites"
             :key="site.name"
             class="site-card"
+            :class="{ 'is-interactive-picker': site.iconType === 'youtube' }"
             @click="handleSiteClick(site)"
           >
             <!-- YouTube Icon -->
@@ -515,6 +621,7 @@ onUnmounted(() => {
                 </svg>
               </div>
               <span class="site-name-text yt-font">YouTube</span>
+              <span class="site-badge-picker">网页选择</span>
             </template>
 
             <!-- Vimeo Icon -->
@@ -737,8 +844,8 @@ onUnmounted(() => {
           <div class="task-card-left">
             <div class="task-thumb-box">
               <img
-                v-if="task.thumbnail"
-                :src="task.thumbnail"
+                v-if="getTaskThumbnail(task)"
+                :src="getTaskThumbnail(task)"
                 class="task-thumb"
               />
               <div v-else class="task-thumb-placeholder">🎬</div>
@@ -747,7 +854,10 @@ onUnmounted(() => {
 
           <div class="task-card-center">
             <div class="task-title-row">
-              <span class="task-title" :title="task.title || undefined">{{ task.title }}</span>
+              <div class="task-title-wrapper">
+                <span class="task-title" :title="task.title || task.url">{{ task.title || task.url }}</span>
+                <span v-if="task.author" class="task-author-badge">{{ task.author }}</span>
+              </div>
               <span class="task-status-pill" :class="task.status">{{ task.status }}</span>
             </div>
 
@@ -766,7 +876,7 @@ onUnmounted(() => {
               <span v-if="task.downloaded_bytes && task.total_bytes">
                 {{ formatFileSize(task.downloaded_bytes) }} / {{ formatFileSize(task.total_bytes) }}
               </span>
-              <span v-if="task.eta_str">⏳ 剩余 {{ task.eta_str }}</span>
+              <span v-if="task.eta || task.eta_str">⏳ 剩余 {{ task.eta || task.eta_str }}</span>
             </div>
 
             <!-- Error message if error or failed -->
@@ -912,6 +1022,20 @@ onUnmounted(() => {
   border-color: #d1d5db;
 }
 
+.browser-picker-btn {
+  background: linear-gradient(135deg, #fef2f2, #fff1f2);
+  border-color: #fecaca;
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.browser-picker-btn:hover {
+  background: linear-gradient(135deg, #fee2e2, #fecdd3);
+  border-color: #fca5a5;
+  color: #b91c1c;
+  transform: translateY(-1px);
+}
+
 /* Parser Wrapper */
 .parser-wrapper {
   max-width: 860px;
@@ -1027,6 +1151,90 @@ onUnmounted(() => {
   text-align: center;
 }
 
+/* Quick Webview Picker Banner */
+.quick-picker-banner {
+  max-width: 620px;
+  margin: 10px auto 26px;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: pointer;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.12);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  text-align: left;
+}
+
+.quick-picker-banner:hover {
+  transform: translateY(-2px);
+  border-color: rgba(239, 68, 68, 0.4);
+  box-shadow: 0 8px 24px rgba(239, 68, 68, 0.18);
+}
+
+.picker-banner-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.picker-banner-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+}
+
+.picker-banner-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.picker-banner-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #f8fafc;
+  letter-spacing: -0.2px;
+}
+
+.picker-banner-sub {
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.picker-banner-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.quick-picker-banner:hover .picker-banner-action {
+  background: #ef4444;
+  border-color: #ef4444;
+}
+
 .copy-hint-text {
   font-size: 15px;
   color: #6b7280;
@@ -1064,6 +1272,21 @@ onUnmounted(() => {
 .site-card:hover {
   background-color: #e5e7eb;
   transform: translateY(-2px);
+}
+
+.site-card.is-interactive-picker:hover {
+  background-color: #fef2f2;
+  border: 1px solid #fca5a5;
+}
+
+.site-badge-picker {
+  font-size: 10px;
+  font-weight: 700;
+  background: #ef4444;
+  color: #ffffff;
+  padding: 2px 6px;
+  border-radius: 6px;
+  letter-spacing: 0.2px;
 }
 
 .site-icon-wrapper {
@@ -1449,6 +1672,14 @@ onUnmounted(() => {
   gap: 12px;
 }
 
+.task-title-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .task-title {
   font-size: 14px;
   font-weight: 600;
@@ -1456,7 +1687,17 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 480px;
+  max-width: 420px;
+}
+
+.task-author-badge {
+  font-size: 11px;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .task-status-pill {

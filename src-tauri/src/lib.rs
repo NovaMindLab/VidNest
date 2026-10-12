@@ -10,14 +10,19 @@ pub mod updater;
 pub mod ytdlp;
 
 use commands::{
+    add_tag_to_video, add_videos_to_collection, batch_add_tag_to_videos, batch_update_videos_status,
     cancel_download, cancel_download_task, cancel_full_disk_scan, check_app_update, check_ytdlp_update,
-    clear_completed_tasks, delete_extracted_audio, delete_video, download_and_install_update, echo,
-    extract_audio_from_video, find_duplicate_videos, get_download_tasks, get_player_init_video,
-    get_video_detail, inspect_url, inspect_video_url, install_update_and_relaunch, list_extracted_audios,
-    list_videos, open_update_installer_folder, open_video_player_window, open_ytd_window, pause_download,
-    pause_download_task, ping, relaunch_app, resolve_duplicate_videos, resume_download, resume_download_task,
-    reveal_in_explorer, scan_video_directory, set_player_always_on_top, start_download,
-    start_full_disk_scan, system_health_check, update_ytdlp, PlayerState,
+    clear_completed_tasks, close_video_picker_window, create_collection, create_tag, delete_collection,
+    delete_extracted_audio, delete_tag, delete_video, download_and_install_update, echo,
+    extract_audio_from_video, find_duplicate_videos, get_category_stats, get_collections,
+    get_download_tasks, get_player_init_video, get_source_folders, get_tags, get_video_detail,
+    inspect_url, inspect_video_url, install_update_and_relaunch, list_extracted_audios, list_videos,
+    open_update_installer_folder, open_video_picker_window, open_video_player_window, open_ytd_window,
+    pause_download, pause_download_task, ping, relaunch_app, remove_tag_from_video,
+    remove_video_from_collection, resolve_duplicate_videos, resume_download, resume_download_task,
+    reveal_in_explorer, scan_video_directory, set_player_always_on_top, set_video_color_tag,
+    start_download, start_full_disk_scan, system_health_check, toggle_video_star,
+    update_video_watch_progress, update_ytdlp, PlayerState,
 };
 use db::Database;
 use std::path::PathBuf;
@@ -106,12 +111,31 @@ pub fn run() {
             get_player_init_video,
             set_player_always_on_top,
             open_ytd_window,
+            open_video_picker_window,
+            close_video_picker_window,
             reveal_in_explorer,
             find_duplicate_videos,
             resolve_duplicate_videos,
             extract_audio_from_video,
             list_extracted_audios,
             delete_extracted_audio,
+            get_category_stats,
+            toggle_video_star,
+            update_video_watch_progress,
+            set_video_color_tag,
+            batch_update_videos_status,
+            get_tags,
+            create_tag,
+            delete_tag,
+            add_tag_to_video,
+            remove_tag_from_video,
+            batch_add_tag_to_videos,
+            get_collections,
+            create_collection,
+            delete_collection,
+            add_videos_to_collection,
+            remove_video_from_collection,
+            get_source_folders,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

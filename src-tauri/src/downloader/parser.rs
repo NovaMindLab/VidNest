@@ -86,9 +86,38 @@ pub fn parse_speed_bytes(num: &str, unit: &str) -> Option<f64> {
     Some(val * multiplier)
 }
 
+/// Extracts the last non-empty segment if the line contains multiple carriage returns '\r'.
+pub fn extract_effective_line(line: &str) -> &str {
+    line.split('\r')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .last()
+        .unwrap_or(line)
+}
+
+/// Parses fragment ratio from strings like "(frag 10/381)" or "[download] (frag 5/20)"
+pub fn parse_fragment_ratio(line: &str) -> Option<(f64, f64)> {
+    let lower = line.to_lowercase();
+    let idx = lower.find("frag")?;
+    let slice = &lower[idx + 4..];
+    let slice = slice.trim_start_matches(|c: char| c == ':' || c.is_whitespace());
+    let token = slice
+        .split(|c: char| c == ')' || c == ']' || c.is_whitespace() || c == ',')
+        .next()?;
+    let mut split = token.split('/');
+    let curr = split.next()?.parse::<f64>().ok()?;
+    let total = split.next()?.parse::<f64>().ok()?;
+    if total > 0.0 {
+        Some((curr, total))
+    } else {
+        None
+    }
+}
+
 /// Parses a line of output from yt-dlp to extract progress, total size, speed, ETA, or destination.
 pub fn parse_progress_line(line: &str) -> Option<ProgressUpdate> {
-    let trimmed = line.trim();
+    let effective = extract_effective_line(line);
+    let trimmed = effective.trim();
     if trimmed.is_empty() {
         return None;
     }
@@ -157,6 +186,18 @@ pub fn parse_progress_line(line: &str) -> Option<ProgressUpdate> {
                     }
                 }
             }
+        }
+    }
+
+    // Check for fragment progress (HLS / DASH fragments, e.g. "(frag 10/381)")
+    // In fragment mode, yt-dlp outputs the single-fragment percentage (often oscillating 0.1% ~ 100%).
+    // The true overall completion ratio is (curr / total) * 100.0.
+    if let Some((curr, total)) = parse_fragment_ratio(trimmed) {
+        let frag_pct = ((curr / total) * 1000.0).round() / 10.0;
+        update.progress = Some(frag_pct);
+        has_useful_info = true;
+        if let Some(bytes) = update.total_bytes {
+            update.downloaded_bytes = Some(((bytes as f64) * (frag_pct / 100.0)).round() as u64);
         }
     }
 
@@ -297,6 +338,27 @@ mod tests {
         assert_eq!(res.total_bytes, None);
         assert_eq!(res.eta, None);
         assert_eq!(res.speed_str, Some("500.00KiB/s".to_string()));
+    }
+
+    #[test]
+    fn test_parse_hls_fragment_progress() {
+        // Typical yt-dlp fragment output where single fragment reports 0.1% but frag ratio is 38/380 (10.0%)
+        let line = "[download]   0.1% of ~ 152.88MiB at 12.34MiB/s ETA 00:15 (frag 38/380)";
+        let res = parse_progress_line(line).expect("parse frag progress");
+        assert_eq!(res.progress, Some(10.0));
+        assert_eq!(res.speed_str, Some("12.34MiB/s".to_string()));
+        assert_eq!(res.eta, Some("00:15".to_string()));
+        assert!(res.total_bytes.is_some());
+        assert!(res.downloaded_bytes.is_some());
+    }
+
+    #[test]
+    fn test_parse_carriage_return_progress() {
+        let line = "[download]   1.0% of 10.00MiB at 1.00MiB/s\r[download]  50.0% of 10.00MiB at 2.00MiB/s ETA 00:02";
+        let res = parse_progress_line(line).expect("parse CR line");
+        assert_eq!(res.progress, Some(50.0));
+        assert_eq!(res.speed_str, Some("2.00MiB/s".to_string()));
+        assert_eq!(res.eta, Some("00:02".to_string()));
     }
 
     #[test]

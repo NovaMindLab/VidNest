@@ -5,12 +5,34 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import VideoPlayerModal from './VideoPlayerModal.vue';
 import AudioExtractionModal from './AudioExtractionModal.vue';
-import type { Video, VideoFilter, VideoListResponse, ScanSummary, ScanProgress } from '../types';
+import CategorySidebar, { type CategorySelection } from './CategorySidebar.vue';
+import type { Video, VideoFilter, VideoListResponse, ScanSummary, ScanProgress, CategoryStats, Tag } from '../types';
 
 const emit = defineEmits<{
   (e: 'navigateDedup'): void;
   (e: 'navigateAudios'): void;
 }>();
+
+// Classification & Organization state
+const categoryStats = ref<CategoryStats | null>(null);
+const isCategorySidebarCollapsed = ref<boolean>(localStorage.getItem('vidnest_category_collapsed') === 'true');
+const activeCategory = ref<CategorySelection>({ type: 'all', value: 'all', label: '全部视频' });
+
+// Multi-dimensional filters
+const selectedQuality = ref<string>('');
+const selectedDurationRange = ref<string>('');
+const selectedWatchStatus = ref<string>('');
+
+// Batch selection
+const selectedVideoIds = ref<Set<number>>(new Set());
+
+// Tag modal state
+const showTagModal = ref<boolean>(false);
+const videoForTagging = ref<Video | null>(null);
+
+// Hover scrub state (storyboard preview simulation)
+const hoverVideoId = ref<number | null>(null);
+const hoverScrubPercent = ref<number>(0);
 
 const videos = ref<Video[]>([]);
 const totalVideos = ref<number>(0);
@@ -332,6 +354,181 @@ const visibleRows = computed<VirtualRowPosition[]>(() => {
   return positions.slice(startIdx, endIdx + 1);
 });
 
+async function fetchCategoryStats() {
+  try {
+    const stats = await invoke<CategoryStats>('get_category_stats');
+    categoryStats.value = stats;
+  } catch (err) {
+    console.warn('Failed to fetch category stats:', err);
+  }
+}
+
+function toggleCategorySidebar() {
+  isCategorySidebarCollapsed.value = !isCategorySidebarCollapsed.value;
+  localStorage.setItem('vidnest_category_collapsed', String(isCategorySidebarCollapsed.value));
+}
+
+function handleCategorySelect(selection: CategorySelection) {
+  activeCategory.value = selection;
+  fetchVideos(true);
+}
+
+function resetAllFilters() {
+  activeCategory.value = { type: 'all', value: 'all', label: '全部视频' };
+  selectedCodec.value = '';
+  selectedQuality.value = '';
+  selectedDurationRange.value = '';
+  selectedWatchStatus.value = '';
+  searchText.value = '';
+  fetchVideos(true);
+}
+
+async function toggleStar(video: Video) {
+  try {
+    const newStarred = await invoke<boolean>('toggle_video_star', { videoId: video.id });
+    video.is_starred = newStarred;
+    showToast(newStarred ? '★ 已加入我的收藏' : '已取消收藏');
+    fetchCategoryStats();
+  } catch (err) {
+    showToast(`收藏失败: ${err}`);
+  }
+}
+
+async function cycleWatchStatus(video: Video) {
+  const nextStatus = video.watch_status === 'unwatched' ? 'in_progress' : video.watch_status === 'in_progress' ? 'watched' : 'unwatched';
+  const progress = nextStatus === 'watched' ? 1.0 : (nextStatus === 'unwatched' ? 0.0 : 0.5);
+  try {
+    await invoke('update_video_watch_progress', {
+      videoId: video.id,
+      status: nextStatus,
+      progress,
+    });
+    video.watch_status = nextStatus as any;
+    video.playback_progress = progress;
+    showToast(`已标记为: ${formatWatchStatus(nextStatus)}`);
+    fetchCategoryStats();
+  } catch (err) {
+    showToast(`更新状态失败: ${err}`);
+  }
+}
+
+function formatWatchStatus(status: string): string {
+  if (status === 'watched') return '已看';
+  if (status === 'in_progress') return '在看';
+  return '未看';
+}
+
+async function cycleColorTag(video: Video) {
+  const colors = [null, 'red', 'yellow', 'green', 'blue'];
+  const currentIndex = colors.indexOf(video.color_tag as any);
+  const nextColor = colors[(currentIndex + 1) % colors.length];
+  try {
+    await invoke('set_video_color_tag', {
+      videoId: video.id,
+      color: nextColor,
+    });
+    video.color_tag = nextColor;
+    showToast(nextColor ? `已标记颜色` : '已清除颜色标记');
+    fetchCategoryStats();
+  } catch (err) {
+    showToast(`标记失败: ${err}`);
+  }
+}
+
+function openTagModal(video: Video) {
+  videoForTagging.value = video;
+  showTagModal.value = true;
+}
+
+async function toggleTagOnVideo(tag: Tag) {
+  if (!videoForTagging.value) return;
+  const video = videoForTagging.value;
+  const hasTag = video.tags?.some((t) => t.id === tag.id);
+  try {
+    if (hasTag) {
+      await invoke('remove_tag_from_video', { videoId: video.id, tagId: tag.id });
+      video.tags = video.tags.filter((t) => t.id !== tag.id);
+    } else {
+      await invoke('add_tag_to_video', { videoId: video.id, tagId: tag.id });
+      if (!video.tags) video.tags = [];
+      video.tags.push(tag);
+    }
+    fetchCategoryStats();
+  } catch (err) {
+    showToast(`修改标签失败: ${err}`);
+  }
+}
+
+function toggleSelectVideo(id: number) {
+  if (selectedVideoIds.value.has(id)) {
+    selectedVideoIds.value.delete(id);
+  } else {
+    selectedVideoIds.value.add(id);
+  }
+}
+
+function clearSelection() {
+  selectedVideoIds.value.clear();
+}
+
+async function batchMarkWatched() {
+  if (selectedVideoIds.value.size === 0) return;
+  const ids = Array.from(selectedVideoIds.value);
+  try {
+    await invoke('batch_update_videos_status', {
+      videoIds: ids,
+      watchStatus: 'watched',
+    });
+    for (const v of videos.value) {
+      if (selectedVideoIds.value.has(v.id)) {
+        v.watch_status = 'watched';
+        v.playback_progress = 1.0;
+      }
+    }
+    showToast(`已批量标记 ${ids.length} 个视频为已看`);
+    clearSelection();
+    fetchCategoryStats();
+  } catch (err) {
+    showToast(`批量操作失败: ${err}`);
+  }
+}
+
+async function batchStarVideos() {
+  if (selectedVideoIds.value.size === 0) return;
+  const ids = Array.from(selectedVideoIds.value);
+  try {
+    await invoke('batch_update_videos_status', {
+      videoIds: ids,
+      isStarred: true,
+    });
+    for (const v of videos.value) {
+      if (selectedVideoIds.value.has(v.id)) {
+        v.is_starred = true;
+      }
+    }
+    showToast(`已批量收藏 ${ids.length} 个视频`);
+    clearSelection();
+    fetchCategoryStats();
+  } catch (err) {
+    showToast(`批量收藏失败: ${err}`);
+  }
+}
+
+function handleThumbMouseMove(video: Video, event: MouseEvent) {
+  const target = event.currentTarget as HTMLElement;
+  if (!target) return;
+  const rect = target.getBoundingClientRect();
+  const offsetX = event.clientX - rect.left;
+  const percent = Math.max(0, Math.min(1, offsetX / rect.width));
+  hoverVideoId.value = video.id;
+  hoverScrubPercent.value = percent;
+}
+
+function handleThumbMouseLeave() {
+  hoverVideoId.value = null;
+  hoverScrubPercent.value = 0;
+}
+
 async function fetchVideos(reset = true) {
   if (reset) {
     isLoading.value = true;
@@ -347,7 +544,29 @@ async function fetchVideos(reset = true) {
       sort_by: selectedSort.value || undefined,
       page: currentPage.value,
       page_size: batchSize.value,
+      quality: selectedQuality.value || undefined,
+      duration_range: selectedDurationRange.value || undefined,
+      watch_status: selectedWatchStatus.value || undefined,
     };
+
+    if (activeCategory.value.type === 'smart') {
+      if (activeCategory.value.value === 'starred') {
+        filter.is_starred = true;
+      } else if (['unwatched', 'in_progress', 'watched'].includes(activeCategory.value.value)) {
+        filter.watch_status = activeCategory.value.value;
+      }
+    } else if (activeCategory.value.type === 'format') {
+      filter.format_category = activeCategory.value.value;
+    } else if (activeCategory.value.type === 'color') {
+      filter.color_tag = activeCategory.value.value;
+    } else if (activeCategory.value.type === 'tag') {
+      filter.tag_id = Number(activeCategory.value.value);
+    } else if (activeCategory.value.type === 'folder') {
+      filter.source_folder = activeCategory.value.value;
+    } else if (activeCategory.value.type === 'collection') {
+      filter.collection_id = Number(activeCategory.value.value);
+    }
+
     const res = await invoke<VideoListResponse>('list_videos', { filter });
     if (reset) {
       videos.value = res.items;
@@ -522,6 +741,7 @@ function getResolutionBadge(width: number | null, height: number | null): string
 
 
 onMounted(async () => {
+  fetchCategoryStats();
   fetchVideos(true);
 
   if (galleryPaneRef.value) {
@@ -544,11 +764,13 @@ onMounted(async () => {
       }
       if (event.payload.phase === 'completed') {
         fetchVideos(true);
+        fetchCategoryStats();
       }
     });
 
     unlistenVideoEnriched = await listen<number>('video:enriched', () => {
       fetchVideos(false);
+      fetchCategoryStats();
     });
   } catch (err) {
     console.error('Failed to attach scan listeners:', err);
@@ -565,60 +787,84 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="video-library-container">
-    <!-- Top Compact Header & Toolbar -->
-    <header class="library-toolbar">
-      <div class="toolbar-left-group">
-        <!-- Search -->
-        <div class="search-input-wrap">
-          <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-          <input
-            v-model="searchText"
-            class="search-input-field"
-            placeholder="搜索视频标题、文件名或路径..."
-            @input="onSearchInput"
-          />
-          <button
-            v-if="searchText"
-            class="search-clear-btn"
-            @click="clearSearch"
-          >✕</button>
-        </div>
+  <div class="video-library-split-layout">
+    <!-- Category Sidebar (Collapsible) -->
+    <CategorySidebar
+      :stats="categoryStats"
+      :active-selection="activeCategory"
+      :is-collapsed="isCategorySidebarCollapsed"
+      @select="handleCategorySelect"
+      @toggle-collapse="toggleCategorySidebar"
+      @refresh-stats="fetchCategoryStats"
+    />
 
-        <!-- Codec Pills -->
-        <div class="codec-pills-row">
-          <button
-            class="pill-filter-btn"
-            :class="{ active: selectedCodec === '' }"
-            @click="selectedCodec = ''; fetchVideos(true)"
-          >
-            全部
-          </button>
-          <button
-            v-for="c in (availableCodecs.length > 0 ? availableCodecs : ['H264', 'HEVC', 'AV1'])"
-            :key="c"
-            class="pill-filter-btn font-mono"
-            :class="{ active: selectedCodec === c }"
-            @click="selectedCodec = selectedCodec === c ? '' : c; fetchVideos(true)"
-          >
-            {{ c }}
-          </button>
-        </div>
+    <!-- Main Video Library Pane -->
+    <div class="video-library-main-pane">
+      <div class="video-library-container">
+        <!-- Top Compact Header & Toolbar -->
+        <header class="library-toolbar">
+          <div class="toolbar-left-group">
+            <!-- Search -->
+            <div class="search-input-wrap">
+              <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input
+                v-model="searchText"
+                class="search-input-field"
+                placeholder="搜索视频标题、文件名或路径..."
+                @input="onSearchInput"
+              />
+              <button
+                v-if="searchText"
+                class="search-clear-btn"
+                @click="clearSearch"
+              >✕</button>
+            </div>
 
-        <!-- Sort Select -->
-        <select v-model="selectedSort" class="select-dropdown" @change="fetchVideos(true)">
-          <option value="created_desc">入库时间 (最新优先)</option>
-          <option value="created_asc">入库时间 (最早优先)</option>
-          <option value="duration_desc">视频时长 (长到短)</option>
-          <option value="duration_asc">视频时长 (短到长)</option>
-          <option value="size_desc">文件体积 (大到小)</option>
-          <option value="size_asc">文件体积 (小到大)</option>
-          <option value="name_asc">文件名称 (A - Z)</option>
-        </select>
-      </div>
+            <!-- Multi-dimensional Filter Dropdowns -->
+            <div class="filter-dropdowns-row">
+              <select v-model="selectedQuality" class="select-dropdown compact font-mono" @change="fetchVideos(true)">
+                <option value="">画质: 全部</option>
+                <option value="4k">4K 超清</option>
+                <option value="1080p">1080P 高清</option>
+                <option value="720p">720P 标清</option>
+                <option value="sd">普通 / SD</option>
+              </select>
+
+              <select v-model="selectedDurationRange" class="select-dropdown compact" @change="fetchVideos(true)">
+                <option value="">时长: 全部</option>
+                <option value="under_3m">&lt; 3分钟 (短片)</option>
+                <option value="3_to_30m">3 ~ 30分钟</option>
+                <option value="over_30m">&gt; 30分钟 (长片)</option>
+              </select>
+
+              <select v-model="selectedWatchStatus" class="select-dropdown compact" @change="fetchVideos(true)">
+                <option value="">状态: 全部</option>
+                <option value="unwatched">⚪ 待观看</option>
+                <option value="in_progress">🟡 正在看</option>
+                <option value="watched">🟢 已看</option>
+              </select>
+
+              <select v-model="selectedCodec" class="select-dropdown compact font-mono" @change="fetchVideos(true)">
+                <option value="">编码: 全部</option>
+                <option v-for="c in (availableCodecs.length > 0 ? availableCodecs : ['H264', 'HEVC', 'AV1'])" :key="c" :value="c">
+                  {{ c }}
+                </option>
+              </select>
+
+              <select v-model="selectedSort" class="select-dropdown compact" @change="fetchVideos(true)">
+                <option value="created_desc">入库 (最新)</option>
+                <option value="created_asc">入库 (最早)</option>
+                <option value="duration_desc">时长 (长到短)</option>
+                <option value="duration_asc">时长 (短到长)</option>
+                <option value="size_desc">体积 (大到小)</option>
+                <option value="size_asc">体积 (小到大)</option>
+                <option value="name_asc">文件名 (A-Z)</option>
+              </select>
+            </div>
+          </div>
 
       <div class="toolbar-right-group">
         <!-- Scan / Import Folder Toggle Button -->
@@ -697,6 +943,30 @@ onUnmounted(() => {
         </span>
       </div>
     </header>
+
+    <!-- Category Breadcrumb & Filter Reset Bar -->
+    <div class="category-breadcrumb-bar">
+      <div class="breadcrumb-left">
+        <span class="breadcrumb-prefix-label">当前视图:</span>
+        <span class="active-category-title">{{ activeCategory.label }}</span>
+        <span class="active-category-count">({{ totalVideos }} 部视频)</span>
+        <span
+          v-if="selectedQuality || selectedDurationRange || selectedWatchStatus || selectedCodec"
+          class="filter-badge-hint"
+        >
+          复合筛选已生效
+        </span>
+      </div>
+      <div class="breadcrumb-right">
+        <button
+          v-if="selectedQuality || selectedDurationRange || selectedWatchStatus || selectedCodec || activeCategory.type !== 'all' || searchText"
+          class="btn-reset-filters"
+          @click="resetAllFilters"
+        >
+          重置所有筛选 ✕
+        </button>
+      </div>
+    </div>
 
     <!-- Collapsible Scan Directory Panel -->
     <transition name="drawer">
@@ -849,8 +1119,10 @@ onUnmounted(() => {
         <div v-else class="virtual-scroll-viewport" :style="{ height: totalVirtualHeight + 'px' }">
           <!-- List Mode Header (Sticky atop list view) -->
           <div v-if="viewMode === 'list'" class="list-head-sticky-row">
+            <span class="lh-check"></span>
+            <span class="lh-star"></span>
             <span class="lh-thumb">缩略图</span>
-            <span class="lh-title">文件名与路径</span>
+            <span class="lh-title">文件名与路径 / 标签</span>
             <span class="lh-dur">时长</span>
             <span class="lh-reso">分辨率</span>
             <span class="lh-codec">编码</span>
@@ -897,10 +1169,54 @@ onUnmounted(() => {
                 v-for="video in item.row.videos"
                 :key="video.id"
                 class="video-grid-card"
+                :class="{ 'is-selected': selectedVideoIds.has(video.id) }"
                 @dblclick="openVideo(video)"
               >
+                <!-- Multi-select Checkbox (top-left) -->
+                <div
+                  class="card-select-checkbox"
+                  :class="{ checked: selectedVideoIds.has(video.id) }"
+                  title="多选"
+                  @click.stop="toggleSelectVideo(video.id)"
+                >
+                  <span v-if="selectedVideoIds.has(video.id)">✓</span>
+                </div>
+
+                <!-- Card Top Badges (Star, Color, Watch Status) -->
+                <div class="card-top-badges">
+                  <button
+                    class="badge-star-btn"
+                    :class="{ starred: video.is_starred }"
+                    :title="video.is_starred ? '已收藏 (点击取消)' : '收藏视频'"
+                    @click.stop="toggleStar(video)"
+                  >
+                    ★
+                  </button>
+                  <button
+                    v-if="video.color_tag"
+                    class="badge-color-dot"
+                    :class="video.color_tag"
+                    title="颜色标记 (点击切换)"
+                    @click.stop="cycleColorTag(video)"
+                  ></button>
+                  <button
+                    class="badge-watch-status"
+                    :class="video.watch_status"
+                    title="点击切换观看状态"
+                    @click.stop="cycleWatchStatus(video)"
+                  >
+                    {{ formatWatchStatus(video.watch_status) }}
+                  </button>
+                </div>
+
                 <!-- 16:9 Thumbnail -->
-                <div class="grid-thumb-box" @click="openVideo(video)" title="点击播放视频">
+                <div
+                  class="grid-thumb-box"
+                  @click="openVideo(video)"
+                  @mousemove="handleThumbMouseMove(video, $event)"
+                  @mouseleave="handleThumbMouseLeave"
+                  title="点击播放视频 (左右滑动预览)"
+                >
                   <img
                     v-if="video.thumbnail_data"
                     :src="video.thumbnail_data"
@@ -918,6 +1234,29 @@ onUnmounted(() => {
                     <span class="play-icon-badge">▶</span>
                   </div>
 
+                  <!-- Hover Scrub Visual Cursor & Timestamp -->
+                  <div
+                    v-if="hoverVideoId === video.id && video.duration"
+                    class="hover-scrub-cursor"
+                    :style="{ left: (hoverScrubPercent * 100) + '%' }"
+                  >
+                    <span class="hover-scrub-time font-mono">
+                      {{ formatDuration(video.duration * hoverScrubPercent) }}
+                    </span>
+                  </div>
+
+                  <!-- Playback Progress Bar (at bottom of thumb) -->
+                  <div
+                    v-if="video.playback_progress > 0"
+                    class="playback-progress-track"
+                    :title="`已播放 ${Math.round(video.playback_progress * 100)}%`"
+                  >
+                    <div
+                      class="playback-progress-fill"
+                      :style="{ width: (video.playback_progress * 100) + '%' }"
+                    ></div>
+                  </div>
+
                   <!-- Overlaid badges -->
                   <span v-if="video.duration" class="pill-badge-corner pill-duration font-mono">
                     {{ formatDuration(video.duration) }}
@@ -932,6 +1271,23 @@ onUnmounted(() => {
                   <span class="grid-card-title" :title="video.file_name" @click="openVideo(video)">
                     {{ video.file_name }}
                   </span>
+
+                  <!-- Tags List / Add Tag Button -->
+                  <div class="card-tags-row">
+                    <span
+                      v-for="t in video.tags || []"
+                      :key="t.id"
+                      class="card-tag-pill"
+                      :title="`筛选 #${t.name}`"
+                      @click.stop="handleCategorySelect({ type: 'tag', value: String(t.id), label: `#${t.name}` })"
+                    >
+                      #{{ t.name }}
+                    </span>
+                    <button class="add-tag-pill-btn" title="为视频添加标签" @click.stop="openTagModal(video)">
+                      + 标签
+                    </button>
+                  </div>
+
                   <div class="grid-card-sub">
                     <span v-if="video.codec" class="codec-pill font-mono">{{ video.codec }}</span>
                     <span class="size-text font-mono">{{ formatFileSize(video.file_size) }}</span>
@@ -941,6 +1297,9 @@ onUnmounted(() => {
                   <div class="card-quick-actions">
                     <button class="card-act-btn" title="播放" @click.stop="openVideo(video)">
                       ▶ 播放
+                    </button>
+                    <button class="card-act-btn btn-act-tag" title="管理标签" @click.stop="openTagModal(video)">
+                      🏷️ 标签
                     </button>
                     <button class="card-act-btn btn-act-audio" title="提取音频" @click.stop="openAudioExtract(video)">
                       🎵 提取
@@ -963,8 +1322,25 @@ onUnmounted(() => {
             <div
               v-else-if="item.row.type === 'list-row'"
               class="list-item-row"
+              :class="{ 'is-selected': selectedVideoIds.has(item.row.video.id) }"
               @dblclick="openVideo(item.row.video)"
             >
+              <div
+                class="li-select-cell"
+                @click.stop="toggleSelectVideo(item.row.video.id)"
+              >
+                <div class="card-select-checkbox compact" :class="{ checked: selectedVideoIds.has(item.row.video.id) }">
+                  <span v-if="selectedVideoIds.has(item.row.video.id)">✓</span>
+                </div>
+              </div>
+              <button
+                class="li-star-btn"
+                :class="{ starred: item.row.video.is_starred }"
+                :title="item.row.video.is_starred ? '已收藏' : '未收藏'"
+                @click.stop="toggleStar(item.row.video)"
+              >
+                ★
+              </button>
               <div class="li-thumb" @click="openVideo(item.row.video)" title="点击播放">
                 <img
                   v-if="item.row.video.thumbnail_data"
@@ -973,14 +1349,50 @@ onUnmounted(() => {
                   :alt="item.row.video.file_name"
                 />
                 <div v-else class="li-thumb-placeholder">▶</div>
+                <div
+                  v-if="item.row.video.playback_progress > 0"
+                  class="playback-progress-track"
+                >
+                  <div
+                    class="playback-progress-fill"
+                    :style="{ width: (item.row.video.playback_progress * 100) + '%' }"
+                  ></div>
+                </div>
               </div>
               <div class="li-title-col">
-                <span class="li-name" :title="item.row.video.file_name" @click="openVideo(item.row.video)">
-                  {{ item.row.video.file_name }}
-                </span>
-                <span class="li-path font-mono" :title="item.row.video.file_path">
-                  {{ item.row.video.file_path }}
-                </span>
+                <div class="li-name-row">
+                  <span
+                    v-if="item.row.video.color_tag"
+                    class="badge-color-dot small"
+                    :class="item.row.video.color_tag"
+                    title="颜色标记 (点击切换)"
+                    @click.stop="cycleColorTag(item.row.video)"
+                  ></span>
+                  <span class="li-name" :title="item.row.video.file_name" @click="openVideo(item.row.video)">
+                    {{ item.row.video.file_name }}
+                  </span>
+                  <span
+                    class="badge-watch-status compact"
+                    :class="item.row.video.watch_status"
+                    title="点击切换观看状态"
+                    @click.stop="cycleWatchStatus(item.row.video)"
+                  >
+                    {{ formatWatchStatus(item.row.video.watch_status) }}
+                  </span>
+                </div>
+                <div class="li-tags-sub">
+                  <span
+                    v-for="t in item.row.video.tags || []"
+                    :key="t.id"
+                    class="card-tag-pill compact"
+                    @click.stop="handleCategorySelect({ type: 'tag', value: String(t.id), label: `#${t.name}` })"
+                  >
+                    #{{ t.name }}
+                  </span>
+                  <span class="li-path font-mono" :title="item.row.video.file_path">
+                    {{ item.row.video.file_path }}
+                  </span>
+                </div>
               </div>
               <div class="li-dur font-mono">{{ formatDuration(item.row.video.duration) }}</div>
               <div class="li-reso">{{ getResolutionBadge(item.row.video.width, item.row.video.height) || '-' }}</div>
@@ -988,6 +1400,7 @@ onUnmounted(() => {
               <div class="li-size font-mono">{{ formatFileSize(item.row.video.file_size) }}</div>
               <div class="li-actions">
                 <button class="li-btn" title="播放" @click.stop="openVideo(item.row.video)">▶</button>
+                <button class="li-btn btn-act-tag" title="管理标签" @click.stop="openTagModal(item.row.video)">🏷️</button>
                 <button class="li-btn btn-act-audio" title="提取音频" @click.stop="openAudioExtract(item.row.video)">🎵</button>
                 <button class="li-btn" title="定位文件" @click.stop="revealVideo(item.row.video.file_path)">📁</button>
                 <button class="li-btn" title="复制路径" @click.stop="copyToClipboard(item.row.video.file_path)">📋</button>
@@ -1008,6 +1421,67 @@ onUnmounted(() => {
           </div>
         </div>
       </section>
+    </div> <!-- .master-detail-workspace -->
+      </div> <!-- .video-library-container -->
+    </div> <!-- .video-library-main-pane -->
+
+    <!-- Batch Selection Floating Toolbar -->
+    <transition name="fade-slide">
+      <div v-if="selectedVideoIds.size > 0" class="batch-floating-bar">
+        <div class="batch-bar-left">
+          <span class="batch-count-badge">已选择 <strong>{{ selectedVideoIds.size }}</strong> 部视频</span>
+        </div>
+        <div class="batch-bar-actions">
+          <button class="btn-batch-act btn-batch-star" @click="batchStarVideos">
+            ★ 批量收藏
+          </button>
+          <button class="btn-batch-act btn-batch-watched" @click="batchMarkWatched">
+            ✓ 设为已看
+          </button>
+          <button class="btn-batch-act btn-batch-clear" @click="clearSelection">
+            取消选择
+          </button>
+        </div>
+      </div>
+    </transition>
+
+    <!-- Tag Assignment Modal -->
+    <div v-if="showTagModal && videoForTagging" class="tag-modal-overlay" @click.self="showTagModal = false">
+      <div class="tag-modal-card">
+        <div class="tag-modal-header">
+          <div class="tag-modal-header-info">
+            <h3 class="tag-modal-title">🏷️ 管理视频标签</h3>
+            <p class="tag-modal-subtitle" :title="videoForTagging.file_name">
+              {{ videoForTagging.file_name }}
+            </p>
+          </div>
+          <button class="tag-modal-close-btn" @click="showTagModal = false">✕</button>
+        </div>
+
+        <div class="tag-modal-body">
+          <div class="tag-checklist-label">点击勾选或取消标签关联：</div>
+          <div v-if="categoryStats?.tags && categoryStats.tags.length > 0" class="tag-chips-wrap">
+            <button
+              v-for="tag in categoryStats.tags"
+              :key="tag.id"
+              class="tag-select-chip"
+              :class="{ active: videoForTagging.tags?.some(t => t.id === tag.id) }"
+              @click="toggleTagOnVideo(tag)"
+            >
+              <span class="chip-dot" :style="{ backgroundColor: tag.color || '#3b82f6' }"></span>
+              <span>#{{ tag.name }}</span>
+              <span class="chip-check" v-if="videoForTagging.tags?.some(t => t.id === tag.id)">✓</span>
+            </button>
+          </div>
+          <div v-else class="tag-empty-hint">
+            暂无自定义标签。可在左侧分类栏的“自定义标签”区域点击“+”新建。
+          </div>
+        </div>
+
+        <div class="tag-modal-footer">
+          <button class="btn btn-primary" @click="showTagModal = false">完成</button>
+        </div>
+      </div>
     </div>
 
     <!-- Video Player Modal Component -->
@@ -1024,7 +1498,6 @@ onUnmounted(() => {
       @close="showAudioExtractModal = false"
       @view-in-audio-library="emit('navigateAudios')"
     />
-
 
     <!-- Confirm Delete Modal (彻底替换被系统拦截的 window.confirm) -->
     <div v-if="showDeleteConfirmModal" class="confirm-modal-overlay" @click.self="showDeleteConfirmModal = false">
@@ -1086,6 +1559,25 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.video-library-split-layout {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  background-color: var(--bg-app);
+}
+
+.video-library-main-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
 .video-library-container {
   display: flex;
   flex-direction: column;
@@ -1624,7 +2116,7 @@ onUnmounted(() => {
   top: 0;
   z-index: 10;
   display: grid;
-  grid-template-columns: 56px 1fr 80px 80px 75px 75px 140px;
+  grid-template-columns: 28px 28px 56px 1fr 80px 80px 75px 75px 160px;
   padding: 0.6rem 0.85rem;
   background: var(--bg-input);
   font-size: 0.75rem;
@@ -1811,7 +2303,7 @@ onUnmounted(() => {
 
 .list-item-row {
   display: grid;
-  grid-template-columns: 56px 1fr 80px 80px 75px 75px 140px;
+  grid-template-columns: 28px 28px 56px 1fr 80px 80px 75px 75px 160px;
   padding: 0.5rem 0.85rem;
   align-items: center;
   font-size: 0.8rem;
@@ -2257,6 +2749,575 @@ onUnmounted(() => {
 @keyframes modalFadeIn {
   from { opacity: 0; transform: scale(0.97); }
   to { opacity: 1; transform: scale(1); }
+}
+/* Multi-dimensional Filter Row */
+.filter-dropdowns-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.select-dropdown.compact {
+  padding: 0.28rem 0.55rem;
+  font-size: 0.76rem;
+  border-radius: 6px;
+  height: 28px;
+}
+
+/* Category Breadcrumb & Filter Reset Bar */
+.category-breadcrumb-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 1.25rem;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.78rem;
+  min-height: 32px;
+}
+
+.breadcrumb-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.breadcrumb-prefix-label {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.active-category-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.active-category-count {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+
+.filter-badge-hint {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 500;
+}
+
+.breadcrumb-right {
+  display: flex;
+  align-items: center;
+}
+
+.btn-reset-filters {
+  background: transparent;
+  border: 1px dashed var(--border-subtle);
+  color: var(--text-muted);
+  border-radius: 5px;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-reset-filters:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.05);
+}
+
+/* Card Selection Checkbox */
+.card-select-checkbox {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 1.5px solid rgba(255, 255, 255, 0.6);
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 5;
+  transition: all 0.15s ease;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.video-grid-card:hover .card-select-checkbox,
+.card-select-checkbox.checked {
+  opacity: 1;
+}
+
+.video-grid-card:not(:hover) .card-select-checkbox:not(.checked) {
+  opacity: 0;
+}
+
+.card-select-checkbox.checked {
+  background: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.card-select-checkbox.compact {
+  position: static;
+  width: 16px;
+  height: 16px;
+  font-size: 9px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  color: #ffffff;
+  opacity: 1 !important;
+}
+
+.card-select-checkbox.compact.checked {
+  background: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.video-grid-card.is-selected,
+.list-item-row.is-selected {
+  outline: 2px solid #3b82f6;
+  outline-offset: -1px;
+  background: rgba(59, 130, 246, 0.05);
+}
+
+/* Card Top Badges */
+.card-top-badges {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  z-index: 5;
+}
+
+.badge-star-btn {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.badge-star-btn:hover {
+  color: #fbbf24;
+  transform: scale(1.1);
+}
+
+.badge-star-btn.starred {
+  background: rgba(245, 158, 11, 0.85);
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+}
+
+.badge-color-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.badge-color-dot:hover {
+  transform: scale(1.2);
+}
+
+.badge-color-dot.small {
+  width: 8px;
+  height: 8px;
+  border: none;
+  display: inline-block;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.badge-color-dot.red { background: #ef4444; }
+.badge-color-dot.yellow { background: #f59e0b; }
+.badge-color-dot.green { background: #10b981; }
+.badge-color-dot.blue { background: #3b82f6; }
+
+.badge-watch-status {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  border: none;
+  color: #e2e8f0;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.badge-watch-status:hover {
+  background: rgba(0, 0, 0, 0.85);
+}
+
+.badge-watch-status.watched {
+  color: #34d399;
+}
+
+.badge-watch-status.in_progress {
+  color: #fbbf24;
+}
+
+.badge-watch-status.compact {
+  font-size: 9px;
+  padding: 1px 5px;
+  margin-left: 6px;
+}
+
+/* Playback Progress Bar */
+.playback-progress-track {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 3;
+}
+
+.playback-progress-fill {
+  height: 100%;
+  background: #3b82f6;
+  border-radius: 0 1px 1px 0;
+}
+
+/* Hover Scrub Preview Cursor & Time */
+.hover-scrub-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #ffffff;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  z-index: 4;
+}
+
+.hover-scrub-time {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: #ffffff;
+  font-size: 10px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+/* Tags in Cards */
+.card-tags-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.card-tag-pill {
+  font-size: 10px;
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  padding: 1px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+}
+
+.card-tag-pill:hover {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: #3b82f6;
+}
+
+.card-tag-pill.compact {
+  font-size: 9px;
+  padding: 0 4px;
+}
+
+.add-tag-pill-btn {
+  font-size: 10px;
+  background: none;
+  border: 1px dashed var(--border-subtle);
+  color: var(--text-muted);
+  padding: 1px 5px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.add-tag-pill-btn:hover {
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+
+/* List Mode Styles */
+.li-select-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.li-star-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.li-star-btn:hover,
+.li-star-btn.starred {
+  color: #f59e0b;
+}
+
+.li-name-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.li-tags-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  overflow: hidden;
+}
+
+.btn-act-tag {
+  color: #8b5cf6;
+}
+
+/* Floating Batch Operation Toolbar */
+.batch-floating-bar {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+  border-radius: 12px;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  z-index: 100;
+  backdrop-filter: blur(8px);
+}
+
+.batch-count-badge {
+  font-size: 0.82rem;
+  color: var(--text-primary);
+}
+
+.batch-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-batch-act {
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-batch-star {
+  background: #f59e0b;
+  color: #ffffff;
+}
+
+.btn-batch-star:hover {
+  background: #d97706;
+}
+
+.btn-batch-watched {
+  background: #10b981;
+  color: #ffffff;
+}
+
+.btn-batch-watched:hover {
+  background: #059669;
+}
+
+.btn-batch-clear {
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+.btn-batch-clear:hover {
+  background: var(--btn-hover);
+  color: var(--text-primary);
+}
+
+/* Tag Modal */
+.tag-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: modalFadeIn 0.15s ease;
+}
+
+.tag-modal-card {
+  width: 90%;
+  max-width: 440px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tag-modal-header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.tag-modal-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tag-modal-subtitle {
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+.tag-modal-close-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.tag-modal-body {
+  padding: 1.25rem;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.tag-checklist-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.tag-chips-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag-select-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tag-select-chip:hover {
+  border-color: #3b82f6;
+  background: var(--btn-hover);
+}
+
+.tag-select-chip.active {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: #3b82f6;
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+.chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.chip-check {
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.tag-empty-hint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  padding: 0.5rem 0;
+}
+
+.tag-modal-footer {
+  padding: 0.85rem 1.25rem;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-header);
+  display: flex;
+  justify-content: flex-end;
 }
 </style>
 

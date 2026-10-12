@@ -56,6 +56,27 @@ pub struct YtDlpUpdateResult {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Tag {
+    pub id: i64,
+    pub name: String,
+    pub color: Option<String>,
+    pub created_at: i64,
+    pub video_count: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Collection {
+    pub id: i64,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_smart: bool,
+    pub rules_json: Option<String>,
+    pub video_count: usize,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Video {
     pub id: i64,
@@ -72,6 +93,12 @@ pub struct Video {
     pub status: String,
     pub thumbnail_path: Option<String>,
     pub thumbnail_data: Option<String>, // Base64 data URL for frontend rendering
+    pub is_starred: bool,
+    pub watch_status: String, // "unwatched" | "in_progress" | "watched"
+    pub playback_progress: f64, // 0.0 ~ 1.0
+    pub color_tag: Option<String>, // "red" | "yellow" | "green" | "blue"
+    pub last_played_at: Option<i64>,
+    pub tags: Vec<Tag>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -81,6 +108,40 @@ pub struct VideoFilter {
     pub sort_by: Option<String>, // "created_desc", "duration_desc", "size_desc", "name_asc"
     pub page: Option<usize>,
     pub page_size: Option<usize>,
+    pub format_category: Option<String>, // "all" | "shorts" | "movies" | "series" | "screen"
+    pub quality: Option<String>,          // "all" | "4k" | "1080p" | "720p" | "sd"
+    pub duration_range: Option<String>,   // "all" | "under_3m" | "3_to_30m" | "over_30m"
+    pub watch_status: Option<String>,     // "all" | "unwatched" | "in_progress" | "watched"
+    pub is_starred: Option<bool>,
+    pub color_tag: Option<String>,
+    pub tag_id: Option<i64>,
+    pub collection_id: Option<i64>,
+    pub source_folder: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SourceFolderStat {
+    pub folder_path: String,
+    pub folder_name: String,
+    pub video_count: usize,
+    pub total_size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CategoryStats {
+    pub total_videos: usize,
+    pub total_size_bytes: u64,
+    pub shorts_count: usize,
+    pub movies_count: usize,
+    pub series_count: usize,
+    pub screen_count: usize,
+    pub unwatched_count: usize,
+    pub in_progress_count: usize,
+    pub watched_count: usize,
+    pub starred_count: usize,
+    pub tags: Vec<Tag>,
+    pub collections: Vec<Collection>,
+    pub source_folders: Vec<SourceFolderStat>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

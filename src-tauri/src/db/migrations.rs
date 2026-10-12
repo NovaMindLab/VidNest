@@ -128,6 +128,58 @@ pub const MIGRATIONS: &[Migration] = &[
         CREATE INDEX IF NOT EXISTS idx_extracted_audios_format ON extracted_audios(format);
         "#,
     },
+    Migration {
+        version: 4,
+        name: "v4_video_classification_and_tags",
+        sql: r#"
+        -- 标签主表
+        CREATE TABLE IF NOT EXISTS tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            color TEXT,
+            created_at INTEGER NOT NULL
+        );
+
+        -- 视频标签多对多关联表
+        CREATE TABLE IF NOT EXISTS video_tags (
+            video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+            tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (video_id, tag_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_video_tags_tag ON video_tags(tag_id);
+
+        -- 自定义合集/播单表
+        CREATE TABLE IF NOT EXISTS collections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT,
+            is_smart INTEGER NOT NULL DEFAULT 0,
+            rules_json TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+
+        -- 合集与视频关联表
+        CREATE TABLE IF NOT EXISTS collection_items (
+            collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+            video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (collection_id, video_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_collection_items_video ON collection_items(video_id);
+
+        -- 扩展 videos 状态与分类字段
+        ALTER TABLE videos ADD COLUMN is_starred INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE videos ADD COLUMN watch_status TEXT NOT NULL DEFAULT 'unwatched';
+        ALTER TABLE videos ADD COLUMN playback_progress REAL NOT NULL DEFAULT 0.0;
+        ALTER TABLE videos ADD COLUMN color_tag TEXT;
+        ALTER TABLE videos ADD COLUMN last_played_at INTEGER;
+        "#,
+    },
 ];
 
 pub fn apply_all(conn: &Connection) -> Result<(), String> {
@@ -193,6 +245,11 @@ mod tests {
             .expect("Query migrations");
         assert_eq!(count_v2, 1);
 
+        let count_v4: i64 = conn
+            .query_row("SELECT COUNT(*) FROM schema_migrations WHERE version = 4", [], |r| r.get(0))
+            .expect("Query migrations");
+        assert_eq!(count_v4, 1);
+
         // Verify tables exist
         let tables_exist: bool = conn
             .query_row(
@@ -202,6 +259,15 @@ mod tests {
             )
             .expect("Query tables");
         assert!(tables_exist);
+
+        let tags_exist: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='tags')",
+                [],
+                |r| r.get(0),
+            )
+            .expect("Query tags table");
+        assert!(tags_exist);
 
         // Verify FTS5 virtual table works
         conn.execute(

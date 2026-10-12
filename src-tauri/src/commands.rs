@@ -2,10 +2,10 @@ use crate::db::Database;
 use crate::health::run_health_check;
 use crate::media::read_thumbnail_base64;
 use crate::models::{
-    AudioExtractionOptions, AudioExtractionResult, DownloadTask, DuplicateGroup,
-    DuplicateResolutionAction, ExtractedAudio, ExtractedAudioFilter, HealthReport,
-    ResolutionSummary, ScanSummary, UrlInspectResult, Video, VideoFilter, VideoListResponse,
-    YtDlpUpdateCheck, YtDlpUpdateResult,
+    AudioExtractionOptions, AudioExtractionResult, CategoryStats, Collection, DownloadTask,
+    DuplicateGroup, DuplicateResolutionAction, ExtractedAudio, ExtractedAudioFilter, HealthReport,
+    ResolutionSummary, ScanSummary, SourceFolderStat, Tag, UrlInspectResult, Video, VideoFilter,
+    VideoListResponse, YtDlpUpdateCheck, YtDlpUpdateResult,
 };
 use crate::scanner::scan_directory;
 use crate::ytdlp;
@@ -281,6 +281,8 @@ pub async fn inspect_video_url(url: String, app: AppHandle) -> Result<UrlInspect
 pub async fn start_download(
     url: String,
     format_id: Option<String>,
+    title: Option<String>,
+    author: Option<String>,
     app: AppHandle,
     db: State<'_, Database>,
 ) -> Result<DownloadTask, String> {
@@ -292,7 +294,7 @@ pub async fn start_download(
     });
     let manager = crate::downloader::DownloadManager::global();
     manager
-        .start_download(url, format_id, app_data_path, (*db).clone())
+        .start_download(url, format_id, title, author, app_data_path, (*db).clone())
         .await
 }
 
@@ -645,6 +647,22 @@ pub async fn open_ytd_window(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn open_video_picker_window(
+    app: AppHandle,
+    initial_url: Option<String>,
+) -> Result<(), String> {
+    crate::downloader::open_video_picker_window_sync(&app, initial_url)
+}
+
+#[tauri::command]
+pub async fn close_video_picker_window(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("video-picker-window") {
+        let _ = win.close();
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn find_duplicate_videos(
     strategy: Option<String>,
     db: State<'_, Database>,
@@ -778,6 +796,271 @@ pub async fn delete_extracted_audio(
         let conn_arc = db_clone.get_connection();
         let conn = conn_arc.lock().map_err(|e| e.to_string())?;
         crate::db::audios::delete_extracted_audio(&conn, id, delete_disk_file)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ==========================================
+// Video Classification & Organization Commands
+// ==========================================
+
+#[tauri::command]
+pub async fn get_category_stats(db: State<'_, Database>) -> Result<CategoryStats, String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::db::classification::get_category_stats(&conn)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn toggle_video_star(video_id: i64, db: State<'_, Database>) -> Result<bool, String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::db::classification::toggle_video_star(&conn, video_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn update_video_watch_progress(
+    video_id: i64,
+    status: String,
+    progress: f64,
+    db: State<'_, Database>,
+) -> Result<(), String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::db::classification::update_video_watch_progress(&conn, video_id, &status, progress)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn set_video_color_tag(
+    video_id: i64,
+    color: Option<String>,
+    db: State<'_, Database>,
+) -> Result<(), String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::db::classification::set_video_color_tag(&conn, video_id, color.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn batch_update_videos_status(
+    video_ids: Vec<i64>,
+    watch_status: Option<String>,
+    is_starred: Option<bool>,
+    color_tag: Option<String>,
+    db: State<'_, Database>,
+) -> Result<(), String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::db::classification::batch_update_videos_status(
+            &conn,
+            &video_ids,
+            watch_status.as_deref(),
+            is_starred,
+            color_tag.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn get_tags(db: State<'_, Database>) -> Result<Vec<Tag>, String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::db::classification::get_all_tags(&conn)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn create_tag(
+    name: String,
+    color: Option<String>,
+    db: State<'_, Database>,
+) -> Result<Tag, String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::db::classification::create_tag(&conn, &name, color.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn delete_tag(id: i64, db: State<'_, Database>) -> Result<(), String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::db::classification::delete_tag(&conn, id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn add_tag_to_video(
+    video_id: i64,
+    tag_id: i64,
+    db: State<'_, Database>,
+) -> Result<(), String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::db::classification::add_tag_to_video(&conn, video_id, tag_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn remove_tag_from_video(
+    video_id: i64,
+    tag_id: i64,
+    db: State<'_, Database>,
+) -> Result<(), String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::db::classification::remove_tag_from_video(&conn, video_id, tag_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn batch_add_tag_to_videos(
+    video_ids: Vec<i64>,
+    tag_id: i64,
+    db: State<'_, Database>,
+) -> Result<(), String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::db::classification::batch_add_tag_to_videos(&conn, &video_ids, tag_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn get_collections(db: State<'_, Database>) -> Result<Vec<Collection>, String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::db::classification::get_all_collections(&conn)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn create_collection(
+    name: String,
+    description: Option<String>,
+    is_smart: Option<bool>,
+    rules_json: Option<String>,
+    db: State<'_, Database>,
+) -> Result<Collection, String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::db::classification::create_collection(
+            &conn,
+            &name,
+            description.as_deref(),
+            is_smart.unwrap_or(false),
+            rules_json.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn delete_collection(id: i64, db: State<'_, Database>) -> Result<(), String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::db::classification::delete_collection(&conn, id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn add_videos_to_collection(
+    collection_id: i64,
+    video_ids: Vec<i64>,
+    db: State<'_, Database>,
+) -> Result<(), String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::db::classification::add_videos_to_collection(&conn, collection_id, &video_ids)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn remove_video_from_collection(
+    collection_id: i64,
+    video_id: i64,
+    db: State<'_, Database>,
+) -> Result<(), String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::db::classification::remove_video_from_collection(&conn, collection_id, video_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn get_source_folders(db: State<'_, Database>) -> Result<Vec<SourceFolderStat>, String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::db::classification::get_source_folders(&conn)
     })
     .await
     .map_err(|e| e.to_string())?

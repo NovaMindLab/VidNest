@@ -58,21 +58,65 @@ pub fn resolve_ffmpeg_dir(app_data_dir: Option<&Path>) -> Option<PathBuf> {
     None
 }
 
-/// Locates a viable JavaScript runtime (Node.js or Deno) for yt-dlp.
+/// Locates a viable JavaScript runtime (Deno, Bun, or Node.js) for yt-dlp.
 pub fn resolve_js_runtime() -> Option<String> {
     #[cfg(unix)]
     {
+        // 1. Check well-known system locations
         for p in &[
+            "/opt/homebrew/bin/deno",
+            "/usr/local/bin/deno",
+            "/opt/homebrew/bin/bun",
+            "/usr/local/bin/bun",
             "/opt/homebrew/bin/node",
             "/usr/local/bin/node",
             "/usr/bin/node",
-            "/opt/homebrew/bin/deno",
-            "/usr/local/bin/deno",
         ] {
             let path = Path::new(p);
             if path.exists() {
-                let kind = if p.ends_with("deno") { "deno" } else { "node" };
+                let kind = if p.contains("deno") {
+                    "deno"
+                } else if p.contains("bun") {
+                    "bun"
+                } else {
+                    "node"
+                };
                 return Some(format!("{}:{}", kind, p));
+            }
+        }
+
+        // 2. Check user home directories (.deno, .bun, .nvm, .volta)
+        if let Ok(home) = std::env::var("HOME") {
+            let home_path = Path::new(&home);
+
+            let deno_bin = home_path.join(".deno/bin/deno");
+            if deno_bin.exists() {
+                return Some(format!("deno:{}", deno_bin.to_string_lossy()));
+            }
+
+            let bun_bin = home_path.join(".bun/bin/bun");
+            if bun_bin.exists() {
+                return Some(format!("bun:{}", bun_bin.to_string_lossy()));
+            }
+
+            let nvm_versions = home_path.join(".nvm/versions/node");
+            if let Ok(entries) = std::fs::read_dir(&nvm_versions) {
+                let mut node_candidates = Vec::new();
+                for entry in entries.flatten() {
+                    let bin = entry.path().join("bin/node");
+                    if bin.exists() {
+                        node_candidates.push(bin);
+                    }
+                }
+                node_candidates.sort();
+                if let Some(latest) = node_candidates.last() {
+                    return Some(format!("node:{}", latest.to_string_lossy()));
+                }
+            }
+
+            let volta_bin = home_path.join(".volta/bin/node");
+            if volta_bin.exists() {
+                return Some(format!("node:{}", volta_bin.to_string_lossy()));
             }
         }
     }
@@ -81,13 +125,30 @@ pub fn resolve_js_runtime() -> Option<String> {
         let sep = if cfg!(windows) { ';' } else { ':' };
         for part in path_var.split(sep) {
             let p = Path::new(part);
+            let deno_name = if cfg!(windows) { "deno.exe" } else { "deno" };
+            if p.join(deno_name).exists() {
+                return Some(format!("deno:{}", p.join(deno_name).to_string_lossy()));
+            }
+            let bun_name = if cfg!(windows) { "bun.exe" } else { "bun" };
+            if p.join(bun_name).exists() {
+                return Some(format!("bun:{}", p.join(bun_name).to_string_lossy()));
+            }
             let node_name = if cfg!(windows) { "node.exe" } else { "node" };
             if p.join(node_name).exists() {
                 return Some(format!("node:{}", p.join(node_name).to_string_lossy()));
             }
-            let deno_name = if cfg!(windows) { "deno.exe" } else { "deno" };
-            if p.join(deno_name).exists() {
-                return Some(format!("deno:{}", p.join(deno_name).to_string_lossy()));
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        for p in &[
+            r"C:\Program Files\nodejs\node.exe",
+            r"C:\Program Files (x86)\nodejs\node.exe",
+        ] {
+            let path = Path::new(p);
+            if path.exists() {
+                return Some(format!("node:{}", p));
             }
         }
     }
@@ -115,8 +176,13 @@ pub fn build_download_args(
         "5".to_string(),
         "--fragment-retries".to_string(),
         "5".to_string(),
-        "--extractor-args".to_string(),
-        "youtube:player_client=android,web".to_string(),
+        "--progress".to_string(),
+        "--no-quiet".to_string(),
+        "--no-simulate".to_string(),
+        "--concurrent-fragments".to_string(),
+        "5".to_string(),
+        "--throttled-rate".to_string(),
+        "100K".to_string(),
         "--compat-options".to_string(),
         "no-youtube-unavailable-videos".to_string(),
         "--print".to_string(),
@@ -170,8 +236,6 @@ pub async fn inspect_url(url: &str, app_data_dir: Option<&Path>) -> Result<UrlIn
         "--no-colors".to_string(),
         "--skip-download".to_string(),
         "--no-check-certificates".to_string(),
-        "--extractor-args".to_string(),
-        "youtube:player_client=android,web".to_string(),
     ];
 
     if let Some(ff_loc) = resolve_ffmpeg_dir(app_data_dir) {
@@ -383,20 +447,25 @@ where
             line_res = reader.next_line() => {
                 match line_res {
                     Ok(Some(line)) => {
-                        let trimmed = line.trim();
-                        // Check if line is directly a filepath printed by `--print after_move:filepath`
-                        if !trimmed.starts_with('[') && !trimmed.is_empty() {
-                            let path = PathBuf::from(trimmed);
-                            if path.is_file() || trimmed.ends_with(".mp4") || trimmed.ends_with(".mkv") || trimmed.ends_with(".webm") {
-                                captured_filepath = Some(path);
+                        for subline in line.split('\r') {
+                            let trimmed = subline.trim();
+                            if trimmed.is_empty() {
+                                continue;
                             }
-                        }
+                            // Check if subline is directly a filepath printed by `--print after_move:filepath`
+                            if !trimmed.starts_with('[') {
+                                let path = PathBuf::from(trimmed);
+                                if path.is_file() || trimmed.ends_with(".mp4") || trimmed.ends_with(".mkv") || trimmed.ends_with(".webm") {
+                                    captured_filepath = Some(path);
+                                }
+                            }
 
-                        if let Some(update) = parse_progress_line(&line) {
-                            if let Some(ref fp) = update.file_path {
-                                captured_filepath = Some(PathBuf::from(fp));
+                            if let Some(update) = parse_progress_line(trimmed) {
+                                if let Some(ref fp) = update.file_path {
+                                    captured_filepath = Some(PathBuf::from(fp));
+                                }
+                                on_progress(update);
                             }
-                            on_progress(update);
                         }
                     }
                     Ok(None) => break, // EOF

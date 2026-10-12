@@ -48,6 +48,48 @@ export interface YtDlpUpdateResult {
   message: string;
 }
 
+export interface Tag {
+  id: number;
+  name: string;
+  color?: string | null;
+  created_at: number;
+  video_count?: number;
+}
+
+export interface Collection {
+  id: number;
+  name: string;
+  description?: string | null;
+  is_smart: boolean;
+  rules_json?: string | null;
+  video_count: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface SourceFolderStat {
+  folder_path: string;
+  folder_name: string;
+  video_count: number;
+  total_size_bytes: number;
+}
+
+export interface CategoryStats {
+  total_videos: number;
+  total_size_bytes: number;
+  shorts_count: number;
+  movies_count: number;
+  series_count: number;
+  screen_count: number;
+  unwatched_count: number;
+  in_progress_count: number;
+  watched_count: number;
+  starred_count: number;
+  tags: Tag[];
+  collections: Collection[];
+  source_folders: SourceFolderStat[];
+}
+
 export interface Video {
   id: number;
   file_path: string;
@@ -63,6 +105,12 @@ export interface Video {
   status: string;
   thumbnail_path: string | null;
   thumbnail_data: string | null;
+  is_starred: boolean;
+  watch_status: 'unwatched' | 'in_progress' | 'watched';
+  playback_progress: number;
+  color_tag?: string | null;
+  last_played_at?: number | null;
+  tags: Tag[];
 }
 
 export interface VideoFilter {
@@ -71,6 +119,15 @@ export interface VideoFilter {
   sort_by?: string;
   page?: number;
   page_size?: number;
+  format_category?: string;
+  quality?: string;
+  duration_range?: string;
+  watch_status?: string;
+  is_starred?: boolean;
+  color_tag?: string;
+  tag_id?: number;
+  collection_id?: number;
+  source_folder?: string;
 }
 
 export interface VideoListResponse {

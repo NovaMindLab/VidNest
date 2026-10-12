@@ -62,6 +62,8 @@ impl DownloadManager {
         &self,
         url: String,
         format_id: Option<String>,
+        title: Option<String>,
+        author: Option<String>,
         app_data_dir: PathBuf,
         db: Database,
     ) -> Result<DownloadTask, String> {
@@ -78,8 +80,8 @@ impl DownloadManager {
         let task = DownloadTask {
             id: task_id.clone(),
             url: url.clone(),
-            title: None,
-            author: None,
+            title,
+            author,
             platform: Some(platform),
             format_id: format_id.clone(),
             status: "pending".to_string(),
@@ -497,6 +499,8 @@ mod tests {
             .start_download(
                 "https://www.youtube.com/watch?v=dummy".to_string(),
                 None,
+                Some("Dummy Video".to_string()),
+                Some("Dummy Author".to_string()),
                 temp_dir,
                 db,
             )
@@ -504,6 +508,8 @@ mod tests {
             .expect("start download");
 
         assert_eq!(task.status, "pending");
+        assert_eq!(task.title, Some("Dummy Video".to_string()));
+        assert_eq!(task.author, Some("Dummy Author".to_string()));
         assert_eq!(task.progress, 0.0);
 
         let tasks = manager.get_tasks().await;

@@ -149,6 +149,107 @@ pub fn list_videos(conn: &Connection, filter: VideoFilter) -> Result<VideoListRe
         param_values.push(codec_text.to_uppercase());
     }
 
+    // format_category
+    if let Some(cat) = filter.format_category.as_deref().filter(|s| !s.is_empty() && *s != "all") {
+        match cat {
+            "shorts" => {
+                conditions.push("((duration IS NOT NULL AND duration <= 90) OR (width IS NOT NULL AND height IS NOT NULL AND width > 0 AND height > 0 AND width < height))".to_string());
+            }
+            "movies" => {
+                conditions.push("(duration >= 2700 AND (width IS NULL OR height IS NULL OR width >= height))".to_string());
+            }
+            "series" => {
+                conditions.push("(file_name LIKE '%E0%' OR file_name LIKE '%E1%' OR file_name LIKE '%EP%' OR file_name LIKE '%第%集%' OR file_name LIKE '%第%话%' OR file_name LIKE '%S0%')".to_string());
+            }
+            "screen" => {
+                conditions.push("(file_name LIKE '%Screen%' OR file_name LIKE '%录屏%' OR file_name LIKE '%截屏%' OR file_name LIKE '%OBS%' OR file_name LIKE '%Record%')".to_string());
+            }
+            _ => {}
+        }
+    }
+
+    // quality
+    if let Some(q) = filter.quality.as_deref().filter(|s| !s.is_empty() && *s != "all") {
+        match q {
+            "4k" => {
+                conditions.push("(width >= 3840 OR height >= 2160)".to_string());
+            }
+            "1080p" => {
+                conditions.push("((width >= 1920 AND width < 3840) OR (height >= 1080 AND height < 2160))".to_string());
+            }
+            "720p" => {
+                conditions.push("((width >= 1280 AND width < 1920) OR (height >= 720 AND height < 1080))".to_string());
+            }
+            "sd" => {
+                conditions.push("(width < 1280 AND height < 720 AND width > 0 AND height > 0)".to_string());
+            }
+            _ => {}
+        }
+    }
+
+    // duration_range
+    if let Some(dr) = filter.duration_range.as_deref().filter(|s| !s.is_empty() && *s != "all") {
+        match dr {
+            "under_3m" => {
+                conditions.push("(duration IS NOT NULL AND duration < 180)".to_string());
+            }
+            "3_to_30m" => {
+                conditions.push("(duration IS NOT NULL AND duration >= 180 AND duration <= 1800)".to_string());
+            }
+            "over_30m" => {
+                conditions.push("(duration IS NOT NULL AND duration > 1800)".to_string());
+            }
+            _ => {}
+        }
+    }
+
+    // watch_status
+    if let Some(ws) = filter.watch_status.as_deref().filter(|s| !s.is_empty() && *s != "all") {
+        let idx = param_values.len() + 1;
+        conditions.push(format!("watch_status = ?{}", idx));
+        param_values.push(ws.to_string());
+    }
+
+    // is_starred
+    if let Some(starred) = filter.is_starred {
+        let idx = param_values.len() + 1;
+        conditions.push(format!("is_starred = ?{}", idx));
+        param_values.push(if starred { "1".to_string() } else { "0".to_string() });
+    }
+
+    // color_tag
+    if let Some(ct) = filter.color_tag.as_deref().filter(|s| !s.is_empty() && *s != "all") {
+        let idx = param_values.len() + 1;
+        conditions.push(format!("color_tag = ?{}", idx));
+        param_values.push(ct.to_string());
+    }
+
+    // tag_id
+    if let Some(tid) = filter.tag_id {
+        let idx = param_values.len() + 1;
+        conditions.push(format!("id IN (SELECT video_id FROM video_tags WHERE tag_id = ?{})", idx));
+        param_values.push(tid.to_string());
+    }
+
+    // collection_id
+    if let Some(cid) = filter.collection_id {
+        let idx = param_values.len() + 1;
+        conditions.push(format!("id IN (SELECT video_id FROM collection_items WHERE collection_id = ?{})", idx));
+        param_values.push(cid.to_string());
+    }
+
+    // source_folder
+    if let Some(folder) = filter.source_folder.as_deref().filter(|s| !s.is_empty()) {
+        let idx = param_values.len() + 1;
+        conditions.push(format!("file_path LIKE ?{}", idx));
+        let folder_prefix = if folder.ends_with('/') || folder.ends_with('\\') {
+            format!("{}%", folder)
+        } else {
+            format!("{}/%", folder)
+        };
+        param_values.push(folder_prefix);
+    }
+
     let where_clause = if conditions.is_empty() {
         "".to_string()
     } else {
@@ -177,7 +278,7 @@ pub fn list_videos(conn: &Connection, filter: VideoFilter) -> Result<VideoListRe
     };
 
     let query_sql = format!(
-        "SELECT id, file_path, file_name, file_hash, file_size, duration, width, height, codec, created_at, updated_at, status, thumbnail_path
+        "SELECT id, file_path, file_name, file_hash, file_size, duration, width, height, codec, created_at, updated_at, status, thumbnail_path, is_starred, watch_status, playback_progress, color_tag, last_played_at
          FROM videos {} {} LIMIT ?{} OFFSET ?{}",
         where_clause,
         order_clause,
@@ -193,6 +294,12 @@ pub fn list_videos(conn: &Connection, filter: VideoFilter) -> Result<VideoListRe
     let video_iter = stmt
         .query_map(rusqlite::params_from_iter(query_params.iter()), |row| {
             let file_size: i64 = row.get(4)?;
+            let is_starred_int: i64 = row.get(13).unwrap_or(0);
+            let watch_status_str: String = row.get(14).unwrap_or_else(|_| "unwatched".to_string());
+            let playback_prog: f64 = row.get(15).unwrap_or(0.0);
+            let color_tag_str: Option<String> = row.get(16).unwrap_or(None);
+            let last_played: Option<i64> = row.get(17).unwrap_or(None);
+
             Ok(Video {
                 id: row.get(0)?,
                 file_path: row.get(1)?,
@@ -208,6 +315,12 @@ pub fn list_videos(conn: &Connection, filter: VideoFilter) -> Result<VideoListRe
                 status: row.get(11)?,
                 thumbnail_path: row.get(12)?,
                 thumbnail_data: None,
+                is_starred: is_starred_int != 0,
+                watch_status: watch_status_str,
+                playback_progress: playback_prog,
+                color_tag: color_tag_str,
+                last_played_at: last_played,
+                tags: Vec::new(),
             })
         })
         .map_err(|e| e.to_string())?;
@@ -215,6 +328,16 @@ pub fn list_videos(conn: &Connection, filter: VideoFilter) -> Result<VideoListRe
     let mut items = Vec::new();
     for v in video_iter {
         items.push(v.map_err(|e| e.to_string())?);
+    }
+
+    // Attach tags in batch
+    let video_ids: Vec<i64> = items.iter().map(|v| v.id).collect();
+    if let Ok(tags_map) = crate::db::classification::get_tags_for_videos_batch(conn, &video_ids) {
+        for item in &mut items {
+            if let Some(tags) = tags_map.get(&item.id) {
+                item.tags = tags.clone();
+            }
+        }
     }
 
     let total_pages = if total == 0 {
@@ -235,7 +358,7 @@ pub fn list_videos(conn: &Connection, filter: VideoFilter) -> Result<VideoListRe
 pub fn get_video_by_id(conn: &Connection, id: i64) -> Result<Option<Video>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, file_path, file_name, file_hash, file_size, duration, width, height, codec, created_at, updated_at, status, thumbnail_path
+            "SELECT id, file_path, file_name, file_hash, file_size, duration, width, height, codec, created_at, updated_at, status, thumbnail_path, is_starred, watch_status, playback_progress, color_tag, last_played_at
              FROM videos WHERE id = ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -243,6 +366,12 @@ pub fn get_video_by_id(conn: &Connection, id: i64) -> Result<Option<Video>, Stri
     let video = stmt
         .query_row([id], |row| {
             let file_size: i64 = row.get(4)?;
+            let is_starred_int: i64 = row.get(13).unwrap_or(0);
+            let watch_status_str: String = row.get(14).unwrap_or_else(|_| "unwatched".to_string());
+            let playback_prog: f64 = row.get(15).unwrap_or(0.0);
+            let color_tag_str: Option<String> = row.get(16).unwrap_or(None);
+            let last_played: Option<i64> = row.get(17).unwrap_or(None);
+
             Ok(Video {
                 id: row.get(0)?,
                 file_path: row.get(1)?,
@@ -258,11 +387,26 @@ pub fn get_video_by_id(conn: &Connection, id: i64) -> Result<Option<Video>, Stri
                 status: row.get(11)?,
                 thumbnail_path: row.get(12)?,
                 thumbnail_data: None,
+                is_starred: is_starred_int != 0,
+                watch_status: watch_status_str,
+                playback_progress: playback_prog,
+                color_tag: color_tag_str,
+                last_played_at: last_played,
+                tags: Vec::new(),
             })
         })
         .ok();
 
-    Ok(video)
+    let mut result = video;
+    if let Some(ref mut v) = result {
+        if let Ok(tags_map) = crate::db::classification::get_tags_for_videos_batch(conn, &[v.id]) {
+            if let Some(tags) = tags_map.get(&v.id) {
+                v.tags = tags.clone();
+            }
+        }
+    }
+
+    Ok(result)
 }
 
 pub fn delete_video(conn: &Connection, id: i64, delete_disk_file: bool) -> Result<bool, String> {

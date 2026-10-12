@@ -274,6 +274,12 @@ pub fn find_duplicates(conn: &Connection, strategy: &str) -> Result<Vec<Duplicat
                 status: row.get(11)?,
                 thumbnail_path: row.get(12)?,
                 thumbnail_data: None,
+                is_starred: false,
+                watch_status: "unwatched".to_string(),
+                playback_progress: 0.0,
+                color_tag: None,
+                last_played_at: None,
+                tags: Vec::new(),
             })
         })
         .map_err(|e| format!("Failed querying videos: {}", e))?;
