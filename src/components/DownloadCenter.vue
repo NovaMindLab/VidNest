@@ -44,51 +44,230 @@ let unlistenPickerUrl: UnlistenFn | null = null;
 let unlistenPickerTask: UnlistenFn | null = null;
 const thumbMap = ref<Record<string, string>>({});
 
-// Supported sites list (Matching Image 1)
-const supportedSites = [
+export interface SupportedSiteItem {
+  id: string;
+  name: string;
+  category: '综合主流' | '国内精选' | '短视频' | '社交动态' | '知识音乐';
+  homeUrl: string;
+  exampleUrl?: string;
+  tag: string;
+  color: string;
+  iconText: string;
+  desc: string;
+}
+
+const siteCategories = ['全部', '综合主流', '国内精选', '短视频', '社交动态', '知识音乐'] as const;
+type SiteCategory = typeof siteCategories[number];
+const selectedSiteCategory = ref<SiteCategory>('全部');
+const siteSearchQuery = ref<string>('');
+
+// Popular supported video platforms (yt-dlp powered)
+const supportedSites: SupportedSiteItem[] = [
   {
+    id: 'youtube',
     name: 'YouTube',
-    iconType: 'youtube',
+    category: '综合主流',
+    homeUrl: 'https://www.youtube.com',
     exampleUrl: 'https://www.youtube.com/watch?v=rRK8KP4Y68g',
-    bg: '#f1f3f5',
-    color: '#000000',
+    tag: '全球最大',
+    color: '#ff0000',
+    iconText: '▶',
+    desc: '全球最大视频分享平台，超清 4K / 1080P',
   },
   {
-    name: 'vimeo',
-    iconType: 'vimeo',
+    id: 'bilibili',
+    name: '哔哩哔哩 (B站)',
+    category: '国内精选',
+    homeUrl: 'https://www.bilibili.com',
+    exampleUrl: 'https://www.bilibili.com/video/BV1xx411c7mD',
+    tag: '动漫·二次元',
+    color: '#00aeec',
+    iconText: '📺',
+    desc: '国内顶级弹幕视频，动漫番剧、游戏与知识教程',
+  },
+  {
+    id: 'tiktok',
+    name: 'TikTok',
+    category: '短视频',
+    homeUrl: 'https://www.tiktok.com',
+    exampleUrl: 'https://www.tiktok.com/@tiktok/video/7106594312292453678',
+    tag: '全球短视频',
+    color: '#fe2c55',
+    iconText: '🎵',
+    desc: '全球热门短视频与爆款创作者分享平台',
+  },
+  {
+    id: 'douyin',
+    name: '抖音 (Douyin)',
+    category: '短视频',
+    homeUrl: 'https://www.douyin.com',
+    exampleUrl: 'https://www.douyin.com/video/7188888888888888888',
+    tag: '国民短视频',
+    color: '#161823',
+    iconText: '📱',
+    desc: '记录美好生活，海量短视频、直播与影视剪辑',
+  },
+  {
+    id: 'twitter',
+    name: 'Twitter / X',
+    category: '社交动态',
+    homeUrl: 'https://x.com',
+    exampleUrl: 'https://x.com/NASA/status/1700000000000000000',
+    tag: '实时资讯',
+    color: '#000000',
+    iconText: '𝕏',
+    desc: '全球资讯、动态短片、新闻速递与现场视频',
+  },
+  {
+    id: 'instagram',
+    name: 'Instagram',
+    category: '社交动态',
+    homeUrl: 'https://www.instagram.com',
+    exampleUrl: 'https://www.instagram.com/reel/C3XXXXX/',
+    tag: 'Reels短片',
+    color: '#e1306c',
+    iconText: '📷',
+    desc: '精美照片、Reels 短片与创作者视觉灵感',
+  },
+  {
+    id: 'xiaohongshu',
+    name: '小红书',
+    category: '国内精选',
+    homeUrl: 'https://www.xiaohongshu.com',
+    exampleUrl: 'https://www.xiaohongshu.com/explore/640000000000000000',
+    tag: '生活种草',
+    color: '#ff2442',
+    iconText: '📕',
+    desc: '标记我的生活，海量美食穿搭、教程与生活指南',
+  },
+  {
+    id: 'weibo',
+    name: '微博视频',
+    category: '社交动态',
+    homeUrl: 'https://weibo.com',
+    exampleUrl: 'https://weibo.com/tv/show/1034:4900000000000000',
+    tag: '热搜大事件',
+    color: '#e6162d',
+    iconText: '👁',
+    desc: '微博热点视频、明星动态与生活记录专区',
+  },
+  {
+    id: 'kuaishou',
+    name: '快手',
+    category: '短视频',
+    homeUrl: 'https://www.kuaishou.com',
+    exampleUrl: 'https://www.kuaishou.com/short-video/3xx',
+    tag: '真实生活',
+    color: '#ff5000',
+    iconText: '⚡',
+    desc: '拥抱每一种生活，真实的短视频社区与创作平台',
+  },
+  {
+    id: 'vimeo',
+    name: 'Vimeo',
+    category: '综合主流',
+    homeUrl: 'https://vimeo.com',
     exampleUrl: 'https://vimeo.com/76979871',
-    bg: '#f1f3f5',
-    color: '#000000',
+    tag: '艺术高清',
+    color: '#1ab7ea',
+    iconText: '🎬',
+    desc: '独立电影人、高质量创意短片与视觉艺术社群',
   },
   {
-    name: 'TED',
-    iconType: 'ted',
-    exampleUrl: 'https://www.ted.com/talks/al_gore_the_case_for_optimism_on_climate_change',
-    bg: '#f1f3f5',
-    color: '#e62b1e',
+    id: 'reddit',
+    name: 'Reddit',
+    category: '社交动态',
+    homeUrl: 'https://www.reddit.com',
+    exampleUrl: 'https://www.reddit.com/r/videos/comments/xyz',
+    tag: '热帖社区',
+    color: '#ff4500',
+    iconText: '🤖',
+    desc: '互联网头条看板，海量社区热帖与自制视频',
   },
   {
-    name: 'OnlyFans',
-    iconType: 'onlyfans',
-    exampleUrl: '',
-    bg: '#f1f3f5',
-    color: '#00aff0',
+    id: 'twitch',
+    name: 'Twitch',
+    category: '综合主流',
+    homeUrl: 'https://www.twitch.tv',
+    exampleUrl: 'https://www.twitch.tv/videos/1234567890',
+    tag: '游戏直播',
+    color: '#9146ff',
+    iconText: '🎮',
+    desc: '全球最大游戏实况、电竞赛事与长视频回放',
   },
   {
+    id: 'facebook',
+    name: 'Facebook',
+    category: '社交动态',
+    homeUrl: 'https://www.facebook.com',
+    exampleUrl: 'https://www.facebook.com/watch/?v=123',
+    tag: 'Watch视频',
+    color: '#1877f2',
+    iconText: '👥',
+    desc: 'Facebook Watch 与全球社交圈热门分享视频',
+  },
+  {
+    id: 'dailymotion',
     name: 'DailyMotion',
-    iconType: 'dailymotion',
+    category: '综合主流',
+    homeUrl: 'https://www.dailymotion.com',
     exampleUrl: 'https://www.dailymotion.com/video/x7tgad0',
-    bg: '#f1f3f5',
-    color: '#000000',
+    tag: '综合娱乐',
+    color: '#0066dc',
+    iconText: '🎥',
+    desc: '法国大型主流视频门户，海量电影预告与资讯',
   },
   {
-    name: 'rumble',
-    iconType: 'rumble',
+    id: 'ted',
+    name: 'TED Talks',
+    category: '知识音乐',
+    homeUrl: 'https://www.ted.com',
+    exampleUrl: 'https://www.ted.com/talks/al_gore_the_case_for_optimism_on_climate_change',
+    tag: '思想盛宴',
+    color: '#e62b1e',
+    iconText: '💡',
+    desc: '值得传播的思想，全球大师公开演讲与深度对话',
+  },
+  {
+    id: 'soundcloud',
+    name: 'SoundCloud',
+    category: '知识音乐',
+    homeUrl: 'https://soundcloud.com',
+    exampleUrl: 'https://soundcloud.com/user/track',
+    tag: '音乐音频',
+    color: '#ff5500',
+    iconText: '🎧',
+    desc: '独立音乐人、播客原创音轨与全球电音先锋',
+  },
+  {
+    id: 'rumble',
+    name: 'Rumble',
+    category: '综合主流',
+    homeUrl: 'https://rumble.com',
     exampleUrl: 'https://rumble.com/v20847w-top-news.html',
-    bg: '#f1f3f5',
+    tag: '独立创作',
     color: '#85c742',
+    iconText: '🥊',
+    desc: '独立视频平台与创作者社区，自由分享媒体',
   },
 ];
+
+const filteredSites = computed(() => {
+  let list = supportedSites;
+  if (selectedSiteCategory.value !== '全部') {
+    list = list.filter((s) => s.category === selectedSiteCategory.value);
+  }
+  if (siteSearchQuery.value.trim()) {
+    const q = siteSearchQuery.value.trim().toLowerCase();
+    list = list.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.desc.toLowerCase().includes(q) ||
+        s.tag.toLowerCase().includes(q)
+    );
+  }
+  return list;
+});
 
 // Computed tasks categories
 const activeTasks = computed(() => {
@@ -268,22 +447,37 @@ async function openWebviewPicker(url?: string) {
   try {
     const targetUrl = url || inputUrl.value.trim() || 'https://www.youtube.com';
     await invoke('open_video_picker_window', { initialUrl: targetUrl });
-    showToast('已打开 YouTube 网页嗅探窗口，可直接在网页中挑选视频下载');
+    const siteObj = supportedSites.find((s) =>
+      targetUrl.includes(s.homeUrl.replace('https://', '').replace('www.', ''))
+    );
+    const siteName = siteObj ? siteObj.name : '视频网页';
+    showToast(`已打开「${siteName}」网页嗅探窗口，可直接在网页中挑选视频下载`);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     showToast(`打开网页嗅探窗口失败: ${msg}`);
   }
 }
 
-// Use supported site sample link or open dedicated browser
-function handleSiteClick(site: typeof supportedSites[0]) {
-  if (site.name === 'YouTube' || site.iconType === 'youtube') {
-    openWebviewPicker('https://www.youtube.com');
-  } else if (site.exampleUrl) {
+function openSiteInWebview(site: SupportedSiteItem) {
+  openWebviewPicker(site.homeUrl);
+}
+
+function fillExampleUrl(site: SupportedSiteItem) {
+  if (site.exampleUrl) {
     inputUrl.value = site.exampleUrl;
     inspectVideoUrl();
+    showToast(`已填入 ${site.name} 示例链接并开始解析`);
   } else {
-    showToast(`请复制 ${site.name} 的视频链接并粘贴`);
+    showToast(`请在网页中复制 ${site.name} 的视频链接`);
+  }
+}
+
+async function copySiteUrl(site: SupportedSiteItem) {
+  try {
+    await navigator.clipboard.writeText(site.homeUrl);
+    showToast(`已复制 ${site.name} 官网网址`);
+  } catch {
+    showToast('复制失败');
   }
 }
 
@@ -501,7 +695,7 @@ onUnmounted(() => {
       <div class="topbar-right">
         <button
           class="action-pill-btn browser-picker-btn"
-          title="打开 YouTube 网页浏览与视频嗅探窗口"
+          title="打开内置网页浏览器直接挑选视频与下载 (支持 YouTube、B站、TikTok等任意站点)"
           @click="openWebviewPicker()"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -509,7 +703,7 @@ onUnmounted(() => {
             <line x1="2" y1="12" x2="22" y2="12"></line>
             <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
           </svg>
-          <span>YouTube 网页嗅探</span>
+          <span>🌐 网页嗅探找资源</span>
         </button>
 
         <button
@@ -579,7 +773,7 @@ onUnmounted(() => {
       <!-- STATE 1: Not Inspected Yet -> Show Supported Sites (Image 1) -->
       <div v-if="!inspectResult && !isInspecting" class="uninspected-state">
         <!-- Quick Webview Picker Banner -->
-        <div class="quick-picker-banner" @click="openWebviewPicker('https://www.youtube.com')">
+        <div class="quick-picker-banner" @click="openWebviewPicker()">
           <div class="picker-banner-left">
             <div class="picker-banner-icon">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -588,87 +782,89 @@ onUnmounted(() => {
               </svg>
             </div>
             <div class="picker-banner-info">
-              <div class="picker-banner-title">打开 YouTube 网页直接挑选视频</div>
-              <div class="picker-banner-sub">内嵌悬浮嗅探助手，支持一键识别、画质选择与后台极速下载</div>
+              <div class="picker-banner-title">打开内置网页嗅探器直接找资源</div>
+              <div class="picker-banner-sub">内嵌悬浮嗅探助手，支持 YouTube、B站、TikTok、X (Twitter)、小红书等 1000+ 视频网站，一键识别、画质选择与高速下载</div>
             </div>
           </div>
           <button class="picker-banner-action" type="button">
-            <span>立即打开</span>
+            <span>立即浏览</span>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="9 18 15 12 9 6"></polyline>
             </svg>
           </button>
         </div>
 
-        <p class="copy-hint-text">Copy link from supported sites.</p>
+        <div class="sites-header-bar">
+          <div class="sites-title-group">
+            <h2 class="supported-heading">支持的主流视频平台 (yt-dlp 强劲驱动)</h2>
+            <span class="sites-count-badge">共收录 {{ supportedSites.length }} 个热门站点 · 点击直达网页浏览与嗅探</span>
+          </div>
+          <div class="site-search-wrap">
+            <input
+              v-model="siteSearchQuery"
+              class="site-search-input"
+              placeholder="搜索平台名称、分类或标签..."
+            />
+          </div>
+        </div>
 
-        <h2 class="supported-heading">Supported sites</h2>
+        <!-- Category Filter Pills -->
+        <div class="site-category-pills">
+          <button
+            v-for="cat in siteCategories"
+            :key="cat"
+            class="site-cat-pill"
+            :class="{ active: selectedSiteCategory === cat }"
+            @click="selectedSiteCategory = cat"
+          >
+            {{ cat }}
+          </button>
+        </div>
 
+        <!-- Supported Sites Grid -->
         <div class="supported-grid">
           <div
-            v-for="site in supportedSites"
-            :key="site.name"
+            v-for="site in filteredSites"
+            :key="site.id"
             class="site-card"
-            :class="{ 'is-interactive-picker': site.iconType === 'youtube' }"
-            @click="handleSiteClick(site)"
           >
-            <!-- YouTube Icon -->
-            <template v-if="site.iconType === 'youtube'">
-              <div class="site-icon-wrapper">
-                <svg width="28" height="20" viewBox="0 0 28 20" fill="none">
-                  <rect width="28" height="20" rx="5" fill="#FF0000"/>
-                  <polygon points="11,5 19,10 11,15" fill="#FFFFFF"/>
-                </svg>
+            <div class="site-card-top" @click="openSiteInWebview(site)">
+              <div class="site-icon-wrapper" :style="{ backgroundColor: site.color }">
+                <span class="site-icon-glyph">{{ site.iconText }}</span>
               </div>
-              <span class="site-name-text yt-font">YouTube</span>
-              <span class="site-badge-picker">网页选择</span>
-            </template>
-
-            <!-- Vimeo Icon -->
-            <template v-else-if="site.iconType === 'vimeo'">
-              <div class="site-icon-wrapper">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="#00ADEF">
-                  <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm6.5 8.5c-.2 3.1-2.4 7.4-6.4 7.4-3.8 0-4.3-3.6-5.2-6.1-.5-1.5-.9-2.2-1.6-2.2-.2 0-.8.4-1.5 1.1l-.8-1c1.2-1.1 2.5-2.3 3.6-2.3 1.3 0 2.1.9 2.3 2.6.3 2 .8 4.7 1.7 4.7.7 0 1.6-1.5 1.7-2.7.2-1.4-.7-1.4-1.4-1.2.6-2 1.8-3 3.6-3 1.5 0 2.2 1 2 2.7z"/>
-                </svg>
+              <div class="site-card-meta">
+                <div class="site-name-row">
+                  <span class="site-name-text">{{ site.name }}</span>
+                  <span class="site-tag-badge">{{ site.tag }}</span>
+                </div>
+                <div class="site-desc-text" :title="site.desc">{{ site.desc }}</div>
               </div>
-              <span class="site-name-text vimeo-font">vimeo</span>
-            </template>
+            </div>
 
-            <!-- TED Icon -->
-            <template v-else-if="site.iconType === 'ted'">
-              <span class="ted-logo-text">TED</span>
-            </template>
-
-            <!-- OnlyFans Icon -->
-            <template v-else-if="site.iconType === 'onlyfans'">
-              <div class="site-icon-wrapper">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="#00AFF0">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 14c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/>
-                </svg>
-              </div>
-              <span class="site-name-text onlyfans-font">OnlyFans</span>
-            </template>
-
-            <!-- DailyMotion Icon -->
-            <template v-else-if="site.iconType === 'dailymotion'">
-              <div class="site-icon-wrapper">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="#000000">
-                  <circle cx="12" cy="12" r="10"/>
-                  <path d="M8 7h4a5 5 0 0 1 0 10H8V7z" fill="#FFFFFF"/>
-                </svg>
-              </div>
-              <span class="site-name-text dm-font">DailyMotion</span>
-            </template>
-
-            <!-- Rumble Icon -->
-            <template v-else-if="site.iconType === 'rumble'">
-              <div class="site-icon-wrapper">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="#85C742">
-                  <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm-2 14.5v-9l7 4.5z"/>
-                </svg>
-              </div>
-              <span class="site-name-text rumble-font">rumble</span>
-            </template>
+            <div class="site-card-footer">
+              <button
+                class="btn-site-act btn-open-picker"
+                title="打开内置网页嗅探窗口浏览并下载"
+                @click.stop="openSiteInWebview(site)"
+              >
+                🌐 网页找资源
+              </button>
+              <button
+                v-if="site.exampleUrl"
+                class="btn-site-act btn-fill-example"
+                title="填入示例链接并在当前页解析"
+                @click.stop="fillExampleUrl(site)"
+              >
+                📋 示例
+              </button>
+              <button
+                class="btn-site-act btn-copy-link"
+                title="复制官网地址"
+                @click.stop="copySiteUrl(site)"
+              >
+                🔗
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1235,101 +1431,239 @@ onUnmounted(() => {
   border-color: #ef4444;
 }
 
-.copy-hint-text {
-  font-size: 15px;
-  color: #6b7280;
-  margin-bottom: 40px;
+.sites-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 960px;
+  margin: 0 auto 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sites-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
 }
 
 .supported-heading {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
-  color: #111827;
-  margin-bottom: 24px;
+  color: var(--text-primary, #111827);
+  margin: 0;
+}
+
+.sites-count-badge {
+  font-size: 12px;
+  color: var(--text-muted, #64748b);
+}
+
+.site-search-wrap {
+  width: 240px;
+}
+
+.site-search-input {
+  width: 100%;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  background: var(--bg-input, #ffffff);
+  color: var(--text-primary, #0f172a);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.site-search-input:focus {
+  border-color: #3b82f6;
+}
+
+.site-category-pills {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 960px;
+  margin: 0 auto 18px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.site-cat-pill {
+  padding: 5px 14px;
+  border-radius: 20px;
+  background: var(--bg-input, #f1f5f9);
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  color: var(--text-secondary, #475569);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.site-cat-pill:hover {
+  background: var(--btn-hover, #e2e8f0);
+  color: var(--text-primary, #0f172a);
+}
+
+.site-cat-pill.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 
 .supported-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  max-width: 620px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  max-width: 960px;
   margin: 0 auto;
 }
 
 .site-card {
-  background-color: #f1f3f5;
-  border-radius: 8px;
-  padding: 14px 18px;
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: 12px;
+  padding: 14px;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  user-select: none;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  text-align: left;
 }
 
 .site-card:hover {
-  background-color: #e5e7eb;
   transform: translateY(-2px);
+  border-color: rgba(59, 130, 246, 0.4);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
-.site-card.is-interactive-picker:hover {
-  background-color: #fef2f2;
-  border: 1px solid #fca5a5;
-}
-
-.site-badge-picker {
-  font-size: 10px;
-  font-weight: 700;
-  background: #ef4444;
-  color: #ffffff;
-  padding: 2px 6px;
-  border-radius: 6px;
-  letter-spacing: 0.2px;
+.site-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
 }
 
 .site-icon-wrapper {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+.site-icon-glyph {
+  font-size: 20px;
+  color: #ffffff;
+  font-weight: bold;
+}
+
+.site-card-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.site-name-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
 }
 
 .site-name-text {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
-  color: #111827;
+  color: var(--text-primary, #0f172a);
 }
 
-.yt-font {
-  font-family: 'YouTube Sans', Roboto, sans-serif;
-  letter-spacing: -0.5px;
+.site-tag-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
 }
 
-.vimeo-font {
-  font-style: italic;
-  font-weight: 800;
+.site-desc-text {
+  font-size: 11.5px;
+  color: var(--text-muted, #64748b);
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.ted-logo-text {
-  color: #e62b1e;
-  font-size: 20px;
-  font-weight: 900;
-  letter-spacing: 0.5px;
+.site-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-top: 1px solid var(--border-subtle, #f1f5f9);
+  padding-top: 10px;
 }
 
-.onlyfans-font {
-  color: #00aff0;
-  font-weight: 700;
+.btn-site-act {
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
 }
 
-.dm-font {
-  font-weight: 700;
+.btn-open-picker {
+  flex: 1;
+  background: var(--bg-input, #f1f5f9);
+  color: var(--text-primary, #0f172a);
+  border-color: var(--border-subtle, #e2e8f0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
-.rumble-font {
-  color: #111827;
-  font-weight: 700;
+.btn-open-picker:hover {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #ffffff;
+}
+
+.btn-fill-example {
+  background: transparent;
+  color: var(--text-muted, #64748b);
+  border-color: var(--border-subtle, #e2e8f0);
+}
+
+.btn-fill-example:hover {
+  background: var(--btn-hover, #e2e8f0);
+  color: var(--text-primary, #0f172a);
+}
+
+.btn-copy-link {
+  background: transparent;
+  color: var(--text-muted, #64748b);
+  border-color: var(--border-subtle, #e2e8f0);
+  padding: 5px 8px;
+}
+
+.btn-copy-link:hover {
+  background: var(--btn-hover, #e2e8f0);
+  color: var(--text-primary, #0f172a);
 }
 
 /* Skeleton Loading */

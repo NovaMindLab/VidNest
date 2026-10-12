@@ -185,6 +185,152 @@ pub fn get_video_picker_injected_script() -> &'static str {
       border-color: rgba(239, 68, 68, 0.5);
     }
 
+    /* Sites Navigation Modal & Quick Address Bar */
+    #vidnest-sites-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      z-index: 2147483647;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: vidnest-fade-in 0.2s ease;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif;
+    }
+    .vidnest-sites-card {
+      background: #0f172a;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 20px;
+      width: 660px;
+      max-width: 92vw;
+      box-shadow: 0 30px 70px rgba(0, 0, 0, 0.7);
+      color: #f8fafc;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      animation: vidnest-scale-up 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .vidnest-nav-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 20px;
+      background: rgba(255, 255, 255, 0.03);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .vidnest-nav-icon-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #cbd5e1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.15s;
+    }
+    .vidnest-nav-icon-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: #ffffff;
+    }
+    .vidnest-nav-input-wrap {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 10px;
+      padding: 0 10px;
+      transition: border-color 0.2s;
+    }
+    .vidnest-nav-input-wrap:focus-within {
+      border-color: #3b82f6;
+    }
+    .vidnest-nav-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #ffffff;
+      padding: 8px 6px;
+      font-size: 13px;
+      outline: none;
+    }
+    .vidnest-nav-go-btn {
+      background: #3b82f6;
+      border: none;
+      color: #ffffff;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .vidnest-nav-go-btn:hover {
+      background: #2563eb;
+    }
+    .vidnest-sites-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 12px;
+      padding: 20px;
+      max-height: 420px;
+      overflow-y: auto;
+    }
+    .vidnest-site-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 14px 10px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      cursor: pointer;
+      text-decoration: none;
+      color: #f1f5f9;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+    .vidnest-site-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.25);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+    }
+    .vidnest-site-icon-box {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      font-weight: bold;
+      margin-bottom: 8px;
+      color: #ffffff;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    }
+    .vidnest-site-name {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 2px;
+      text-align: center;
+    }
+    .vidnest-site-tag {
+      font-size: 10px;
+      color: #94a3b8;
+      text-align: center;
+    }
+
     /* Modal Overlay & Card */
     #vidnest-modal-overlay {
       position: fixed;
@@ -392,6 +538,9 @@ pub fn get_video_picker_injected_script() -> &'static str {
         <div class="vidnest-logo-icon">▶</div>
         <span>VidNest</span>
       </div>
+      <button class="vidnest-btn vidnest-btn-sub" id="vidnest-switch-site-btn" title="切换到其他支持的热门视频网站或输入网址">
+        <span>🌐 切换网站</span>
+      </button>
       <div class="vidnest-status-info" id="vidnest-status-box">
         <span class="vidnest-dot" id="vidnest-dot"></span>
         <span id="vidnest-status-text">嗅探中...</span>
@@ -447,25 +596,93 @@ pub fn get_video_picker_injected_script() -> &'static str {
   function isSupportedVideoPage() {
     const href = window.location.href;
     const path = window.location.pathname;
-    if (href.includes('youtube.com/watch') || href.includes('youtu.be/')) {
-      return true;
-    }
-    if (path.startsWith('/shorts/')) {
-      return true;
-    }
-    if (href.includes('bilibili.com/video/BV')) {
-      return true;
+
+    // YouTube
+    if (href.includes('youtube.com/watch') || href.includes('youtu.be/')) return true;
+    if (path.startsWith('/shorts/')) return true;
+
+    // Bilibili
+    if (href.includes('bilibili.com/video/') || href.includes('bilibili.com/bangumi/play/')) return true;
+
+    // TikTok & Douyin
+    if (href.includes('tiktok.com/@') && href.includes('/video/')) return true;
+    if (href.includes('tiktok.com/t/')) return true;
+    if (href.includes('douyin.com/video/') || href.includes('douyin.com/note/')) return true;
+
+    // Twitter / X
+    if ((href.includes('x.com/') || href.includes('twitter.com/')) && href.includes('/status/')) return true;
+
+    // Instagram
+    if (href.includes('instagram.com/p/') || href.includes('instagram.com/reel/') || href.includes('instagram.com/tv/')) return true;
+
+    // Vimeo
+    if (href.includes('vimeo.com/') && !href.endsWith('vimeo.com/')) return true;
+
+    // Reddit
+    if (href.includes('reddit.com/r/') && href.includes('/comments/')) return true;
+
+    // Twitch
+    if (href.includes('twitch.tv/videos/') || (href.includes('twitch.tv/') && href.includes('/clip/'))) return true;
+
+    // Facebook
+    if (href.includes('facebook.com/') && (href.includes('/videos/') || href.includes('/reel/') || href.includes('/watch'))) return true;
+
+    // Xiaohongshu
+    if (href.includes('xiaohongshu.com/explore/')) return true;
+
+    // Weibo
+    if (href.includes('weibo.com/') || href.includes('video.weibo.com/')) return true;
+
+    // Kuaishou
+    if (href.includes('kuaishou.com/short-video/')) return true;
+
+    // Dailymotion
+    if (href.includes('dailymotion.com/video/')) return true;
+
+    // TED
+    if (href.includes('ted.com/talks/')) return true;
+
+    // Rumble
+    if (href.includes('rumble.com/') && href.includes('.html')) return true;
+
+    // SoundCloud
+    if (href.includes('soundcloud.com/') && path.split('/').filter(Boolean).length >= 2) return true;
+
+    // Generic HTML5 video tag with valid source
+    const vids = document.querySelectorAll('video');
+    for (let i = 0; i < vids.length; i++) {
+      if ((vids[i].src || vids[i].currentSrc) && (vids[i].duration > 0 || !vids[i].paused)) {
+        return true;
+      }
     }
     return false;
   }
 
   function getPageVideoTitle() {
+    // 1. YouTube specific
     const ytTitle = document.querySelector('h1.ytd-watch-metadata yt-formatted-string, h1.title, #title h1');
-    if (ytTitle && ytTitle.textContent.trim()) {
-      return ytTitle.textContent.trim();
+    if (ytTitle && ytTitle.textContent.trim()) return ytTitle.textContent.trim();
+
+    // 2. Bilibili specific
+    const biliTitle = document.querySelector('.video-title, .video-info-title, h1.video-title');
+    if (biliTitle && biliTitle.textContent.trim()) return biliTitle.textContent.trim();
+
+    // 3. OpenGraph / Twitter meta
+    const ogTitle = document.querySelector('meta[property="og:title"], meta[name="twitter:title"]');
+    if (ogTitle && ogTitle.content && ogTitle.content.trim()) {
+      return ogTitle.content.trim();
     }
+
+    // 4. Document title with common suffixes stripped
     const docTitle = document.title || '';
-    return docTitle.replace(/ - YouTube$/, '').replace(/_哔哩哔哩_bilibili$/, '').trim();
+    return docTitle
+      .replace(/ - YouTube$/, '')
+      .replace(/_哔哩哔哩_bilibili$/, '')
+      .replace(/ \| TikTok$/, '')
+      .replace(/ on Vimeo$/, '')
+      .replace(/ \/ X$/, '')
+      .replace(/ on X$/, '')
+      .trim();
   }
 
   function updateDetection() {
@@ -517,6 +734,136 @@ pub fn get_video_picker_injected_script() -> &'static str {
     const targetUrl = currentVideoUrl || window.location.href;
     sendAction({ type: 'send_to_main', url: targetUrl });
   });
+
+  // Switch Site Modal Handler
+  const switchSiteBtn = document.getElementById('vidnest-switch-site-btn');
+  if (switchSiteBtn) {
+    switchSiteBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      showSitesModal();
+    });
+  }
+
+  function showSitesModal() {
+    let overlay = document.getElementById('vidnest-sites-overlay');
+    if (overlay) {
+      overlay.remove();
+      return;
+    }
+
+    const popularSites = [
+      { name: 'YouTube', url: 'https://www.youtube.com', bg: '#ef4444', icon: '▶', tag: '全球最大' },
+      { name: '哔哩哔哩', url: 'https://www.bilibili.com', bg: '#00aeec', icon: '📺', tag: '动漫·二次元' },
+      { name: 'TikTok', url: 'https://www.tiktok.com', bg: '#fe2c55', icon: '🎵', tag: '国际短视频' },
+      { name: '抖音', url: 'https://www.douyin.com', bg: '#161823', icon: '📱', tag: '国内短视频' },
+      { name: 'Twitter / X', url: 'https://x.com', bg: '#000000', icon: '𝕏', tag: '资讯·动态' },
+      { name: 'Instagram', url: 'https://www.instagram.com', bg: 'linear-gradient(45deg, #f09433, #dc2743, #bc1888)', icon: '📷', tag: 'Reels短视频' },
+      { name: '小红书', url: 'https://www.xiaohongshu.com', bg: '#ff2442', icon: '📕', tag: '生活精选' },
+      { name: '微博视频', url: 'https://weibo.com', bg: '#e6162d', icon: '👁', tag: '热点短视频' },
+      { name: '快手', url: 'https://www.kuaishou.com', bg: '#ff5000', icon: '⚡', tag: '国民短视频' },
+      { name: 'Vimeo', url: 'https://vimeo.com', bg: '#1ab7ea', icon: '🎬', tag: '高清电影' },
+      { name: 'Reddit', url: 'https://www.reddit.com', bg: '#ff4500', icon: '🤖', tag: '热帖社区' },
+      { name: 'Twitch', url: 'https://www.twitch.tv', bg: '#9146ff', icon: '🎮', tag: '游戏直播' },
+      { name: 'Facebook', url: 'https://www.facebook.com', bg: '#1877f2', icon: '👥', tag: 'Watch视频' },
+      { name: 'DailyMotion', url: 'https://www.dailymotion.com', bg: '#0066dc', icon: '🎥', tag: '综合娱乐' },
+      { name: 'TED Talks', url: 'https://www.ted.com', bg: '#e62b1e', icon: '💡', tag: '全球演讲' },
+      { name: 'SoundCloud', url: 'https://soundcloud.com', bg: '#ff5500', icon: '🎧', tag: '原创音乐' },
+      { name: 'Rumble', url: 'https://rumble.com', bg: '#85c742', icon: '🥊', tag: '自由视频' }
+    ];
+
+    overlay = document.createElement('div');
+    overlay.id = 'vidnest-sites-overlay';
+
+    let gridHtml = '';
+    popularSites.forEach(function(s) {
+      gridHtml += `
+        <div class="vidnest-site-item" data-url="${s.url}">
+          <div class="vidnest-site-icon-box" style="background:${s.bg}">
+            ${s.icon}
+          </div>
+          <div class="vidnest-site-name">${s.name}</div>
+          <div class="vidnest-site-tag">${s.tag}</div>
+        </div>
+      `;
+    });
+
+    overlay.innerHTML = `
+      <div class="vidnest-sites-card">
+        <div class="vidnest-modal-header">
+          <div class="vidnest-modal-title">
+            <div class="vidnest-logo-icon">🌐</div>
+            <span>切换视频网站与导航</span>
+          </div>
+          <button class="vidnest-modal-close" id="vidnest-close-sites-btn">✕</button>
+        </div>
+        <div class="vidnest-nav-bar">
+          <button class="vidnest-nav-icon-btn" id="vidnest-nav-back" title="后退">◀</button>
+          <button class="vidnest-nav-icon-btn" id="vidnest-nav-fwd" title="前进">▶</button>
+          <button class="vidnest-nav-icon-btn" id="vidnest-nav-reload" title="刷新">🔄</button>
+          <div class="vidnest-nav-input-wrap">
+            <input
+              type="text"
+              class="vidnest-nav-input"
+              id="vidnest-nav-url"
+              placeholder="输入任意视频网址 (如 bilibili.com) 或关键词，按回车直达..."
+              value="${window.location.href}"
+            />
+          </div>
+          <button class="vidnest-nav-go-btn" id="vidnest-nav-go">前往 ➔</button>
+        </div>
+        <div class="vidnest-sites-grid">
+          ${gridHtml}
+        </div>
+      </div>
+    `;
+
+    document.documentElement.appendChild(overlay);
+
+    document.getElementById('vidnest-close-sites-btn').addEventListener('click', function() {
+      overlay.remove();
+    });
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) overlay.remove();
+    });
+
+    document.getElementById('vidnest-nav-back').addEventListener('click', function() {
+      window.history.back();
+    });
+    document.getElementById('vidnest-nav-fwd').addEventListener('click', function() {
+      window.history.forward();
+    });
+    document.getElementById('vidnest-nav-reload').addEventListener('click', function() {
+      window.location.reload();
+    });
+
+    function navigateToInput() {
+      const input = document.getElementById('vidnest-nav-url');
+      let val = input.value.trim();
+      if (!val) return;
+      if (val.startsWith('http://') || val.startsWith('https://')) {
+        window.location.href = val;
+      } else if (val.includes('.') && !val.includes(' ')) {
+        window.location.href = 'https://' + val;
+      } else {
+        window.location.href = 'https://www.bing.com/search?q=' + encodeURIComponent(val + ' 视频');
+      }
+    }
+
+    document.getElementById('vidnest-nav-go').addEventListener('click', navigateToInput);
+    document.getElementById('vidnest-nav-url').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') navigateToInput();
+    });
+
+    const siteItems = overlay.querySelectorAll('.vidnest-site-item');
+    siteItems.forEach(function(item) {
+      item.addEventListener('click', function() {
+        const u = item.getAttribute('data-url');
+        if (u) {
+          window.location.href = u;
+        }
+      });
+    });
+  }
 
   // Collapse / Expand toggle
   const minBtn = document.getElementById('vidnest-min-btn');
@@ -833,13 +1180,11 @@ pub fn open_video_picker_window_sync(app: &AppHandle, initial_url: Option<String
         let _ = win.show();
         let _ = win.unminimize();
         let _ = win.set_focus();
-        if target != "https://www.youtube.com" {
-            let js = format!(
-                "window.location.href = {};",
-                serde_json::to_string(&target).unwrap_or_default()
-            );
-            let _ = win.eval(&js);
-        }
+        let js = format!(
+            "window.location.href = {};",
+            serde_json::to_string(&target).unwrap_or_default()
+        );
+        let _ = win.eval(&js);
         return Ok(());
     }
 
