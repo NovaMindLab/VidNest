@@ -170,48 +170,86 @@ pub async fn delete_video(
 }
 
 #[tauri::command]
-pub async fn reveal_in_explorer(path: String) -> Result<(), String> {
+pub async fn reveal_in_explorer(app: AppHandle, path: String) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
-        let p = std::path::PathBuf::from(&path);
+        let trimmed = path.trim().trim_matches('"').trim_matches('\'');
+        let p = std::path::PathBuf::from(trimmed);
+
         if !p.exists() {
+            // If the specific file doesn't exist, check if parent directory exists
+            if let Some(parent) = p.parent() {
+                if parent.exists() {
+                    use tauri_plugin_opener::OpenerExt;
+                    let _ = app.opener().open_path(parent.to_string_lossy().to_string(), None::<&str>);
+                    return Err(format!("文件不存在，已定位至所在目录: {}", parent.display()));
+                }
+            }
             return Err("文件路径在本地磁盘上不存在".to_string());
+        }
+
+        // 1. Resolve canonical path if possible, stripping Windows \\?\ extended prefix
+        let clean_path = if let Ok(canonical) = p.canonicalize() {
+            let s = canonical.to_string_lossy().to_string();
+            if let Some(stripped) = s.strip_prefix(r"\\?\") {
+                stripped.to_string()
+            } else {
+                s
+            }
+        } else {
+            p.to_string_lossy().to_string()
+        };
+
+        // 2. Primary: Try native tauri_plugin_opener (uses Windows SHOpenFolderAndSelectItems API)
+        use tauri_plugin_opener::OpenerExt;
+        if app.opener().reveal_item_in_dir(&clean_path).is_ok() {
+            return Ok(());
+        }
+
+        // 3. Fallback: Platform-specific command invocation
+        #[cfg(target_os = "windows")]
+        {
+            let win_path = clean_path.replace('/', "\\");
+            use std::os::windows::process::CommandExt;
+            let mut cmd = std::process::Command::new("explorer");
+            // raw_arg ensures /select,"C:\..." is passed without Rust auto-wrapping outer quotes
+            cmd.raw_arg(format!("/select,\"{}\"", win_path));
+            if let Ok(mut child) = cmd.spawn() {
+                let _ = child.wait();
+                return Ok(());
+            }
+
+            // Secondary fallback: open parent folder if selection fails
+            if let Some(parent) = std::path::Path::new(&win_path).parent() {
+                let _ = std::process::Command::new("explorer").arg(parent).spawn();
+            }
+            return Ok(());
         }
 
         #[cfg(target_os = "macos")]
         {
             let status = std::process::Command::new("open")
                 .arg("-R")
-                .arg(&p)
-                .status()
-                .map_err(|e| format!("打开访达失败: {}", e))?;
-            if !status.success() {
-                return Err("访达未能成功定位文件".to_string());
+                .arg(&clean_path)
+                .status();
+            if let Ok(st) = status {
+                if st.success() {
+                    return Ok(());
+                }
             }
-        }
-
-        #[cfg(target_os = "windows")]
-        {
-            let status = std::process::Command::new("explorer")
-                .arg(format!("/select,\"{}\"", p.display()))
-                .status()
-                .map_err(|e| format!("打开资源管理器失败: {}", e))?;
-            if !status.success() {
-                return Err("资源管理器未能成功定位文件".to_string());
+            if let Some(parent) = std::path::Path::new(&clean_path).parent() {
+                let _ = std::process::Command::new("open").arg(parent).status();
             }
+            return Ok(());
         }
 
         #[cfg(target_os = "linux")]
         {
-            let parent = p.parent().unwrap_or(&p);
-            let status = std::process::Command::new("xdg-open")
-                .arg(parent)
-                .status()
-                .map_err(|e| format!("打开文件管理器失败: {}", e))?;
-            if !status.success() {
-                return Err("未能成功定位文件".to_string());
-            }
+            let parent = std::path::Path::new(&clean_path).parent().unwrap_or(std::path::Path::new(&clean_path));
+            let _ = std::process::Command::new("xdg-open").arg(parent).status();
+            return Ok(());
         }
 
+        #[allow(unreachable_code)]
         Ok(())
     })
     .await
