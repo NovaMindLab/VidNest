@@ -513,34 +513,8 @@ onMounted(() => {
               </div>
             </div>
 
-            <!-- Right: Tools, Storage, IPC -->
+            <!-- Right: Storage, IPC -->
             <div class="split-col-right">
-              <!-- Tools Grid -->
-              <div class="card section-card">
-                <h3 class="panel-h3">底层工具链与多媒体引擎检测</h3>
-                <div class="tools-list">
-                  <div
-                    v-for="tool in healthReport?.tools || []"
-                    :key="tool.name"
-                    class="tool-item-row"
-                  >
-                    <div class="tool-left">
-                      <div class="tool-title-row">
-                        <span class="tool-badge-dot" :class="tool.found ? 'dot-ok' : 'dot-err'"></span>
-                        <span class="tool-title-name font-mono">{{ tool.name }}</span>
-                        <span class="badge" :class="tool.found ? 'badge-success' : 'badge-danger'">
-                          {{ tool.found ? '已就绪' : '缺失' }}
-                        </span>
-                      </div>
-                      <span class="tool-description-text">{{ tool.description }}</span>
-                    </div>
-                    <div class="tool-right font-mono">
-                      <span class="tool-ver-text">{{ tool.version || '未安装' }}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               <!-- Storage & Cache -->
               <div class="card section-card">
                 <h3 class="panel-h3">本地存储与缓存环境</h3>

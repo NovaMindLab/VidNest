@@ -682,7 +682,15 @@ pub async fn find_duplicate_videos(
     tokio::task::spawn_blocking(move || {
         let conn_arc = db_clone.get_connection();
         let conn = conn_arc.lock().map_err(|e| e.to_string())?;
-        crate::dedup::find_duplicates(&conn, &strat)
+        let mut groups = crate::dedup::find_duplicates(&conn, &strat)?;
+        for grp in &mut groups {
+            for v in &mut grp.videos {
+                if let Some(ref thumb_path) = v.thumbnail_path {
+                    v.thumbnail_data = read_thumbnail_base64(Path::new(thumb_path));
+                }
+            }
+        }
+        Ok(groups)
     })
     .await
     .map_err(|e| e.to_string())?

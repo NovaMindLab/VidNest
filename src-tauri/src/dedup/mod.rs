@@ -71,20 +71,30 @@ pub fn normalize_file_name_for_fuzzy(name: &str) -> String {
             }
         }
 
-        // 3. Strip bracket indices: (1), [1], (copy), (副本), (备份)
-        for &(open, close) in &[('(', ')'), ('[', ']')] {
-            if cleaned.ends_with(close) {
-                if let Some(start) = cleaned.rfind(open) {
-                    let inner = cleaned[start + 1..cleaned.len() - 1].trim();
-                    let is_copy_index = (inner.len() <= 2 && inner.chars().all(|c| c.is_ascii_digit()))
-                        || inner == "copy"
-                        || inner == "副本"
-                        || inner == "备份";
-                    if is_copy_index {
-                        let cand = cleaned[..start].trim().to_string();
-                        if cand.len() >= 2 {
-                            cleaned = cand;
-                        }
+        // 3. Strip bracket indices: only strip copy markers or browser (1)/(2) without leading zero
+        if cleaned.ends_with(')') {
+            if let Some(start) = cleaned.rfind('(') {
+                let inner = cleaned[start + 1..cleaned.len() - 1].trim();
+                let is_copy_index = (inner.len() <= 2 && !inner.starts_with('0') && inner.chars().all(|c| c.is_ascii_digit()))
+                    || inner == "copy"
+                    || inner == "副本"
+                    || inner == "备份";
+                if is_copy_index {
+                    let cand = cleaned[..start].trim().to_string();
+                    if cand.len() >= 2 {
+                        cleaned = cand;
+                    }
+                }
+            }
+        }
+        if cleaned.ends_with(']') {
+            if let Some(start) = cleaned.rfind('[') {
+                let inner = cleaned[start + 1..cleaned.len() - 1].trim();
+                let is_copy_word = inner == "copy" || inner == "副本" || inner == "备份";
+                if is_copy_word {
+                    let cand = cleaned[..start].trim().to_string();
+                    if cand.len() >= 2 {
+                        cleaned = cand;
                     }
                 }
             }
@@ -103,7 +113,7 @@ pub fn normalize_file_name_for_fuzzy(name: &str) -> String {
     ];
 
     let words: Vec<&str> = cleaned
-        .split(|c: char| c.is_whitespace() || c == '.' || c == '_' || c == '-' || c == '+')
+        .split(|c: char| c.is_whitespace() || c == '.' || c == '_' || c == '-' || c == '+' || c == '[' || c == ']' || c == '(' || c == ')' || c == '{' || c == '}')
         .filter(|w| !w.is_empty())
         .collect();
 
@@ -151,6 +161,274 @@ pub fn is_generic_name(name: &str) -> bool {
     false
 }
 
+/// Extracts episode, season, part, or sequence index tokens from a file name.
+/// Examples:
+/// - "S01E02" -> ["s1e2"]
+/// - "Episode 01" / "EP01" -> ["ep1"]
+/// - "MyAnime [01]" -> ["ep1"]
+/// - "三体 第02集" -> ["ep2"]
+/// - "Lesson Part 3" -> ["part3"]
+pub fn extract_sequence_tokens(name: &str) -> Vec<String> {
+    let lower = normalize_chinese_and_fullwidth(name).to_lowercase();
+    let chars: Vec<char> = lower.chars().collect();
+    let n = chars.len();
+    let mut tokens = Vec::new();
+
+    // 1. SxxExx (e.g. s01e02, s1e2, s01.e02, s01_e02)
+    let mut i = 0;
+    while i < n {
+        if chars[i] == 's' && i + 1 < n && chars[i + 1].is_ascii_digit() {
+            let is_boundary_before = i == 0 || !chars[i - 1].is_alphanumeric();
+            if is_boundary_before {
+                let mut j = i + 1;
+                while j < n && chars[j].is_ascii_digit() {
+                    j += 1;
+                }
+                let mut next_char_idx = j;
+                if next_char_idx < n && (chars[next_char_idx] == '.' || chars[next_char_idx] == '_' || chars[next_char_idx] == '-') {
+                    next_char_idx += 1;
+                }
+                if next_char_idx < n && (chars[next_char_idx] == 'e' || chars[next_char_idx] == 'x') && next_char_idx + 1 < n && chars[next_char_idx + 1].is_ascii_digit() {
+                    let season_num: u32 = chars[i + 1..j].iter().collect::<String>().parse().unwrap_or(0);
+                    let mut k = next_char_idx + 1;
+                    while k < n && chars[k].is_ascii_digit() {
+                        k += 1;
+                    }
+                    let ep_num: u32 = chars[next_char_idx + 1..k].iter().collect::<String>().parse().unwrap_or(0);
+                    tokens.push(format!("s{}e{}", season_num, ep_num));
+                    i = k;
+                    continue;
+                }
+            }
+        }
+        i += 1;
+    }
+
+    // 2. Chinese "第X集/话/期/章/节/回" or standalone "X集/话/期"
+    let mut i = 0;
+    while i < n {
+        let is_di = chars[i] == '第';
+        let num_start = if is_di { i + 1 } else { i };
+        let mut j = num_start;
+        while j < n && (chars[j].is_ascii_digit() || chars[j] == ' ') {
+            j += 1;
+        }
+        let num_str: String = chars[num_start..j].iter().filter(|c| c.is_ascii_digit()).collect();
+        if !num_str.is_empty() && j < n {
+            let unit = chars[j];
+            if unit == '集' || unit == '话' || unit == '期' || unit == '章' || unit == '节' || unit == '回' {
+                if let Ok(num) = num_str.parse::<u32>() {
+                    tokens.push(format!("ep{}", num));
+                    i = j + 1;
+                    continue;
+                }
+            }
+        }
+        i += 1;
+    }
+
+    // 3. ep01, e01, part1, pt1, vol1
+    let prefixes = [
+        ("episode", "ep"),
+        ("part", "part"),
+        ("vol", "vol"),
+        ("ep", "ep"),
+        ("pt", "part"),
+        ("e", "ep"),
+    ];
+    for &(pfx, std_pfx) in &prefixes {
+        let mut i = 0;
+        while i < n {
+            let matches_pfx = if i + pfx.len() <= n {
+                let slice: String = chars[i..i + pfx.len()].iter().collect();
+                slice == pfx
+            } else {
+                false
+            };
+
+            let is_boundary_before = i == 0 || !chars[i - 1].is_alphanumeric();
+            if matches_pfx && is_boundary_before {
+                let mut j = i + pfx.len();
+                while j < n && (chars[j] == '.' || chars[j] == '_' || chars[j] == '-' || chars[j] == ' ') {
+                    j += 1;
+                }
+                let num_start = j;
+                while j < n && chars[j].is_ascii_digit() {
+                    j += 1;
+                }
+                if j > num_start && (j - num_start) <= 4 {
+                    let is_boundary_after = j == n || !chars[j].is_alphanumeric();
+                    if is_boundary_after {
+                        let num_str: String = chars[num_start..j].iter().collect();
+                        if let Ok(num) = num_str.parse::<u32>() {
+                            tokens.push(format!("{}{}", std_pfx, num));
+                            i = j;
+                            continue;
+                        }
+                    }
+                }
+            }
+            i += 1;
+        }
+    }
+
+    // 4. Bracketed numbers: [01], [1], 【01】, (01)
+    let mut i = 0;
+    while i < n {
+        if chars[i] == '[' || chars[i] == '(' {
+            let close = if chars[i] == '[' { ']' } else { ')' };
+            let is_paren = chars[i] == '(';
+            if let Some(pos) = chars[i + 1..].iter().position(|&c| c == close) {
+                let close_idx = i + 1 + pos;
+                let inner: String = chars[i + 1..close_idx].iter().collect();
+                let inner_trim = inner.trim();
+                if !inner_trim.is_empty() && inner_trim.chars().all(|c| c.is_ascii_digit()) && inner_trim.len() <= 3 {
+                    if !is_paren || inner_trim.starts_with('0') {
+                        if let Ok(num) = inner_trim.parse::<u32>() {
+                            tokens.push(format!("ep{}", num));
+                        }
+                    }
+                }
+                i = close_idx + 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+
+    // 5. Standalone delimited number tokens: " - 01 ", "_01_", ".01."
+    let words: Vec<&str> = lower
+        .split(|c: char| c.is_whitespace() || c == '.' || c == '_' || c == '-' || c == '[' || c == ']' || c == '(' || c == ')')
+        .filter(|w| !w.is_empty())
+        .collect();
+    for w in words {
+        if (w.len() == 2 || w.len() == 3) && w.starts_with('0') && w.chars().all(|c| c.is_ascii_digit()) {
+            if let Ok(num) = w.parse::<u32>() {
+                tokens.push(format!("ep{}", num));
+            }
+        }
+    }
+
+    tokens.sort();
+    tokens.dedup();
+    tokens
+}
+
+/// Checks whether two filenames have conflicting sequence/episode numbers.
+/// Returns true if both have sequence markers but they do not intersect (e.g. Ep 01 vs Ep 02).
+pub fn has_conflicting_sequence_index(name1: &str, name2: &str) -> bool {
+    let t1 = extract_sequence_tokens(name1);
+    let t2 = extract_sequence_tokens(name2);
+    if t1.is_empty() || t2.is_empty() {
+        return false;
+    }
+    let has_intersection = t1.iter().any(|tok| t2.contains(tok));
+    !has_intersection
+}
+
+/// Extracts trailing parenthesized copy numbers (e.g. `video (1).mp4` -> Some(1))
+fn extract_copy_paren_num(name: &str) -> Option<u32> {
+    let stem = Path::new(name)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(name);
+    let norm = normalize_chinese_and_fullwidth(stem);
+    if norm.ends_with(')') {
+        if let Some(start) = norm.rfind('(') {
+            let inner = norm[start + 1..norm.len() - 1].trim();
+            if !inner.starts_with('0') && inner.chars().all(|c| c.is_ascii_digit()) {
+                return inner.parse::<u32>().ok();
+            }
+        }
+    }
+    None
+}
+
+/// Checks if two video titles share key non-generic lexical tokens or have substring inclusion.
+pub fn has_name_relevance(name1: &str, name2: &str) -> bool {
+    let norm1 = normalize_file_name_for_fuzzy(name1);
+    let norm2 = normalize_file_name_for_fuzzy(name2);
+    if norm1 == norm2 {
+        return true;
+    }
+    if norm1.len() >= 3 && norm2.contains(&norm1) {
+        return true;
+    }
+    if norm2.len() >= 3 && norm1.contains(&norm2) {
+        return true;
+    }
+    let w1: Vec<&str> = norm1.split_whitespace().collect();
+    let w2: Vec<&str> = norm2.split_whitespace().collect();
+    for word in &w1 {
+        if word.len() >= 2 && !is_generic_name(word) && w2.contains(word) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Evaluates whether two videos with the same stream specifications (resolution, codec, duration bucket)
+/// are genuinely duplicate copies of the same content.
+pub fn are_specs_identical(v1: &Video, v2: &Video) -> bool {
+    // 1. If exact hash matches, they are definitively identical
+    if !v1.file_hash.is_empty() && v1.file_hash == v2.file_hash {
+        return true;
+    }
+
+    // 2. Reject if sequence tokens conflict (e.g. Episode 01 vs Episode 02, S01E01 vs S01E02)
+    if has_conflicting_sequence_index(&v1.file_name, &v2.file_name) {
+        return false;
+    }
+
+    // 3. Duration must be strictly close (<= 0.3s)
+    let (dur1, dur2) = match (v1.duration, v2.duration) {
+        (Some(d1), Some(d2)) if d1 > 0.0 && d2 > 0.0 => (d1, d2),
+        _ => return false,
+    };
+    let dur_diff = (dur1 - dur2).abs();
+    if dur_diff > 0.3 {
+        return false;
+    }
+
+    // 4. Dimensions & codec must match
+    if v1.width != v2.width || v1.height != v2.height {
+        return false;
+    }
+    let c1 = v1.codec.as_deref().unwrap_or("").to_lowercase();
+    let c2 = v2.codec.as_deref().unwrap_or("").to_lowercase();
+    if !c1.is_empty() && !c2.is_empty() && c1 != c2 {
+        return false;
+    }
+
+    let min_size = v1.file_size.min(v2.file_size);
+    let max_size = v1.file_size.max(v2.file_size);
+    if min_size == 0 || max_size == 0 {
+        return false;
+    }
+
+    // 5. If file size in bytes is strictly identical, they are almost certainly duplicates
+    if v1.file_size == v2.file_size {
+        return true;
+    }
+
+    // 6. Strict size difference threshold:
+    // With same resolution, codec and duration, bitrate must be within 8% (or 3% for short clips <= 60s)
+    let size_diff_pct = (max_size - min_size) as f64 / (max_size as f64);
+    let max_dur = dur1.max(dur2);
+    let size_threshold = if max_dur <= 60.0 { 0.03 } else { 0.08 };
+    if size_diff_pct > size_threshold {
+        return false;
+    }
+
+    // 7. Relevance check:
+    // If size difference is <= 1% AND duration difference <= 0.1s, likely duplicate
+    if size_diff_pct <= 0.01 && dur_diff <= 0.1 {
+        return true;
+    }
+
+    has_name_relevance(&v1.file_name, &v2.file_name)
+}
+
 /// Evaluates whether two videos with the same normalized name are actually duplicate copies.
 pub fn are_videos_similar(v1: &Video, v2: &Video, is_generic: bool) -> bool {
     // 1. If exact hash matches, they are definitively identical
@@ -158,15 +436,33 @@ pub fn are_videos_similar(v1: &Video, v2: &Video, is_generic: bool) -> bool {
         return true;
     }
 
+    // 2. Reject if sequence tokens conflict (e.g. Episode 01 vs Episode 02, S01E01 vs S01E02)
+    if has_conflicting_sequence_index(&v1.file_name, &v2.file_name) {
+        return false;
+    }
+
     let min_size = v1.file_size.min(v2.file_size);
     let max_size = v1.file_size.max(v2.file_size);
 
-    // 2. Generic names (e.g. "video", "1", "未命名"): require strict verification
-    // to prevent unrelated clips from falsely colliding.
+    // 3. Check for conflicting parenthesized copy numbers (e.g. (1) vs (2))
+    if let (Some(num1), Some(num2)) = (extract_copy_paren_num(&v1.file_name), extract_copy_paren_num(&v2.file_name)) {
+        if num1 != num2 {
+            if let (Some(d1), Some(d2)) = (v1.duration, v2.duration) {
+                if (d1 - d2).abs() > 0.5 {
+                    return false;
+                }
+            }
+            if min_size > 0 && (max_size - min_size) as f64 / (max_size.max(1) as f64) > 0.05 {
+                return false;
+            }
+        }
+    }
+
+    // 4. Generic names (e.g. "video", "1", "未命名"): require strict verification
     if is_generic {
         if let (Some(dur1), Some(dur2)) = (v1.duration, v2.duration) {
             let dur_diff = (dur1 - dur2).abs();
-            if dur_diff <= 0.5 {
+            if dur_diff <= 0.3 {
                 let size_diff_pct = (max_size - min_size) as f64 / (max_size.max(1) as f64);
                 if size_diff_pct <= 0.05 {
                     if let ((Some(w1), Some(h1)), (Some(w2), Some(h2))) =
@@ -181,31 +477,42 @@ pub fn are_videos_similar(v1: &Video, v2: &Video, is_generic: bool) -> bool {
         return false;
     }
 
-    // 3. Non-generic names:
-    // Reject if sizes differ by > 20x (e.g. 10GB full movie vs 50MB thumbnail/sample)
-    if min_size > 0 && max_size / min_size > 20 {
-        return false;
+    // 5. Non-generic names:
+    // Reject if sizes differ by > 4.5x (or > 2.2x for same resolution)
+    if min_size > 0 {
+        if let ((Some(w1), Some(h1)), (Some(w2), Some(h2))) =
+            ((v1.width, v1.height), (v2.width, v2.height))
+        {
+            if w1 > 0 && w1 == w2 && h1 == h2 {
+                if max_size as f64 / min_size as f64 > 2.2 {
+                    return false;
+                }
+            }
+        }
+        if max_size as f64 / min_size as f64 > 4.5 {
+            return false;
+        }
     }
 
-    // If both have durations, use adaptive tolerance:
+    // If both have durations, use tightened adaptive tolerance:
     if let (Some(dur1), Some(dur2)) = (v1.duration, v2.duration) {
         if dur1 <= 0.0 || dur2 <= 0.0 {
-            return min_size > 0 && (max_size - min_size) as f64 / max_size as f64 <= 0.15;
+            return min_size > 0 && (max_size - min_size) as f64 / max_size as f64 <= 0.10;
         }
 
         let dur_diff = (dur1 - dur2).abs();
         let max_dur = dur1.max(dur2);
 
         // Closeness criteria:
-        // Short clips (<= 60s): difference within 2.0s or within 3%
-        // Medium clips (<= 600s): difference within 3.5s or within 2%
-        // Long movies (> 600s): difference within 6.0s or within 1%
+        // Short clips (<= 60s): difference within 1.0s or within 1.5%
+        // Medium clips (<= 600s): difference within 2.0s or within 0.8%
+        // Long movies (> 600s): difference within 3.0s or within 0.5%
         let dur_matches = if max_dur <= 60.0 {
-            dur_diff <= 2.0 || (dur_diff / max_dur) <= 0.03
+            dur_diff <= 1.0 || (dur_diff / max_dur) <= 0.015
         } else if max_dur <= 600.0 {
-            dur_diff <= 3.5 || (dur_diff / max_dur) <= 0.02
+            dur_diff <= 2.0 || (dur_diff / max_dur) <= 0.008
         } else {
-            dur_diff <= 6.0 || (dur_diff / max_dur) <= 0.01
+            dur_diff <= 3.0 || (dur_diff / max_dur) <= 0.005
         };
 
         if !dur_matches {
@@ -219,8 +526,7 @@ pub fn are_videos_similar(v1: &Video, v2: &Video, is_generic: bool) -> bool {
             if w1 > 0 && h1 > 0 && w2 > 0 && h2 > 0 {
                 let v1_portrait = h1 > w1 * 12 / 10;
                 let v2_portrait = h2 > w2 * 12 / 10;
-                // If one is portrait and other is landscape, only match if duration is virtually identical (<= 0.5s)
-                if v1_portrait != v2_portrait && dur_diff > 0.5 {
+                if v1_portrait != v2_portrait && dur_diff > 0.3 {
                     return false;
                 }
             }
@@ -229,13 +535,12 @@ pub fn are_videos_similar(v1: &Video, v2: &Video, is_generic: bool) -> bool {
         return true;
     }
 
-    // If one or both lack duration (e.g. ffprobe pending or failed):
-    // Fall back to size closeness or exact size
+    // If one or both lack duration:
     if v1.file_size == v2.file_size && v1.file_size > 0 {
         return true;
     }
 
-    if min_size > 0 && (max_size - min_size) as f64 / max_size as f64 <= 0.10 {
+    if min_size > 0 && (max_size - min_size) as f64 / max_size as f64 <= 0.05 {
         return true;
     }
 
@@ -389,35 +694,73 @@ pub fn find_duplicates(conn: &Connection, strategy: &str) -> Result<Vec<Duplicat
                 }
             }
 
-            for (key, mut group_videos) in group_map {
-                if group_videos.len() > 1 {
-                    group_videos.sort_by(|a, b| {
-                        let res_a = a.width.unwrap_or(0) * a.height.unwrap_or(0);
-                        let res_b = b.width.unwrap_or(0) * b.height.unwrap_or(0);
-                        res_b
-                            .cmp(&res_a)
-                            .then_with(|| b.file_size.cmp(&a.file_size))
-                            .then_with(|| b.updated_at.cmp(&a.updated_at))
-                    });
+            for (key, group_videos) in group_map {
+                let n = group_videos.len();
+                if n < 2 {
+                    continue;
+                }
 
-                    let total_size: u64 = group_videos.iter().map(|v| v.file_size).sum();
-                    let keep_size = group_videos[0].file_size;
-                    let reclaimable_size = total_size.saturating_sub(keep_size);
+                // Build adjacency list using strict are_specs_identical verification
+                let mut adj = vec![vec![]; n];
+                for i in 0..n {
+                    for j in (i + 1)..n {
+                        if are_specs_identical(&group_videos[i], &group_videos[j]) {
+                            adj[i].push(j);
+                            adj[j].push(i);
+                        }
+                    }
+                }
 
-                    result_groups.push(DuplicateGroup {
-                        group_id: format!("grp_{}_{}", group_counter, key),
-                        match_reason: "metadata".to_string(),
-                        match_label: format!(
-                            "规格一致 ({}x{}, {})",
-                            group_videos[0].width.unwrap_or(0),
-                            group_videos[0].height.unwrap_or(0),
-                            group_videos[0].codec.as_deref().unwrap_or("未知")
-                        ),
-                        total_size,
-                        reclaimable_size,
-                        videos: group_videos,
-                    });
-                    group_counter += 1;
+                let mut visited = vec![false; n];
+                for i in 0..n {
+                    if visited[i] {
+                        continue;
+                    }
+
+                    let mut component = Vec::new();
+                    let mut queue = std::collections::VecDeque::new();
+                    visited[i] = true;
+                    queue.push_back(i);
+
+                    while let Some(curr) = queue.pop_front() {
+                        component.push(group_videos[curr].clone());
+                        for &nbr in &adj[curr] {
+                            if !visited[nbr] {
+                                visited[nbr] = true;
+                                queue.push_back(nbr);
+                            }
+                        }
+                    }
+
+                    if component.len() > 1 {
+                        component.sort_by(|a, b| {
+                            let res_a = a.width.unwrap_or(0) * a.height.unwrap_or(0);
+                            let res_b = b.width.unwrap_or(0) * b.height.unwrap_or(0);
+                            res_b
+                                .cmp(&res_a)
+                                .then_with(|| b.file_size.cmp(&a.file_size))
+                                .then_with(|| b.updated_at.cmp(&a.updated_at))
+                        });
+
+                        let total_size: u64 = component.iter().map(|v| v.file_size).sum();
+                        let keep_size = component[0].file_size;
+                        let reclaimable_size = total_size.saturating_sub(keep_size);
+
+                        result_groups.push(DuplicateGroup {
+                            group_id: format!("grp_{}_{}", group_counter, key),
+                            match_reason: "metadata".to_string(),
+                            match_label: format!(
+                                "规格一致 ({}x{}, {})",
+                                component[0].width.unwrap_or(0),
+                                component[0].height.unwrap_or(0),
+                                component[0].codec.as_deref().unwrap_or("未知")
+                            ),
+                            total_size,
+                            reclaimable_size,
+                            videos: component,
+                        });
+                        group_counter += 1;
+                    }
                 }
             }
         }
@@ -653,11 +996,15 @@ mod tests {
         assert_eq!(normalize_file_name_for_fuzzy("copy of myvideo.mp4"), "myvideo");
         assert_eq!(normalize_file_name_for_fuzzy("复件 MyVideo.mp4"), "myvideo");
 
-        // Bracket index — 1-2 digits should be stripped
+        // Parenthesized copy indices — stripped
         assert_eq!(normalize_file_name_for_fuzzy("MyVideo (1).mp4"), "myvideo");
         assert_eq!(normalize_file_name_for_fuzzy("MyVideo (2).mp4"), "myvideo");
-        assert_eq!(normalize_file_name_for_fuzzy("MyVideo[1].mp4"), "myvideo");
         assert_eq!(normalize_file_name_for_fuzzy("MyVideo（1）.mp4"), "myvideo");
+
+        // Square bracket index — preserved as episode/sequence index to prevent series collision
+        assert_eq!(normalize_file_name_for_fuzzy("MyVideo[1].mp4"), "myvideo 1");
+        assert_eq!(normalize_file_name_for_fuzzy("MyAnime [01].mp4"), "myanime 01");
+        assert_eq!(normalize_file_name_for_fuzzy("MyAnime [02].mp4"), "myanime 02");
 
         // Multi-layer nested copy markers — should all be stripped
         assert_eq!(normalize_file_name_for_fuzzy("MyVideo - 副本 (1).mp4"), "myvideo");
@@ -694,7 +1041,6 @@ mod tests {
         assert!(duplicates[0].match_label.contains("vlog"));
     }
 
-
     #[test]
     fn test_find_exact_hash_duplicates() {
         let conn = setup_test_db();
@@ -719,8 +1065,8 @@ mod tests {
         let conn = setup_test_db();
         conn.execute(
             "INSERT INTO videos (file_path, file_name, file_hash, file_size, duration, width, height, codec, created_at, updated_at, status)
-             VALUES ('/path/v1.mp4', 'v1.mp4', 'hash_different_1', 1200000, 60.1, 1920, 1080, 'h264', 100, 100, 'ready'),
-                    ('/path/v2.mkv', 'v2.mkv', 'hash_different_2', 1100000, 60.2, 1920, 1080, 'h264', 200, 200, 'ready')",
+             VALUES ('/path/clip.mp4', 'clip.mp4', 'hash_different_1', 1200000, 60.1, 1920, 1080, 'h264', 100, 100, 'ready'),
+                    ('/path/clip_backup.mkv', 'clip_backup.mkv', 'hash_different_2', 1195000, 60.15, 1920, 1080, 'h264', 200, 200, 'ready')",
             [],
         ).unwrap();
 
@@ -728,6 +1074,27 @@ mod tests {
         assert_eq!(duplicates.len(), 1);
         assert_eq!(duplicates[0].videos.len(), 2);
         assert_eq!(duplicates[0].match_reason, "metadata");
+    }
+
+    #[test]
+    fn test_no_false_duplicates_for_series_episodes() {
+        let conn = setup_test_db();
+        conn.execute(
+            "INSERT INTO videos (file_path, file_name, file_hash, file_size, duration, width, height, codec, created_at, updated_at, status)
+             VALUES ('/path/Anime_[01].mp4', 'Anime_[01].mp4', 'hash_ep1', 500000000, 1440.0, 1920, 1080, 'h264', 100, 100, 'ready'),
+                    ('/path/Anime_[02].mp4', 'Anime_[02].mp4', 'hash_ep2', 502000000, 1440.0, 1920, 1080, 'h264', 200, 200, 'ready'),
+                    ('/path/Show_S01E01.mkv', 'Show_S01E01.mkv', 'hash_s1e1', 600000000, 2700.0, 1920, 1080, 'h264', 300, 300, 'ready'),
+                    ('/path/Show_S01E02.mkv', 'Show_S01E02.mkv', 'hash_s1e2', 605000000, 2700.1, 1920, 1080, 'h264', 400, 400, 'ready')",
+            [],
+        ).unwrap();
+
+        // 1. Metadata strategy must NEVER treat different episodes as duplicates
+        let meta_dups = find_duplicates(&conn, "metadata").unwrap();
+        assert_eq!(meta_dups.len(), 0, "Metadata strategy should not match different episodes");
+
+        // 2. Fuzzy name strategy must NEVER treat different episodes as duplicates
+        let fuzzy_dups = find_duplicates(&conn, "fuzzy_name").unwrap();
+        assert_eq!(fuzzy_dups.len(), 0, "Fuzzy name strategy should not match different episodes");
     }
 
     #[test]

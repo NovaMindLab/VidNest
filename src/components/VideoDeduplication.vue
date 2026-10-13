@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import type { Video, DuplicateGroup, DuplicateResolutionAction, ResolutionSummary, DedupStrategy } from '../types';
 import { t } from '../i18n';
 
@@ -15,6 +15,8 @@ const isResolving = ref<boolean>(false);
 const duplicateGroups = ref<DuplicateGroup[]>([]);
 const alsoDeleteDiskFile = ref<boolean>(false);
 const showConfirmModal = ref<boolean>(false);
+const singleGroupToResolve = ref<DuplicateGroup | null>(null);
+const showSingleConfirmModal = ref<boolean>(false);
 const toastMessage = ref<string>('');
 let toastTimer: number | null = null;
 
@@ -181,6 +183,77 @@ async function executeResolve() {
     showToast(`去重清理失败: ${err instanceof Error ? err.message : String(err)}`);
   } finally {
     isResolving.value = false;
+  }
+}
+
+function getVideoThumbUrl(video: Video): string {
+  if (video.thumbnail_data) {
+    return video.thumbnail_data;
+  }
+  if (video.thumbnail_path) {
+    return convertFileSrc(video.thumbnail_path);
+  }
+  return '';
+}
+
+function getGroupReclaimable(group: DuplicateGroup): number {
+  const keepId = selections.value[group.group_id];
+  let bytes = 0;
+  for (const v of group.videos) {
+    if (v.id !== keepId) {
+      bytes += v.file_size;
+    }
+  }
+  return bytes;
+}
+
+function promptResolveSingle(group: DuplicateGroup) {
+  const keepId = selections.value[group.group_id];
+  const deleteVideos = group.videos.filter((v) => v.id !== keepId);
+  if (deleteVideos.length === 0) {
+    showToast('本组未选择需要清理的冗余视频');
+    return;
+  }
+  singleGroupToResolve.value = group;
+  showSingleConfirmModal.value = true;
+}
+
+async function executeResolveSingle() {
+  const group = singleGroupToResolve.value;
+  if (!group) return;
+
+  const keepId = selections.value[group.group_id];
+  if (!keepId) return;
+
+  const deleteIds = group.videos.filter((v) => v.id !== keepId).map((v) => v.id);
+  if (deleteIds.length === 0) return;
+
+  isResolving.value = true;
+  showSingleConfirmModal.value = false;
+  try {
+    const action: DuplicateResolutionAction = {
+      groupId: group.group_id,
+      keepVideoId: keepId,
+      deleteVideoIds: deleteIds,
+      deleteDiskFile: alsoDeleteDiskFile.value,
+    };
+
+    const res = await invoke<ResolutionSummary>('resolve_duplicate_videos', {
+      actions: [action],
+    });
+
+    showToast(`✅ 已合并本组：${res.message}`);
+
+    // Remove this group locally and clean up selection
+    duplicateGroups.value = duplicateGroups.value.filter((g) => g.group_id !== group.group_id);
+    const newSelections = { ...selections.value };
+    delete newSelections[group.group_id];
+    selections.value = newSelections;
+  } catch (err: unknown) {
+    showToast(`单独合并失败: ${err instanceof Error ? err.message : String(err)}`);
+  } finally {
+    isResolving.value = false;
+    singleGroupToResolve.value = null;
   }
 }
 
@@ -404,7 +477,22 @@ onMounted(() => {
               <span class="separator">·</span>
               <span>总大小: {{ formatBytes(group.total_size) }}</span>
               <span class="separator">·</span>
-              <span class="text-success font-semibold">清理释放: {{ formatBytes(group.reclaimable_size) }}</span>
+              <span class="text-success font-semibold">清理释放: {{ formatBytes(getGroupReclaimable(group)) }}</span>
+              <button
+                class="btn-single-merge"
+                :disabled="isResolving"
+                title="单独合并本组重复项"
+                @click.stop="promptResolveSingle(group)"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="merge-icon">
+                  <path d="M16 3h5v5"></path>
+                  <path d="M4 20L21 3"></path>
+                  <path d="M21 16v5h-5"></path>
+                  <path d="M15 15l6 6"></path>
+                  <path d="M4 4l5 5"></path>
+                </svg>
+                <span>单独合并本组</span>
+              </button>
             </div>
           </div>
 
@@ -432,10 +520,11 @@ onMounted(() => {
               <!-- Thumbnail or Fallback -->
               <div class="video-thumb-box">
                 <img
-                  v-if="video.thumbnail_data"
-                  :src="video.thumbnail_data"
+                  v-if="getVideoThumbUrl(video)"
+                  :src="getVideoThumbUrl(video)"
                   class="thumb-img"
                   alt="thumbnail"
+                  loading="lazy"
                 />
                 <div v-else class="thumb-placeholder">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -578,6 +667,77 @@ onMounted(() => {
             @click="executeResolve"
           >
             {{ alsoDeleteDiskFile ? '彻底清理并删除原文件' : '确认仅清理媒体库索引' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Single Group Safe Confirmation Modal -->
+    <div v-if="showSingleConfirmModal && singleGroupToResolve" class="confirm-overlay" @click.self="showSingleConfirmModal = false">
+      <div class="confirm-card">
+        <div class="modal-header">
+          <div class="alert-icon-box alert-icon-single">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M16 3h5v5"></path>
+              <path d="M4 20L21 3"></path>
+              <path d="M21 16v5h-5"></path>
+              <path d="M15 15l6 6"></path>
+              <path d="M4 4l5 5"></path>
+            </svg>
+          </div>
+          <div>
+            <h3 class="modal-title">单独合并本组重复视频</h3>
+            <p class="modal-subtitle">仅处理当前组的副本，其他组保持不变</p>
+          </div>
+        </div>
+
+        <div class="modal-body">
+          <div class="single-group-info-box">
+            <div class="info-row">
+              <span class="info-label">匹配说明:</span>
+              <span class="info-val font-semibold">{{ singleGroupToResolve.match_label }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">保留视频:</span>
+              <span class="info-val text-success font-semibold" :title="singleGroupToResolve.videos.find((v) => v.id === selections[singleGroupToResolve!.group_id])?.file_name">
+                {{ singleGroupToResolve.videos.find((v) => v.id === selections[singleGroupToResolve!.group_id])?.file_name }}
+              </span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">待删副本:</span>
+              <span class="info-val text-danger font-mono font-semibold">
+                {{ singleGroupToResolve.videos.filter((v) => v.id !== selections[singleGroupToResolve!.group_id]).length }} 个
+              </span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">释放存储:</span>
+              <span class="info-val text-emerald font-mono font-semibold">
+                {{ formatBytes(getGroupReclaimable(singleGroupToResolve)) }}
+              </span>
+            </div>
+          </div>
+
+          <div v-if="alsoDeleteDiskFile" class="danger-warning-callout">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="callout-icon">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <span>注意：已勾选「同时删除磁盘文件」，本组待删副本将被物理彻底删除或移至回收站！</span>
+          </div>
+          <div v-else class="info-callout">
+            <span>💡 提示：当前未勾选「删除原文件」，将仅从软件媒体库移除多余记录，磁盘原文件将完整保留。</span>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="showSingleConfirmModal = false">取消</button>
+          <button
+            class="btn btn-primary btn-confirm-single"
+            :disabled="isResolving"
+            @click="executeResolveSingle"
+          >
+            {{ alsoDeleteDiskFile ? '彻底清理本组并删除原文件' : '确认合并本组索引' }}
           </button>
         </div>
       </div>
@@ -896,7 +1056,42 @@ onMounted(() => {
   color: var(--text-muted);
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.btn-single-merge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.28rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: 6px;
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  color: #a5b4fc;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-left: 0.5rem;
+}
+
+.btn-single-merge:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.3);
+  border-color: #818cf8;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+
+.btn-single-merge:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-single-merge .merge-icon {
+  width: 14px;
+  height: 14px;
 }
 
 .separator {
@@ -1274,6 +1469,51 @@ onMounted(() => {
   padding: 0.75rem;
   border-radius: 8px;
   font-size: 0.8rem;
+}
+
+.alert-icon-single {
+  background: rgba(99, 102, 241, 0.2) !important;
+  color: #818cf8 !important;
+}
+
+.single-group-info-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.single-group-info-box .info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.85rem;
+}
+
+.single-group-info-box .info-label {
+  color: #94a3b8;
+}
+
+.single-group-info-box .info-val {
+  color: #f1f5f9;
+  max-width: 65%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-confirm-single {
+  background: #6366f1;
+  border-color: #4f46e5;
+  color: #ffffff;
+}
+
+.btn-confirm-single:hover:not(:disabled) {
+  background: #4f46e5;
 }
 
 .modal-footer {
