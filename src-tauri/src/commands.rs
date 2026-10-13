@@ -1,3 +1,13 @@
+use crate::ai::whisper::{
+    load_ai_config, save_ai_config as persist_ai_config, transcribe_video_pipeline,
+    AiTranscriptionConfig,
+};
+use crate::db::subtitles::{
+    delete_video_subtitles as db_delete_subtitles, export_to_srt, export_to_vtt,
+    get_video_subtitles as db_get_subtitles, save_video_subtitles,
+    search_subtitles_snippets as db_search_subtitles_snippets, SubtitleSegment,
+    SubtitleSnippetMatch,
+};
 use crate::db::Database;
 use crate::health::run_health_check;
 use crate::media::read_thumbnail_base64;
@@ -1061,6 +1071,171 @@ pub async fn get_source_folders(db: State<'_, Database>) -> Result<Vec<SourceFol
         let conn_arc = db_clone.get_connection();
         let conn = conn_arc.lock().map_err(|e| e.to_string())?;
         crate::db::classification::get_source_folders(&conn)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ==========================================
+// AI Speech Transcription & Subtitles Commands
+// ==========================================
+
+#[tauri::command]
+pub async fn get_ai_config(app_handle: AppHandle) -> Result<AiTranscriptionConfig, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data dir: {}", e))?;
+    Ok(load_ai_config(&app_data_dir))
+}
+
+#[tauri::command]
+pub async fn save_ai_config(
+    app_handle: AppHandle,
+    config: AiTranscriptionConfig,
+) -> Result<(), String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data dir: {}", e))?;
+    persist_ai_config(&app_data_dir, &config)
+}
+
+#[tauri::command]
+pub async fn transcribe_video(
+    db: State<'_, Database>,
+    app_handle: AppHandle,
+    video_id: i64,
+    config: Option<AiTranscriptionConfig>,
+) -> Result<Vec<SubtitleSegment>, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data dir: {}", e))?;
+
+    let active_config = match config {
+        Some(cfg) => {
+            let _ = persist_ai_config(&app_data_dir, &cfg);
+            cfg
+        }
+        None => load_ai_config(&app_data_dir),
+    };
+
+    // 1. Fetch video file path
+    let db_clone = (*db).clone();
+    let video_path = tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        let video = crate::db::videos::get_video_by_id(&conn, video_id)?
+            .ok_or_else(|| format!("Video ID {} not found", video_id))?;
+        Ok::<PathBuf, String>(PathBuf::from(video.file_path))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    // 2. Perform speech transcription
+    let segments = transcribe_video_pipeline(
+        &video_path,
+        video_id,
+        &active_config,
+        &app_data_dir,
+    )
+    .await?;
+
+    // 3. Save to database & update FTS5
+    let db_clone2 = (*db).clone();
+    let segments_to_save = segments.clone();
+    let lang = active_config.language.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone2.get_connection();
+        let mut conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        save_video_subtitles(
+            &mut conn,
+            video_id,
+            Some(&lang),
+            Some("vtt"),
+            &segments_to_save,
+        )?;
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    Ok(segments)
+}
+
+#[tauri::command]
+pub async fn get_video_subtitles(
+    db: State<'_, Database>,
+    video_id: i64,
+) -> Result<Vec<SubtitleSegment>, String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        db_get_subtitles(&conn, video_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn delete_video_subtitles(
+    db: State<'_, Database>,
+    video_id: i64,
+) -> Result<(), String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let mut conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        db_delete_subtitles(&mut conn, video_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn export_subtitles_file(
+    db: State<'_, Database>,
+    video_id: i64,
+    format: String,
+    target_path: String,
+) -> Result<String, String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        let segments = db_get_subtitles(&conn, video_id)?;
+        if segments.is_empty() {
+            return Err("该视频暂无字幕内容可导出".to_string());
+        }
+
+        let content = if format.to_lowercase() == "srt" {
+            export_to_srt(&segments)
+        } else {
+            export_to_vtt(&segments)
+        };
+
+        std::fs::write(&target_path, content)
+            .map_err(|e| format!("写入字幕文件失败: {}", e))?;
+
+        Ok(target_path)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn search_subtitles_snippets(
+    db: State<'_, Database>,
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<SubtitleSnippetMatch>, String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        db_search_subtitles_snippets(&conn, &query, limit.unwrap_or(20))
     })
     .await
     .map_err(|e| e.to_string())?

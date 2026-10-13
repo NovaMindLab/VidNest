@@ -296,6 +296,35 @@ export interface ExtractedAudioFilter {
   sortBy?: 'created_desc' | 'duration_desc' | 'size_desc' | 'name_asc' | string;
 }
 
+export interface SubtitleSegment {
+  id: number;
+  video_id: number;
+  language?: string | null;
+  format?: string | null;
+  start_time_ms: number;
+  end_time_ms: number;
+  content: string;
+}
+
+export interface SubtitleSnippetMatch {
+  video_id: number;
+  segment_id: number;
+  start_time_ms: number;
+  end_time_ms: number;
+  snippet: string;
+  full_content: string;
+}
+
+export interface AiTranscriptionConfig {
+  engine: 'local' | 'api' | string;
+  api_url: string;
+  api_key: string;
+  model: string;
+  language: string;
+  prompt: string;
+  local_model_path: string;
+}
+
 
 
 

@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
+import { invoke } from '@tauri-apps/api/core';
 import { currentLocale, setLocale, t } from '../i18n';
 import { themeMode, setTheme } from '../utils/theme';
+import type { AiTranscriptionConfig } from '../types';
 
 const emit = defineEmits<{
   (e: 'checkUpdate'): void;
 }>();
 
-const activeTab = ref<'general' | 'media' | 'downloader' | 'about'>('general');
+const activeTab = ref<'general' | 'media' | 'downloader' | 'ai' | 'about'>('general');
 
 // Preferences mock/storage state
 const minFileSizeMb = ref<number>(
@@ -19,6 +21,66 @@ const autoCheckYtdlp = ref<boolean>(
 const maxConcurrent = ref<number>(
   Number(localStorage.getItem('vidnest_max_concurrent') || '3')
 );
+
+// AI & Whisper settings state
+const aiConfig = ref<AiTranscriptionConfig>({
+  engine: 'api',
+  api_url: 'https://api.openai.com/v1',
+  api_key: '',
+  model: 'whisper-1',
+  language: 'auto',
+  prompt: '',
+  local_model_path: '',
+});
+const isSavingAi = ref<boolean>(false);
+const aiSaveToast = ref<string>('');
+
+async function loadAiSettings() {
+  try {
+    const cfg = await invoke<AiTranscriptionConfig>('get_ai_config');
+    if (cfg) {
+      aiConfig.value = cfg;
+    }
+  } catch (err) {
+    console.warn('Failed to load ai config in settings:', err);
+  }
+}
+
+async function saveAiSettings() {
+  isSavingAi.value = true;
+  aiSaveToast.value = '';
+  try {
+    await invoke('save_ai_config', { config: aiConfig.value });
+    aiSaveToast.value = '✓ AI 语音模型配置已成功保存！';
+    setTimeout(() => {
+      aiSaveToast.value = '';
+    }, 2500);
+  } catch (err) {
+    aiSaveToast.value = `保存失败: ${err}`;
+  } finally {
+    isSavingAi.value = false;
+  }
+}
+
+function applyAiPreset(preset: 'openai' | 'groq' | 'local_whisper_api' | 'ollama') {
+  if (preset === 'openai') {
+    aiConfig.value.engine = 'api';
+    aiConfig.value.api_url = 'https://api.openai.com/v1';
+    aiConfig.value.model = 'whisper-1';
+  } else if (preset === 'groq') {
+    aiConfig.value.engine = 'api';
+    aiConfig.value.api_url = 'https://api.groq.com/openai/v1';
+    aiConfig.value.model = 'whisper-large-v3';
+  } else if (preset === 'local_whisper_api') {
+    aiConfig.value.engine = 'api';
+    aiConfig.value.api_url = 'http://localhost:8000/v1';
+    aiConfig.value.model = 'Systran/faster-whisper-base';
+  } else if (preset === 'ollama') {
+    aiConfig.value.engine = 'api';
+    aiConfig.value.api_url = 'http://localhost:11434/v1';
+    aiConfig.value.model = 'whisper';
+  }
+}
 
 function onMinSizeChange() {
   localStorage.setItem('vidnest_min_size', String(minFileSizeMb.value));
@@ -35,6 +97,10 @@ function onMaxConcurrentChange() {
 function openExternal(url: string) {
   window.open(url, '_blank');
 }
+
+onMounted(() => {
+  loadAiSettings();
+});
 </script>
 
 <template>
@@ -85,6 +151,15 @@ function openExternal(url: string) {
             <line x1="12" y1="15" x2="12" y2="3"></line>
           </svg>
           <span>{{ t('settings.tabs.download') }}</span>
+        </button>
+
+        <button
+          class="tab-nav-btn"
+          :class="{ active: activeTab === 'ai' }"
+          @click="activeTab = 'ai'"
+        >
+          <span style="font-size: 1rem; line-height: 1;">✨</span>
+          <span>AI 语音模型</span>
         </button>
 
         <button
@@ -323,7 +398,160 @@ function openExternal(url: string) {
         </div>
       </section>
 
-      <!-- 4. ABOUT VIDNEST -->
+      <!-- 4. AI & WHISPER MODEL CONFIGURATION -->
+      <section v-show="activeTab === 'ai'" class="settings-section">
+        <div class="settings-card">
+          <div class="card-header-row">
+            <div class="card-icon-badge">✨</div>
+            <div class="card-title-group">
+              <h3>AI 语音转写与字幕模型配置</h3>
+              <p>支持配置云端 OpenAI 兼容 API 或本地纯离线 Whisper 模型，实现毫秒级台词提取与全文检索</p>
+            </div>
+          </div>
+
+          <!-- Engine choice -->
+          <div class="setting-row-item">
+            <div class="row-info">
+              <span class="row-label">转写引擎方案 (Engine)</span>
+              <span class="row-sub">选择使用远程/本地 HTTP API 服务或本地独立 Whisper 执行体</span>
+            </div>
+            <div class="row-control">
+              <select v-model="aiConfig.engine" class="settings-select">
+                <option value="api">☁️ OpenAI 兼容接口 (云端 / Ollama / Faster-Whisper)</option>
+                <option value="local">💻 本地 Whisper CLI (whisper.cpp 纯离线)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Quick Presets when API -->
+          <div v-if="aiConfig.engine === 'api'" class="setting-row-item">
+            <div class="row-info">
+              <span class="row-label">常用服务快速预设</span>
+              <span class="row-sub">一键自动填充推荐的 Base URL 与模型名称</span>
+            </div>
+            <div class="row-control-presets">
+              <button class="preset-pill-btn" @click="applyAiPreset('openai')">OpenAI 官方</button>
+              <button class="preset-pill-btn" @click="applyAiPreset('groq')">Groq 极速</button>
+              <button class="preset-pill-btn" @click="applyAiPreset('local_whisper_api')">本地 Faster-Whisper (8000)</button>
+              <button class="preset-pill-btn" @click="applyAiPreset('ollama')">本地 Ollama (11434)</button>
+            </div>
+          </div>
+
+          <!-- API URL -->
+          <div v-if="aiConfig.engine === 'api'" class="setting-row-item">
+            <div class="row-info">
+              <span class="row-label">API 基础地址 (Base URL)</span>
+              <span class="row-sub">请求将发送至该地址的 /audio/transcriptions 端点</span>
+            </div>
+            <div class="row-control wide">
+              <input
+                v-model="aiConfig.api_url"
+                type="text"
+                class="settings-text-input"
+                placeholder="https://api.openai.com/v1"
+              />
+            </div>
+          </div>
+
+          <!-- API Key -->
+          <div v-if="aiConfig.engine === 'api'" class="setting-row-item">
+            <div class="row-info">
+              <span class="row-label">API 密钥 (API Key)</span>
+              <span class="row-sub">用于鉴权 Bearer Token，本地无鉴权服务可留空</span>
+            </div>
+            <div class="row-control wide">
+              <input
+                v-model="aiConfig.api_key"
+                type="password"
+                class="settings-text-input"
+                placeholder="sk-..."
+              />
+            </div>
+          </div>
+
+          <!-- Model Name -->
+          <div v-if="aiConfig.engine === 'api'" class="setting-row-item">
+            <div class="row-info">
+              <span class="row-label">模型标识 (Model)</span>
+              <span class="row-sub">传递给接口的模型名称，如 whisper-1、whisper-large-v3 等</span>
+            </div>
+            <div class="row-control wide">
+              <input
+                v-model="aiConfig.model"
+                type="text"
+                class="settings-text-input"
+                placeholder="whisper-1"
+              />
+            </div>
+          </div>
+
+          <!-- Local Model Path -->
+          <div v-if="aiConfig.engine === 'local'" class="setting-row-item">
+            <div class="row-info">
+              <span class="row-label">本地模型权重文件路径 (.bin)</span>
+              <span class="row-sub">ggml 模型权重路径 (默认留空将自动从数据目录 models 检测)</span>
+            </div>
+            <div class="row-control wide">
+              <input
+                v-model="aiConfig.local_model_path"
+                type="text"
+                class="settings-text-input"
+                placeholder="例如: /path/to/ggml-base.bin"
+              />
+            </div>
+          </div>
+
+          <!-- Target Language -->
+          <div class="setting-row-item">
+            <div class="row-info">
+              <span class="row-label">默认识别语言 (Language)</span>
+              <span class="row-sub">自动识别多国语言或指定固定语言以提高识别准确率</span>
+            </div>
+            <div class="row-control">
+              <select v-model="aiConfig.language" class="settings-select">
+                <option value="auto">🌐 自动识别语言 (Auto)</option>
+                <option value="zh">🇨🇳 中文普通话 (Chinese)</option>
+                <option value="en">🇺🇸 英语 (English)</option>
+                <option value="ja">🇯🇵 日语 (Japanese)</option>
+                <option value="ko">🇰🇷 韩语 (Korean)</option>
+                <option value="es">🇪🇸 西班牙语 (Spanish)</option>
+                <option value="fr">🇫🇷 法语 (French)</option>
+                <option value="de">🇩🇪 德语 (German)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Prompt -->
+          <div class="setting-row-item">
+            <div class="row-info">
+              <span class="row-label">转写引导词 / 专业术语 (Prompt)</span>
+              <span class="row-sub">可填写简体中文常见词汇或行业术语以引导模型生成规范文字</span>
+            </div>
+            <div class="row-control wide">
+              <input
+                v-model="aiConfig.prompt"
+                type="text"
+                class="settings-text-input"
+                placeholder="例如: 简体中文、电影对白、学术讲座..."
+              />
+            </div>
+          </div>
+
+          <!-- Save Button Bar -->
+          <div class="setting-action-footer">
+            <span v-if="aiSaveToast" class="ai-save-toast">{{ aiSaveToast }}</span>
+            <button
+              class="btn-save-ai-settings"
+              :disabled="isSavingAi"
+              @click="saveAiSettings"
+            >
+              <span>{{ isSavingAi ? '正在保存...' : '💾 保存 AI 配置' }}</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. ABOUT VIDNEST -->
       <section v-show="activeTab === 'about'" class="settings-section">
         <div class="settings-card about-card">
           <div class="about-hero">
@@ -335,7 +563,7 @@ function openExternal(url: string) {
             <div class="about-hero-text">
               <h2>VidNest</h2>
               <p class="about-version-line">
-                <span>{{ t('settings.about.version') }} 2.4.0</span>
+                <span>{{ t('settings.about.version') }} 2.5.0</span>
                 <span class="stable-tag">{{ t('settings.about.stable') }}</span>
               </p>
             </div>
@@ -907,5 +1135,90 @@ input:checked + .toggle-slider:before {
 
 .about-btn.secondary:hover {
   background: var(--bg-hover, rgba(255, 255, 255, 0.1));
+}
+
+/* AI Settings specific styles */
+.row-control.wide {
+  flex: 1;
+  max-width: 480px;
+}
+
+.settings-text-input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #30363d);
+  background: var(--bg-input, #0d1117);
+  color: var(--text-primary, #ffffff);
+  font-size: 13px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.settings-text-input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.row-control-presets {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.preset-pill-btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  background: var(--bg-item, rgba(255, 255, 255, 0.04));
+  color: var(--text-muted, #c9d1d9);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.preset-pill-btn:hover {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.4);
+  color: #a5b4fc;
+}
+
+.setting-action-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 16px;
+  margin-top: 8px;
+  border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.06));
+}
+
+.ai-save-toast {
+  font-size: 13px;
+  color: #4ade80;
+  font-weight: 500;
+}
+
+.btn-save-ai-settings {
+  padding: 9px 20px;
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  border: none;
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  transition: all 0.2s ease;
+}
+
+.btn-save-ai-settings:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(168, 85, 247, 0.4);
+}
+
+.btn-save-ai-settings:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>

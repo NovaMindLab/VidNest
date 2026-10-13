@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod commands;
 pub mod db;
 pub mod dedup;
@@ -13,15 +14,17 @@ use commands::{
     add_tag_to_video, add_videos_to_collection, batch_add_tag_to_videos, batch_update_videos_status,
     cancel_download, cancel_download_task, cancel_full_disk_scan, check_app_update, check_ytdlp_update,
     clear_completed_tasks, close_video_picker_window, create_collection, create_tag, delete_collection,
-    delete_extracted_audio, delete_tag, delete_video, download_and_install_update, echo,
-    extract_audio_from_video, find_duplicate_videos, get_category_stats, get_collections,
+    delete_extracted_audio, delete_tag, delete_video, delete_video_subtitles,
+    download_and_install_update, echo, export_subtitles_file, extract_audio_from_video,
+    find_duplicate_videos, get_ai_config, get_category_stats, get_collections,
     get_download_tasks, get_player_init_video, get_source_folders, get_tags, get_video_detail,
-    inspect_url, inspect_video_url, install_update_and_relaunch, list_extracted_audios, list_videos,
-    open_update_installer_folder, open_video_picker_window, open_video_player_window, open_ytd_window,
-    pause_download, pause_download_task, ping, relaunch_app, remove_tag_from_video,
-    remove_video_from_collection, resolve_duplicate_videos, resume_download, resume_download_task,
-    reveal_in_explorer, scan_video_directory, set_player_always_on_top, set_video_color_tag,
-    start_download, start_full_disk_scan, system_health_check, toggle_video_star,
+    get_video_subtitles, inspect_url, inspect_video_url, install_update_and_relaunch,
+    list_extracted_audios, list_videos, open_update_installer_folder, open_video_picker_window,
+    open_video_player_window, open_ytd_window, pause_download, pause_download_task, ping, relaunch_app,
+    remove_tag_from_video, remove_video_from_collection, resolve_duplicate_videos, resume_download,
+    resume_download_task, reveal_in_explorer, save_ai_config, scan_video_directory,
+    search_subtitles_snippets, set_player_always_on_top, set_video_color_tag, start_download,
+    start_full_disk_scan, system_health_check, toggle_video_star, transcribe_video,
     update_video_watch_progress, update_ytdlp, PlayerState,
 };
 use db::Database;
@@ -136,6 +139,13 @@ pub fn run() {
             add_videos_to_collection,
             remove_video_from_collection,
             get_source_folders,
+            get_ai_config,
+            save_ai_config,
+            transcribe_video,
+            get_video_subtitles,
+            delete_video_subtitles,
+            export_subtitles_file,
+            search_subtitles_snippets,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

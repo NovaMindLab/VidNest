@@ -6,12 +6,15 @@ import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import VideoPlayerModal from './VideoPlayerModal.vue';
 import AudioExtractionModal from './AudioExtractionModal.vue';
 import CategorySidebar, { type CategorySelection } from './CategorySidebar.vue';
-import type { Video, VideoFilter, VideoListResponse, ScanSummary, ScanProgress, CategoryStats, Tag } from '../types';
+import type { Video, VideoFilter, VideoListResponse, ScanSummary, ScanProgress, CategoryStats, Tag, SubtitleSnippetMatch } from '../types';
 
 const emit = defineEmits<{
   (e: 'navigateDedup'): void;
   (e: 'navigateAudios'): void;
 }>();
+
+// Subtitle snippet dialogue search matches
+const subtitleSnippets = ref<Map<number, SubtitleSnippetMatch[]>>(new Map());
 
 // Classification & Organization state
 const categoryStats = ref<CategoryStats | null>(null);
@@ -571,6 +574,28 @@ async function fetchVideos(reset = true) {
     if (reset) {
       videos.value = res.items;
       totalVideos.value = res.total;
+
+      const q = searchText.value.trim();
+      if (q) {
+        try {
+          const matches = await invoke<SubtitleSnippetMatch[]>('search_subtitles_snippets', {
+            query: q,
+            limit: 50,
+          });
+          const map = new Map<number, SubtitleSnippetMatch[]>();
+          matches.forEach((m) => {
+            const arr = map.get(m.video_id) || [];
+            arr.push(m);
+            map.set(m.video_id, arr);
+          });
+          subtitleSnippets.value = map;
+        } catch (e) {
+          console.warn('Subtitle snippet search failed:', e);
+          subtitleSnippets.value = new Map();
+        }
+      } else {
+        subtitleSnippets.value = new Map();
+      }
     } else {
       const existingIds = new Set(videos.value.map((v) => v.id));
       const newItems = res.items.filter((v) => !existingIds.has(v.id));
@@ -819,13 +844,133 @@ onUnmounted(() => {
               <button
                 v-if="searchText"
                 class="search-clear-btn"
+                title="清除搜索"
                 @click="clearSearch"
               >✕</button>
             </div>
 
+            <div class="toolbar-divider"></div>
+
+            <!-- Action Buttons Group -->
+            <div class="toolbar-actions-group">
+              <!-- Scan / Import Folder Toggle Button -->
+              <button
+                class="btn-toolbar-action"
+                :class="{ active: showScanner }"
+                title="展开/收起全盘与目录扫描面板"
+                @click="showScanner = !showScanner"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <span>{{ showScanner ? '收起扫描' : '扫描导入' }}</span>
+              </button>
+
+              <!-- Jump to Deduplication View Button -->
+              <button
+                class="btn-toolbar-action"
+                title="查找相同或重复视频并清理"
+                @click="emit('navigateDedup')"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                <span>查重清理</span>
+              </button>
+
+              <!-- Audio Library Button -->
+              <button
+                class="btn-toolbar-action"
+                title="查看已提取音频资产中枢"
+                @click="emit('navigateAudios')"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M9 18V5l12-2v13"></path>
+                  <circle cx="6" cy="18" r="3"></circle>
+                  <circle cx="18" cy="16" r="3"></circle>
+                </svg>
+                <span>已提取音频</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="toolbar-right-group">
+            <!-- Sort dropdown -->
+            <select
+              v-model="selectedSort"
+              class="sort-select"
+              title="视频列表排序规则"
+              @change="fetchVideos(true)"
+            >
+              <option value="created_desc">入库 (最新)</option>
+              <option value="created_asc">入库 (最早)</option>
+              <option value="duration_desc">时长 (长到短)</option>
+              <option value="duration_asc">时长 (短到长)</option>
+              <option value="size_desc">体积 (大到小)</option>
+              <option value="size_asc">体积 (小到大)</option>
+              <option value="name_asc">文件名 (A-Z)</option>
+            </select>
+
+            <div class="toolbar-divider"></div>
+
+            <!-- View mode switcher -->
+            <div class="view-switch-btns">
+              <button
+                class="view-btn"
+                :class="{ active: viewMode === 'grid' }"
+                title="网格平铺"
+                @click="viewMode = 'grid'"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="14" width="7" height="7"></rect>
+                  <rect x="3" y="14" width="7" height="7"></rect>
+                </svg>
+              </button>
+              <button
+                class="view-btn"
+                :class="{ active: viewMode === 'list' }"
+                title="紧凑列表"
+                @click="viewMode = 'list'"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="8" y1="6" x2="21" y2="6"></line>
+                  <line x1="8" y1="12" x2="21" y2="12"></line>
+                  <line x1="8" y1="18" x2="21" y2="18"></line>
+                  <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                  <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                  <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+
+            <span class="video-counter-tag">
+              共 <strong>{{ totalVideos }}</strong> 部
+            </span>
+          </div>
+        </header>
+
+        <!-- Category Breadcrumb & Filter Reset Bar -->
+        <div class="category-breadcrumb-bar">
+          <div class="breadcrumb-left">
+            <div class="active-category-pill">
+              <span class="breadcrumb-prefix-label">当前视图</span>
+              <span class="active-category-title">{{ activeCategory.label }}</span>
+            </div>
+
+            <div class="toolbar-divider compact"></div>
+
             <!-- Multi-dimensional Filter Dropdowns -->
             <div class="filter-dropdowns-row">
-              <select v-model="selectedQuality" class="select-dropdown compact font-mono" @change="fetchVideos(true)">
+              <select
+                v-model="selectedQuality"
+                class="filter-select font-mono"
+                :class="{ 'is-filtered': selectedQuality }"
+                title="按画质分辨率过滤"
+                @change="fetchVideos(true)"
+              >
                 <option value="">画质: 全部</option>
                 <option value="4k">4K 超清</option>
                 <option value="1080p">1080P 高清</option>
@@ -833,140 +978,65 @@ onUnmounted(() => {
                 <option value="sd">普通 / SD</option>
               </select>
 
-              <select v-model="selectedDurationRange" class="select-dropdown compact" @change="fetchVideos(true)">
+              <select
+                v-model="selectedDurationRange"
+                class="filter-select"
+                :class="{ 'is-filtered': selectedDurationRange }"
+                title="按视频时长区间过滤"
+                @change="fetchVideos(true)"
+              >
                 <option value="">时长: 全部</option>
                 <option value="under_3m">&lt; 3分钟 (短片)</option>
                 <option value="3_to_30m">3 ~ 30分钟</option>
                 <option value="over_30m">&gt; 30分钟 (长片)</option>
               </select>
 
-              <select v-model="selectedWatchStatus" class="select-dropdown compact" @change="fetchVideos(true)">
+              <select
+                v-model="selectedWatchStatus"
+                class="filter-select"
+                :class="{ 'is-filtered': selectedWatchStatus }"
+                title="按观看状态过滤"
+                @change="fetchVideos(true)"
+              >
                 <option value="">状态: 全部</option>
                 <option value="unwatched">⚪ 待观看</option>
                 <option value="in_progress">🟡 正在看</option>
                 <option value="watched">🟢 已看</option>
               </select>
 
-              <select v-model="selectedCodec" class="select-dropdown compact font-mono" @change="fetchVideos(true)">
+              <select
+                v-model="selectedCodec"
+                class="filter-select font-mono"
+                :class="{ 'is-filtered': selectedCodec }"
+                title="按视频编码格式过滤"
+                @change="fetchVideos(true)"
+              >
                 <option value="">编码: 全部</option>
                 <option v-for="c in (availableCodecs.length > 0 ? availableCodecs : ['H264', 'HEVC', 'AV1'])" :key="c" :value="c">
                   {{ c }}
                 </option>
               </select>
-
-              <select v-model="selectedSort" class="select-dropdown compact" @change="fetchVideos(true)">
-                <option value="created_desc">入库 (最新)</option>
-                <option value="created_asc">入库 (最早)</option>
-                <option value="duration_desc">时长 (长到短)</option>
-                <option value="duration_asc">时长 (短到长)</option>
-                <option value="size_desc">体积 (大到小)</option>
-                <option value="size_asc">体积 (小到大)</option>
-                <option value="name_asc">文件名 (A-Z)</option>
-              </select>
             </div>
           </div>
 
-      <div class="toolbar-right-group">
-        <!-- Scan / Import Folder Toggle Button -->
-        <button
-          class="btn-toggle-scan"
-          :class="{ active: showScanner }"
-          @click="showScanner = !showScanner"
-        >
-          <svg class="btn-sm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-          </svg>
-          <span>{{ showScanner ? '收起扫描' : '扫描导入' }}</span>
-        </button>
+          <div class="breadcrumb-right">
+            <span
+              v-if="selectedQuality || selectedDurationRange || selectedWatchStatus || selectedCodec"
+              class="filter-badge-hint"
+            >
+              复合筛选已生效
+            </span>
 
-        <!-- Jump to Deduplication View Button -->
-        <button
-          class="btn-toggle-scan"
-          title="查找相同或重复视频并清理"
-          @click="emit('navigateDedup')"
-        >
-          <svg class="btn-sm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-          </svg>
-          <span>查重清理</span>
-        </button>
-
-        <!-- Audio Library Button -->
-        <button
-          class="btn btn-secondary btn-header-act"
-          @click="emit('navigateAudios')"
-          title="查看已提取音频资产中枢"
-        >
-          <svg class="btn-sm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 18V5l12-2v13"></path>
-            <circle cx="6" cy="18" r="3"></circle>
-            <circle cx="18" cy="16" r="3"></circle>
-          </svg>
-          <span>已提取音频</span>
-        </button>
-
-        <!-- View mode -->
-        <div class="view-switch-btns">
-          <button
-            class="view-btn"
-            :class="{ active: viewMode === 'grid' }"
-            title="网格平铺"
-            @click="viewMode = 'grid'"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="7" height="7"></rect>
-              <rect x="14" y="3" width="7" height="7"></rect>
-              <rect x="14" y="14" width="7" height="7"></rect>
-              <rect x="3" y="14" width="7" height="7"></rect>
-            </svg>
-          </button>
-          <button
-            class="view-btn"
-            :class="{ active: viewMode === 'list' }"
-            title="紧凑列表"
-            @click="viewMode = 'list'"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="8" y1="6" x2="21" y2="6"></line>
-              <line x1="8" y1="12" x2="21" y2="12"></line>
-              <line x1="8" y1="18" x2="21" y2="18"></line>
-              <line x1="3" y1="6" x2="3.01" y2="6"></line>
-              <line x1="3" y1="12" x2="3.01" y2="12"></line>
-              <line x1="3" y1="18" x2="3.01" y2="18"></line>
-            </svg>
-          </button>
+            <button
+              v-if="selectedQuality || selectedDurationRange || selectedWatchStatus || selectedCodec || activeCategory.type !== 'all' || searchText"
+              class="btn-reset-filters"
+              title="一键重置当前筛选与搜索条件"
+              @click="resetAllFilters"
+            >
+              重置筛选 ✕
+            </button>
+          </div>
         </div>
-
-        <span class="video-counter-tag">
-          共 <strong>{{ totalVideos }}</strong> 部
-        </span>
-      </div>
-    </header>
-
-    <!-- Category Breadcrumb & Filter Reset Bar -->
-    <div class="category-breadcrumb-bar">
-      <div class="breadcrumb-left">
-        <span class="breadcrumb-prefix-label">当前视图:</span>
-        <span class="active-category-title">{{ activeCategory.label }}</span>
-        <span class="active-category-count">({{ totalVideos }} 部视频)</span>
-        <span
-          v-if="selectedQuality || selectedDurationRange || selectedWatchStatus || selectedCodec"
-          class="filter-badge-hint"
-        >
-          复合筛选已生效
-        </span>
-      </div>
-      <div class="breadcrumb-right">
-        <button
-          v-if="selectedQuality || selectedDurationRange || selectedWatchStatus || selectedCodec || activeCategory.type !== 'all' || searchText"
-          class="btn-reset-filters"
-          @click="resetAllFilters"
-        >
-          重置所有筛选 ✕
-        </button>
-      </div>
-    </div>
 
     <!-- Collapsible Scan Directory Panel -->
     <transition name="drawer">
@@ -1288,6 +1358,17 @@ onUnmounted(() => {
                     </button>
                   </div>
 
+                  <!-- Subtitle Dialogue Match Badge -->
+                  <div
+                    v-if="subtitleSnippets.get(video.id)?.length"
+                    class="sub-snippet-match-bar"
+                    title="点击播放视频并定位到台词位置"
+                    @click.stop="openVideo(video)"
+                  >
+                    <span class="sub-match-ic">🗣️ 台词匹配</span>
+                    <span class="sub-match-text">"{{ subtitleSnippets.get(video.id)![0].snippet }}"</span>
+                  </div>
+
                   <div class="grid-card-sub">
                     <span v-if="video.codec" class="codec-pill font-mono">{{ video.codec }}</span>
                     <span class="size-text font-mono">{{ formatFileSize(video.file_size) }}</span>
@@ -1297,6 +1378,9 @@ onUnmounted(() => {
                   <div class="card-quick-actions">
                     <button class="card-act-btn" title="播放" @click.stop="openVideo(video)">
                       ▶ 播放
+                    </button>
+                    <button class="card-act-btn btn-act-ai" title="AI 字幕台词" @click.stop="openVideo(video)">
+                      ✨ 字幕
                     </button>
                     <button class="card-act-btn btn-act-tag" title="管理标签" @click.stop="openTagModal(video)">
                       🏷️ 标签
@@ -1389,6 +1473,14 @@ onUnmounted(() => {
                   >
                     #{{ t.name }}
                   </span>
+                  <span
+                    v-if="subtitleSnippets.get(item.row.video.id)?.length"
+                    class="li-sub-match-pill"
+                    title="点击播放视频"
+                    @click.stop="openVideo(item.row.video)"
+                  >
+                    🗣️ 台词: "{{ subtitleSnippets.get(item.row.video.id)![0].snippet }}"
+                  </span>
                   <span class="li-path font-mono" :title="item.row.video.file_path">
                     {{ item.row.video.file_path }}
                   </span>
@@ -1400,6 +1492,7 @@ onUnmounted(() => {
               <div class="li-size font-mono">{{ formatFileSize(item.row.video.file_size) }}</div>
               <div class="li-actions">
                 <button class="li-btn" title="播放" @click.stop="openVideo(item.row.video)">▶</button>
+                <button class="li-btn btn-act-ai" title="AI 字幕台词" @click.stop="openVideo(item.row.video)">✨</button>
                 <button class="li-btn btn-act-tag" title="管理标签" @click.stop="openTagModal(item.row.video)">🏷️</button>
                 <button class="li-btn btn-act-audio" title="提取音频" @click.stop="openAudioExtract(item.row.video)">🎵</button>
                 <button class="li-btn" title="定位文件" @click.stop="revealVideo(item.row.video.file_path)">📁</button>
@@ -1589,126 +1682,169 @@ onUnmounted(() => {
 
 /* Toolbar */
 .library-toolbar {
-  height: 50px;
-  min-height: 50px;
+  height: 48px;
+  min-height: 48px;
   padding: 0 1.25rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--border-subtle);
   background: var(--bg-header);
-  gap: 1rem;
+  gap: 0.75rem;
 }
 
 .toolbar-left-group {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.75rem;
   flex: 1;
+  min-width: 0;
 }
 
 .search-input-wrap {
   position: relative;
-  width: 260px;
+  width: 220px;
+  min-width: 170px;
   display: flex;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .search-ico {
   position: absolute;
   left: 9px;
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   color: var(--text-muted);
+  pointer-events: none;
 }
 
 .search-input-field {
   width: 100%;
-  padding: 0.4rem 1.8rem 0.4rem 2rem;
+  height: 30px;
+  padding: 0 1.8rem 0 2rem;
   border-radius: 7px;
   border: 1px solid var(--border-subtle);
   background: var(--bg-input);
   color: var(--text-primary);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   outline: none;
+  transition: all 0.15s ease;
 }
 
 .search-input-field:focus {
   border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
 }
 
 .search-clear-btn {
   position: absolute;
   right: 6px;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 0.75rem;
-}
-
-.codec-pills-row {
+  width: 18px;
+  height: 18px;
   display: flex;
-  background: var(--bg-input);
-  padding: 2px;
-  border-radius: 7px;
-  gap: 2px;
-}
-
-.pill-filter-btn {
-  background: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(148, 163, 184, 0.2);
   border: none;
-  padding: 0.25rem 0.6rem;
-  border-radius: 5px;
-  font-size: 0.75rem;
-  font-weight: 500;
+  border-radius: 50%;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.15s;
+  font-size: 0.65rem;
+  transition: all 0.15s ease;
 }
 
-.pill-filter-btn.active {
-  background: var(--bg-card);
-  color: #3b82f6;
-  font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+.search-clear-btn:hover {
+  background: rgba(148, 163, 184, 0.4);
+  color: var(--text-primary);
 }
 
-.select-dropdown {
-  padding: 0.4rem 0.65rem;
+.toolbar-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border-subtle);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.toolbar-divider.compact {
+  height: 14px;
+}
+
+.toolbar-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.btn-toolbar-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 0.65rem;
+  height: 30px;
   border-radius: 7px;
   border: 1px solid var(--border-subtle);
-  background: var(--bg-input);
+  background: var(--bg-card);
   color: var(--text-primary);
-  font-size: 0.8rem;
-  outline: none;
+  font-size: 0.78rem;
+  font-weight: 500;
   cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.btn-toolbar-action:hover {
+  background: var(--btn-hover);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.btn-toolbar-action.active {
+  background: #3b82f6;
+  color: #ffffff;
+  border-color: #3b82f6;
+}
+
+.btn-toolbar-action svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }
 
 .toolbar-right-group {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.65rem;
+  flex-shrink: 0;
 }
 
-.btn-toggle-scan {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.35rem 0.75rem;
+.sort-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding: 0 1.6rem 0 0.65rem;
+  height: 30px;
   border-radius: 7px;
   border: 1px solid var(--border-subtle);
-  background: var(--bg-card);
+  background-color: var(--bg-card);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
   color: var(--text-primary);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 500;
+  outline: none;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.15s ease;
 }
 
-.btn-toggle-scan.active {
-  background: #3b82f6;
-  color: white;
+.sort-select:hover {
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+.sort-select:focus {
   border-color: #3b82f6;
 }
 
@@ -1717,6 +1853,7 @@ onUnmounted(() => {
   background: var(--bg-input);
   border-radius: 6px;
   padding: 2px;
+  border: 1px solid var(--border-subtle);
 }
 
 .view-btn {
@@ -1728,11 +1865,14 @@ onUnmounted(() => {
   cursor: pointer;
   display: flex;
   align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
 }
 
 .view-btn.active {
   background: var(--bg-card);
-  color: var(--text-primary);
+  color: #3b82f6;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .view-btn svg {
@@ -1741,8 +1881,18 @@ onUnmounted(() => {
 }
 
 .video-counter-tag {
-  font-size: 0.8rem;
-  color: var(--text-muted);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.video-counter-tag strong {
+  color: #3b82f6;
+  font-weight: 700;
 }
 
 /* Collapsible Scanner Drawer */
@@ -2493,6 +2643,74 @@ onUnmounted(() => {
   background: rgba(6, 182, 212, 0.08);
 }
 
+.card-act-btn.btn-act-ai {
+  color: #a78bfa;
+}
+
+.card-act-btn.btn-act-ai:hover {
+  color: #c084fc;
+  border-color: rgba(168, 85, 247, 0.4);
+  background: rgba(168, 85, 247, 0.12);
+}
+
+.sub-snippet-match-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  margin: 0.25rem 0 0.35rem 0;
+  background: linear-gradient(90deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.08));
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.72rem;
+  transition: all 0.2s ease;
+}
+
+.sub-snippet-match-bar:hover {
+  background: linear-gradient(90deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.18));
+  border-color: rgba(139, 92, 246, 0.6);
+}
+
+.sub-match-ic {
+  font-weight: 600;
+  color: #a78bfa;
+  white-space: nowrap;
+}
+
+.sub-match-text {
+  color: #e2e8f0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: italic;
+}
+
+.li-sub-match-pill {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 4px;
+  color: #c4b5fd;
+  font-size: 0.7rem;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.li-btn.btn-act-ai {
+  color: #a78bfa;
+}
+
+.li-btn.btn-act-ai:hover {
+  color: #c084fc;
+  border-color: rgba(168, 85, 247, 0.4);
+  background: rgba(168, 85, 247, 0.12);
+}
+
 /* List Table Actions */
 .lh-actions {
   text-align: right;
@@ -2750,88 +2968,135 @@ onUnmounted(() => {
   from { opacity: 0; transform: scale(0.97); }
   to { opacity: 1; transform: scale(1); }
 }
-/* Multi-dimensional Filter Row */
-.filter-dropdowns-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.select-dropdown.compact {
-  padding: 0.28rem 0.55rem;
-  font-size: 0.76rem;
-  border-radius: 6px;
-  height: 28px;
-}
-
-/* Category Breadcrumb & Filter Reset Bar */
+/* Category Breadcrumb & Filter Row */
 .category-breadcrumb-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.4rem 1.25rem;
+  padding: 0 1.25rem;
   background: var(--bg-card);
   border-bottom: 1px solid var(--border-subtle);
-  font-size: 0.78rem;
-  min-height: 32px;
+  height: 38px;
+  min-height: 38px;
+  gap: 12px;
 }
 
 .breadcrumb-left {
   display: flex;
   align-items: center;
   gap: 8px;
-  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.active-category-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  font-size: 0.76rem;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .breadcrumb-prefix-label {
   color: var(--text-muted);
   font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 .active-category-title {
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.filter-dropdowns-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+.filter-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding: 0 1.6rem 0 0.6rem;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-input);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  font-weight: 500;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 24px;
   white-space: nowrap;
 }
 
-.active-category-count {
-  color: var(--text-muted);
-  font-size: 0.74rem;
+.filter-select:hover {
+  border-color: rgba(59, 130, 246, 0.4);
+  color: var(--text-primary);
 }
 
-.filter-badge-hint {
-  background: rgba(59, 130, 246, 0.12);
+.filter-select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
+}
+
+.filter-select.is-filtered {
+  border-color: #3b82f6;
+  background-color: rgba(59, 130, 246, 0.08);
   color: #3b82f6;
-  border: 1px solid rgba(59, 130, 246, 0.25);
-  padding: 1px 7px;
-  border-radius: 4px;
-  font-size: 0.68rem;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .breadcrumb-right {
   display: flex;
   align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.filter-badge-hint {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  white-space: nowrap;
 }
 
 .btn-reset-filters {
-  background: transparent;
-  border: 1px dashed var(--border-subtle);
-  color: var(--text-muted);
-  border-radius: 5px;
-  font-size: 0.72rem;
-  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
   cursor: pointer;
+  white-space: nowrap;
   transition: all 0.15s ease;
 }
 
 .btn-reset-filters:hover {
-  border-color: #ef4444;
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.05);
+  background: #ef4444;
+  color: #ffffff;
 }
 
 /* Card Selection Checkbox */

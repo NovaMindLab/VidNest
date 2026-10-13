@@ -2,7 +2,8 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
-import type { Video } from '../types';
+import SubtitleTranscriptPanel from './SubtitleTranscriptPanel.vue';
+import type { Video, SubtitleSegment } from '../types';
 
 const props = defineProps<{
   video: Video | null;
@@ -37,6 +38,48 @@ const copiedPath = ref(false);
 
 const speedOptions = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 const showSpeedMenu = ref(false);
+
+// Subtitle & Interactive Transcript state
+const showTranscript = ref(false);
+const showCc = ref(true);
+const videoSubtitles = ref<SubtitleSegment[]>([]);
+
+const activeSubtitleText = computed(() => {
+  const currentMs = Math.round(currentTime.value * 1000);
+  const seg = videoSubtitles.value.find(
+    (s) => currentMs >= s.start_time_ms && currentMs <= s.end_time_ms
+  );
+  return seg ? seg.content : '';
+});
+
+async function fetchSubtitles() {
+  if (!props.video?.id) {
+    videoSubtitles.value = [];
+    return;
+  }
+  try {
+    const list = await invoke<SubtitleSegment[]>('get_video_subtitles', {
+      videoId: props.video.id,
+    });
+    videoSubtitles.value = list || [];
+  } catch (err) {
+    console.warn('Failed to fetch subtitles in modal:', err);
+    videoSubtitles.value = [];
+  }
+}
+
+function onSubtitlesUpdated(segs: SubtitleSegment[]) {
+  videoSubtitles.value = segs;
+}
+
+function onTranscriptSeek(sec: number) {
+  if (videoRef.value) {
+    videoRef.value.currentTime = sec;
+    currentTime.value = sec;
+    videoRef.value.play().catch(() => {});
+    isPlaying.value = true;
+  }
+}
 
 const videoSrc = computed(() => {
   if (!props.video?.file_path) return '';
@@ -259,6 +302,14 @@ function handleKeydown(e: KeyboardEvent) {
       e.preventDefault();
       toggleMute();
       break;
+    case 'KeyC':
+      e.preventDefault();
+      showCc.value = !showCc.value;
+      break;
+    case 'KeyT':
+      e.preventDefault();
+      showTranscript.value = !showTranscript.value;
+      break;
     case 'KeyF':
       e.preventDefault();
       toggleFullscreen();
@@ -370,6 +421,7 @@ watch(
       errorMessage.value = '';
       currentTime.value = 0;
       resetModalPosition();
+      fetchSubtitles();
       setTimeout(() => {
         if (videoRef.value) {
           videoRef.value.play().catch(() => {});
@@ -381,6 +433,15 @@ watch(
         videoRef.value.pause();
         isPlaying.value = false;
       }
+    }
+  }
+);
+
+watch(
+  () => props.video?.id,
+  () => {
+    if (props.visible) {
+      fetchSubtitles();
     }
   }
 );
@@ -404,7 +465,7 @@ onUnmounted(() => {
     <div
       ref="containerRef"
       class="player-modal-container"
-      :class="{ 'is-dragging': isDraggingModal }"
+      :class="{ 'is-dragging': isDraggingModal, 'has-drawer': showTranscript }"
       :style="{
         transform: isFullscreen ? 'none' : `translate3d(${modalOffset.x}px, ${modalOffset.y}px, 0)`
       }"
@@ -429,9 +490,21 @@ onUnmounted(() => {
           <span v-if="video?.codec" class="badge-pill badge-codec">
             {{ video.codec.toUpperCase() }}
           </span>
+          <span v-if="videoSubtitles.length > 0" class="badge-pill badge-sub-ready" title="AI 语音字幕已就绪">
+            CC · {{ videoSubtitles.length }} 句
+          </span>
         </div>
 
         <div class="modal-header-actions">
+          <button
+            class="head-act-btn"
+            :class="{ active: showTranscript }"
+            title="开启/收起 AI 台词同步速览 (快捷键 T)"
+            @click="showTranscript = !showTranscript"
+          >
+            <span>📝</span>
+            <span>{{ showTranscript ? '收起台词' : 'AI 台词' }}</span>
+          </button>
           <button class="head-act-btn" title="弹出为独立 Webview 桌面窗口 (可跨屏幕拖拽/置顶)" @click="openInStandaloneWindow">
             <svg class="h-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
@@ -455,187 +528,235 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Main Video Screen -->
-      <div class="player-viewport" @click="togglePlay">
-        <video
-          ref="videoRef"
-          class="video-element"
-          :src="videoSrc"
-          playsinline
-          crossorigin="anonymous"
-          preload="auto"
-          @timeupdate="handleTimeUpdate"
-          @loadedmetadata="handleLoadedMetadata"
-          @waiting="handleWaiting"
-          @canplay="handleCanPlay"
-          @error="handleError"
-          @ended="isPlaying = false"
-        ></video>
+      <!-- Player Body Layout: Main Stage + Optional Transcript Drawer -->
+      <div class="player-body-layout">
+        <div class="player-stage-main">
+          <!-- Main Video Screen -->
+          <div class="player-viewport" @click="togglePlay">
+            <video
+              ref="videoRef"
+              class="video-element"
+              :src="videoSrc"
+              playsinline
+              crossorigin="anonymous"
+              preload="auto"
+              @timeupdate="handleTimeUpdate"
+              @loadedmetadata="handleLoadedMetadata"
+              @waiting="handleWaiting"
+              @canplay="handleCanPlay"
+              @error="handleError"
+              @ended="isPlaying = false"
+            ></video>
 
-        <!-- Loading spinner -->
-        <div v-if="isLoading" class="player-center-overlay">
-          <div class="spinner-player"></div>
-          <span class="loading-label">正在缓冲视频数据...</span>
-        </div>
+            <!-- Floating On-Screen CC Subtitles -->
+            <transition name="fade">
+              <div v-if="showCc && activeSubtitleText" class="video-cc-overlay">
+                <div class="video-cc-text">
+                  {{ activeSubtitleText }}
+                </div>
+              </div>
+            </transition>
 
-        <!-- Big Play Indicator Anim -->
-        <transition name="pop">
-          <div v-if="showBigPlayIcon" class="big-indicator-badge">
-            <span v-if="isPlaying">▶</span>
-            <span v-else>❚❚</span>
-          </div>
-        </transition>
-
-        <!-- Error Banner -->
-        <div v-if="errorMessage" class="player-error-overlay">
-          <div class="error-box">
-            <span class="err-icon">⚠️</span>
-            <h4 class="err-title">视频无法在内嵌窗口中播放</h4>
-            <p class="err-text">{{ errorMessage }}</p>
-            <div class="err-actions">
-              <button class="btn-err-fallback primary" @click.stop="openExternal">
-                <span class="btn-ic">🚀</span> 使用系统播放器打开 (IINA/QuickTime)
-              </button>
-              <button class="btn-err-fallback secondary" @click.stop="revealFile">
-                <span class="btn-ic">📁</span> 定位文件所在目录
-              </button>
+            <!-- Loading spinner -->
+            <div v-if="isLoading" class="player-center-overlay">
+              <div class="spinner-player"></div>
+              <span class="loading-label">正在缓冲视频数据...</span>
             </div>
-          </div>
-        </div>
-      </div>
 
-      <!-- Controls Bar -->
-      <div class="player-controls-bar" @click.stop>
-        <!-- Scrubber Progress Bar -->
-        <div class="scrubber-wrapper">
-          <input
-            type="range"
-            class="scrubber-slider"
-            min="0"
-            :max="duration || 100"
-            step="0.1"
-            :value="isScrubbing ? scrubTime : currentTime"
-            @pointerdown="onSeekStart"
-            @mousedown="onSeekStart"
-            @input="onSeekInput"
-            @change="onSeekChange"
-            @pointerup="onSeekChange"
-            @mouseup="onSeekChange"
-          />
-          <div
-            class="scrubber-progress-fill"
-            :style="{ width: duration ? `${((isScrubbing ? scrubTime : currentTime) / duration) * 100}%` : '0%' }"
-          ></div>
-        </div>
+            <!-- Big Play Indicator Anim -->
+            <transition name="pop">
+              <div v-if="showBigPlayIcon" class="big-indicator-badge">
+                <span v-if="isPlaying">▶</span>
+                <span v-else>❚❚</span>
+              </div>
+            </transition>
 
-        <!-- Buttons Row -->
-        <div class="controls-row">
-          <!-- Left Controls -->
-          <div class="ctrl-group ctrl-left">
-            <button class="ctrl-btn play-pause-btn" :title="isPlaying ? '暂停 (Space)' : '播放 (Space)'" @click="togglePlay">
-              <span v-if="isPlaying">❚❚</span>
-              <span v-else>▶</span>
-            </button>
-
-            <button class="ctrl-btn" title="后退 5 秒 (←)" @click="seekRelative(-5)">
-              ↺ 5s
-            </button>
-            <button class="ctrl-btn" title="快进 5 秒 (→)" @click="seekRelative(5)">
-              5s ↻
-            </button>
-
-            <div class="time-readout">
-              <span class="t-cur">{{ formatTime(isScrubbing ? scrubTime : currentTime) }}</span>
-              <span class="t-sep">/</span>
-              <span class="t-dur">{{ formatTime(duration) }}</span>
+            <!-- Error Banner -->
+            <div v-if="errorMessage" class="player-error-overlay">
+              <div class="error-box">
+                <span class="err-icon">⚠️</span>
+                <h4 class="err-title">视频无法在内嵌窗口中播放</h4>
+                <p class="err-text">{{ errorMessage }}</p>
+                <div class="err-actions">
+                  <button class="btn-err-fallback primary" @click.stop="openExternal">
+                    <span class="btn-ic">🚀</span> 使用系统播放器打开 (IINA/QuickTime)
+                  </button>
+                  <button class="btn-err-fallback secondary" @click.stop="revealFile">
+                    <span class="btn-ic">📁</span> 定位文件所在目录
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
-          <!-- Right Controls -->
-          <div class="ctrl-group ctrl-right">
-            <!-- Speed Menu -->
-            <div class="speed-menu-wrap">
-              <button class="ctrl-btn speed-btn" title="播放速度" @click="showSpeedMenu = !showSpeedMenu">
-                {{ playbackRate }}x
-              </button>
-              <div v-if="showSpeedMenu" class="speed-dropdown">
+          <!-- Controls Bar -->
+          <div class="player-controls-bar" @click.stop>
+            <!-- Scrubber Progress Bar -->
+            <div class="scrubber-wrapper">
+              <input
+                type="range"
+                class="scrubber-slider"
+                min="0"
+                :max="duration || 100"
+                step="0.1"
+                :value="isScrubbing ? scrubTime : currentTime"
+                @pointerdown="onSeekStart"
+                @mousedown="onSeekStart"
+                @input="onSeekInput"
+                @change="onSeekChange"
+                @pointerup="onSeekChange"
+                @mouseup="onSeekChange"
+              />
+              <div
+                class="scrubber-progress-fill"
+                :style="{ width: duration ? `${((isScrubbing ? scrubTime : currentTime) / duration) * 100}%` : '0%' }"
+              ></div>
+            </div>
+
+            <!-- Buttons Row -->
+            <div class="controls-row">
+              <!-- Left Controls -->
+              <div class="ctrl-group ctrl-left">
+                <button class="ctrl-btn play-pause-btn" :title="isPlaying ? '暂停 (Space)' : '播放 (Space)'" @click="togglePlay">
+                  <span v-if="isPlaying">❚❚</span>
+                  <span v-else>▶</span>
+                </button>
+
+                <button class="ctrl-btn" title="后退 5 秒 (←)" @click="seekRelative(-5)">
+                  ↺ 5s
+                </button>
+                <button class="ctrl-btn" title="快进 5 秒 (→)" @click="seekRelative(5)">
+                  5s ↻
+                </button>
+
+                <div class="time-readout">
+                  <span class="t-cur">{{ formatTime(isScrubbing ? scrubTime : currentTime) }}</span>
+                  <span class="t-sep">/</span>
+                  <span class="t-dur">{{ formatTime(duration) }}</span>
+                </div>
+              </div>
+
+              <!-- Right Controls -->
+              <div class="ctrl-group ctrl-right">
+                <!-- CC Subtitles Toggle -->
                 <button
-                  v-for="s in speedOptions"
-                  :key="s"
-                  class="speed-opt"
-                  :class="{ active: playbackRate === s }"
-                  @click="setPlaybackRate(s)"
+                  class="ctrl-btn"
+                  :class="{ 'ctrl-active': showCc }"
+                  :title="showCc ? '隐藏画面字幕 (CC / C 键)' : '开启画面悬浮字幕 (CC / C 键)'"
+                  @click="showCc = !showCc"
                 >
-                  {{ s }}x
+                  <span class="cc-badge-text">CC</span>
+                </button>
+
+                <!-- Transcript Drawer Toggle -->
+                <button
+                  class="ctrl-btn transcript-toggle-btn"
+                  :class="{ 'ctrl-active': showTranscript }"
+                  :title="showTranscript ? '收起 AI 台词抽屉 (T 键)' : '展开 AI 台词同步速览抽屉 (T 键)'"
+                  @click="showTranscript = !showTranscript"
+                >
+                  <span>📝 台词</span>
+                  <span v-if="videoSubtitles.length > 0" class="sub-dot-indicator"></span>
+                </button>
+
+                <!-- Speed Menu -->
+                <div class="speed-menu-wrap">
+                  <button class="ctrl-btn speed-btn" title="播放速度" @click="showSpeedMenu = !showSpeedMenu">
+                    {{ playbackRate }}x
+                  </button>
+                  <div v-if="showSpeedMenu" class="speed-dropdown">
+                    <button
+                      v-for="s in speedOptions"
+                      :key="s"
+                      class="speed-opt"
+                      :class="{ active: playbackRate === s }"
+                      @click="setPlaybackRate(s)"
+                    >
+                      {{ s }}x
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Volume Slider -->
+                <div class="volume-box">
+                  <button class="ctrl-btn vol-btn" :title="isMuted ? '取消静音 (M)' : '静音 (M)'" @click="toggleMute">
+                    <span v-if="isMuted || volume === 0">🔇</span>
+                    <span v-else-if="volume < 0.5">🔉</span>
+                    <span v-else>🔊</span>
+                  </button>
+                  <input
+                    type="range"
+                    class="vol-slider"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    :value="isMuted ? 0 : volume"
+                    @input="onVolumeInput"
+                  />
+                </div>
+
+                <!-- Loop -->
+                <button
+                  class="ctrl-btn"
+                  :class="{ 'ctrl-active': isLooping }"
+                  title="循环播放"
+                  @click="toggleLoop"
+                >
+                  🔁
+                </button>
+
+                <!-- Fullscreen -->
+                <button class="ctrl-btn" :title="isFullscreen ? '退出全屏 (F)' : '全屏 (F)'" @click="toggleFullscreen">
+                  <span v-if="isFullscreen">⛶</span>
+                  <span v-else>⛶</span>
                 </button>
               </div>
             </div>
+          </div>
 
-            <!-- Volume Slider -->
-            <div class="volume-box">
-              <button class="ctrl-btn vol-btn" :title="isMuted ? '取消静音 (M)' : '静音 (M)'" @click="toggleMute">
-                <span v-if="isMuted || volume === 0">🔇</span>
-                <span v-else-if="volume < 0.5">🔉</span>
-                <span v-else>🔊</span>
-              </button>
-              <input
-                type="range"
-                class="vol-slider"
-                min="0"
-                max="1"
-                step="0.05"
-                :value="isMuted ? 0 : volume"
-                @input="onVolumeInput"
-              />
+          <!-- Specs & Details Footer -->
+          <div class="player-footer-strip">
+            <div class="meta-tag-list">
+              <div class="meta-unit">
+                <span class="m-k">格式:</span>
+                <span class="m-v">{{ video?.codec?.toUpperCase() || 'MP4' }}</span>
+              </div>
+              <div class="meta-unit">
+                <span class="m-k">分辨率:</span>
+                <span class="m-v">{{ video?.width && video?.height ? `${video.width} × ${video.height}` : '未知' }}</span>
+              </div>
+              <div class="meta-unit">
+                <span class="m-k">大小:</span>
+                <span class="m-v">{{ formatBytes(video?.file_size || 0) }}</span>
+              </div>
+              <div class="meta-unit">
+                <span class="m-k">时长:</span>
+                <span class="m-v">{{ formatTime(video?.duration || duration) }}</span>
+              </div>
             </div>
 
-            <!-- Loop -->
-            <button
-              class="ctrl-btn"
-              :class="{ 'ctrl-active': isLooping }"
-              title="循环播放"
-              @click="toggleLoop"
-            >
-              🔁
-            </button>
-
-            <!-- Fullscreen -->
-            <button class="ctrl-btn" :title="isFullscreen ? '退出全屏 (F)' : '全屏 (F)'" @click="toggleFullscreen">
-              <span v-if="isFullscreen">⛶</span>
-              <span v-else>⛶</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Specs & Details Footer -->
-      <div class="player-footer-strip">
-        <div class="meta-tag-list">
-          <div class="meta-unit">
-            <span class="m-k">格式:</span>
-            <span class="m-v">{{ video?.codec?.toUpperCase() || 'MP4' }}</span>
-          </div>
-          <div class="meta-unit">
-            <span class="m-k">分辨率:</span>
-            <span class="m-v">{{ video?.width && video?.height ? `${video.width} × ${video.height}` : '未知' }}</span>
-          </div>
-          <div class="meta-unit">
-            <span class="m-k">大小:</span>
-            <span class="m-v">{{ formatBytes(video?.file_size || 0) }}</span>
-          </div>
-          <div class="meta-unit">
-            <span class="m-k">时长:</span>
-            <span class="m-v">{{ formatTime(video?.duration || duration) }}</span>
+            <div class="footer-actions">
+              <button class="btn-foot-act" title="复制完整文件路径" @click="copyPath">
+                {{ copiedPath ? '✓ 已复制路径' : '📋 复制路径' }}
+              </button>
+              <button class="btn-foot-act" title="在系统资源管理器中定位" @click="revealFile">
+                📁 定位文件
+              </button>
+            </div>
           </div>
         </div>
 
-        <div class="footer-actions">
-          <button class="btn-foot-act" title="复制完整文件路径" @click="copyPath">
-            {{ copiedPath ? '✓ 已复制路径' : '📋 复制路径' }}
-          </button>
-          <button class="btn-foot-act" title="在系统资源管理器中定位" @click="revealFile">
-            📁 定位文件
-          </button>
+        <!-- Side Transcript Drawer -->
+        <div v-if="showTranscript" class="player-drawer-side">
+          <SubtitleTranscriptPanel
+            :video-id="video?.id || 0"
+            :video-title="video?.file_name"
+            :current-time="currentTime"
+            :is-playing="isPlaying"
+            @seek="onTranscriptSeek"
+            @close="showTranscript = false"
+            @subtitles-updated="onSubtitlesUpdated"
+          />
         </div>
       </div>
     </div>
@@ -679,6 +800,95 @@ onUnmounted(() => {
 
 .player-modal-container.is-dragging {
   transition: none;
+}
+
+.player-modal-container.has-drawer {
+  max-width: 1420px;
+}
+
+.player-body-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.player-stage-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+.player-drawer-side {
+  width: 380px;
+  min-width: 340px;
+  max-width: 420px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  animation: slideInRight 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.badge-sub-ready {
+  background: rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+}
+
+.video-cc-overlay {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 86%;
+  pointer-events: none;
+  z-index: 15;
+  text-align: center;
+}
+
+.video-cc-text {
+  display: inline-block;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(10px);
+  color: #ffffff;
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.45rem 1.1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6);
+  line-height: 1.45;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
+}
+
+.cc-badge-text {
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+}
+
+.transcript-toggle-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.sub-dot-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #818cf8;
+  box-shadow: 0 0 6px #818cf8;
 }
 
 /* Modal Header */

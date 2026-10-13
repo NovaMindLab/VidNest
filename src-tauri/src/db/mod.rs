@@ -1,6 +1,7 @@
 pub mod audios;
 pub mod classification;
 pub mod migrations;
+pub mod subtitles;
 pub mod tasks;
 pub mod videos;
 
