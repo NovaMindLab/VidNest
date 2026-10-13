@@ -324,7 +324,18 @@ export interface AiTranscriptionConfig {
   prompt: string;
   local_model_path: string;
 }
+export interface VideoCompatibilityStatus {
+  is_compatible: boolean;
+  has_cached_transcode: boolean;
+  cached_path: string | null;
+  suggested_action: 'direct_play' | 'cached_play' | 'needs_conversion' | string;
+  reason?: string | null;
+}
 
-
-
-
+export interface TranscodeResult {
+  original_path: string;
+  compatible_path: string;
+  is_cached: boolean;
+  remuxed: boolean;
+  output_size_bytes: number;
+}

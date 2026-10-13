@@ -101,7 +101,7 @@ export default {
     extractAudio: 'Extract Audio',
   },
   downloads: {
-    urlPlaceholder: 'Paste video link (Supports YouTube / Bilibili / TikTok / X and 1000+ sites)...',
+    urlPlaceholder: 'Paste video link (Supports YouTube / TikTok / X / Instagram and 1000+ sites)...',
     inspect: 'Inspect Metadata',
     download: 'Fast Download',
     activeTasks: 'Downloading',

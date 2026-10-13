@@ -1241,6 +1241,39 @@ pub async fn search_subtitles_snippets(
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+pub async fn check_video_compatibility(
+    app: AppHandle,
+    file_path: String,
+    file_hash: Option<String>,
+) -> Result<crate::media::VideoCompatibilityStatus, String> {
+    let app_data_path = app.path().app_data_dir().ok().unwrap_or_else(|| {
+        std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir)
+            .join("LocalVideoIntelligence")
+    });
+    let p = PathBuf::from(file_path);
+    let status = crate::media::check_video_compatibility(&p, file_hash.as_deref(), &app_data_path);
+    Ok(status)
+}
 
-
-
+#[tauri::command]
+pub async fn convert_video_to_compatible(
+    app: AppHandle,
+    file_path: String,
+    file_hash: Option<String>,
+) -> Result<crate::media::TranscodeResult, String> {
+    let app_data_path = app.path().app_data_dir().ok().unwrap_or_else(|| {
+        std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir)
+            .join("LocalVideoIntelligence")
+    });
+    let p = PathBuf::from(file_path);
+    tokio::task::spawn_blocking(move || {
+        crate::media::convert_video_to_compatible(&p, file_hash.as_deref(), &app_data_path)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}

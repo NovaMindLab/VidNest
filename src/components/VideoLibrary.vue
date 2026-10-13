@@ -1370,6 +1370,7 @@ onUnmounted(() => {
                   </div>
 
                   <div class="grid-card-sub">
+                    <span v-if="video.file_name.toLowerCase().endsWith('.avi')" class="format-pill avi-pill font-mono" title="AVI 传统封装 (支持内嵌一键极速兼容播放)">AVI</span>
                     <span v-if="video.codec" class="codec-pill font-mono">{{ video.codec }}</span>
                     <span class="size-text font-mono">{{ formatFileSize(video.file_size) }}</span>
                   </div>
@@ -2421,6 +2422,16 @@ onUnmounted(() => {
   font-size: 0.72rem;
   color: var(--text-muted);
   margin-bottom: 0.35rem;
+}
+
+.format-pill.avi-pill {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.68rem;
 }
 
 .codec-pill {

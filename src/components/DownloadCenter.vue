@@ -47,7 +47,7 @@ const thumbMap = ref<Record<string, string>>({});
 export interface SupportedSiteItem {
   id: string;
   name: string;
-  category: '综合主流' | '国内精选' | '短视频' | '社交动态' | '知识音乐';
+  category: '综合主流' | '短视频' | '社交动态' | '知识音乐';
   homeUrl: string;
   exampleUrl?: string;
   tag: string;
@@ -56,7 +56,7 @@ export interface SupportedSiteItem {
   desc: string;
 }
 
-const siteCategories = ['全部', '综合主流', '国内精选', '短视频', '社交动态', '知识音乐'] as const;
+const siteCategories = ['全部', '综合主流', '短视频', '社交动态', '知识音乐'] as const;
 type SiteCategory = typeof siteCategories[number];
 const selectedSiteCategory = ref<SiteCategory>('全部');
 const siteSearchQuery = ref<string>('');
@@ -75,17 +75,6 @@ const supportedSites: SupportedSiteItem[] = [
     desc: '全球最大视频分享平台，超清 4K / 1080P',
   },
   {
-    id: 'bilibili',
-    name: '哔哩哔哩 (B站)',
-    category: '国内精选',
-    homeUrl: 'https://www.bilibili.com',
-    exampleUrl: 'https://www.bilibili.com/video/BV1xx411c7mD',
-    tag: '动漫·二次元',
-    color: '#00aeec',
-    iconText: '📺',
-    desc: '国内顶级弹幕视频，动漫番剧、游戏与知识教程',
-  },
-  {
     id: 'tiktok',
     name: 'TikTok',
     category: '短视频',
@@ -95,17 +84,6 @@ const supportedSites: SupportedSiteItem[] = [
     color: '#fe2c55',
     iconText: '🎵',
     desc: '全球热门短视频与爆款创作者分享平台',
-  },
-  {
-    id: 'douyin',
-    name: '抖音 (Douyin)',
-    category: '短视频',
-    homeUrl: 'https://www.douyin.com',
-    exampleUrl: 'https://www.douyin.com/video/7188888888888888888',
-    tag: '国民短视频',
-    color: '#161823',
-    iconText: '📱',
-    desc: '记录美好生活，海量短视频、直播与影视剪辑',
   },
   {
     id: 'twitter',
@@ -128,39 +106,6 @@ const supportedSites: SupportedSiteItem[] = [
     color: '#e1306c',
     iconText: '📷',
     desc: '精美照片、Reels 短片与创作者视觉灵感',
-  },
-  {
-    id: 'xiaohongshu',
-    name: '小红书',
-    category: '国内精选',
-    homeUrl: 'https://www.xiaohongshu.com',
-    exampleUrl: 'https://www.xiaohongshu.com/explore/640000000000000000',
-    tag: '生活种草',
-    color: '#ff2442',
-    iconText: '📕',
-    desc: '标记我的生活，海量美食穿搭、教程与生活指南',
-  },
-  {
-    id: 'weibo',
-    name: '微博视频',
-    category: '社交动态',
-    homeUrl: 'https://weibo.com',
-    exampleUrl: 'https://weibo.com/tv/show/1034:4900000000000000',
-    tag: '热搜大事件',
-    color: '#e6162d',
-    iconText: '👁',
-    desc: '微博热点视频、明星动态与生活记录专区',
-  },
-  {
-    id: 'kuaishou',
-    name: '快手',
-    category: '短视频',
-    homeUrl: 'https://www.kuaishou.com',
-    exampleUrl: 'https://www.kuaishou.com/short-video/3xx',
-    tag: '真实生活',
-    color: '#ff5000',
-    iconText: '⚡',
-    desc: '拥抱每一种生活，真实的短视频社区与创作平台',
   },
   {
     id: 'vimeo',
@@ -695,7 +640,7 @@ onUnmounted(() => {
       <div class="topbar-right">
         <button
           class="action-pill-btn browser-picker-btn"
-          title="打开内置网页浏览器直接挑选视频与下载 (支持 YouTube、B站、TikTok等任意站点)"
+          title="打开内置网页浏览器直接挑选视频与下载 (支持 YouTube、TikTok、Twitter/X 等任意站点)"
           @click="openWebviewPicker()"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -783,7 +728,7 @@ onUnmounted(() => {
             </div>
             <div class="picker-banner-info">
               <div class="picker-banner-title">打开内置网页嗅探器直接找资源</div>
-              <div class="picker-banner-sub">内嵌悬浮嗅探助手，支持 YouTube、B站、TikTok、X (Twitter)、小红书等 1000+ 视频网站，一键识别、画质选择与高速下载</div>
+              <div class="picker-banner-sub">内嵌悬浮嗅探助手，支持 YouTube、TikTok、X (Twitter)、Instagram、Vimeo 等 1000+ 视频网站，一键识别、画质选择与高速下载</div>
             </div>
           </div>
           <button class="picker-banner-action" type="button">

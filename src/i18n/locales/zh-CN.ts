@@ -101,7 +101,7 @@ export default {
     extractAudio: '提取音频',
   },
   downloads: {
-    urlPlaceholder: '粘贴主流视频或音频链接 (支持 YouTube / Bilibili / 抖音 / X 等 1000+ 站点)...',
+    urlPlaceholder: '粘贴主流视频或音频链接 (支持 YouTube / TikTok / X / Instagram 等 1000+ 站点)...',
     inspect: '深度嗅探解析',
     download: '高速下载',
     activeTasks: '正在下载',

@@ -6,6 +6,12 @@ use std::process::Command;
 pub mod audio;
 pub use audio::extract_audio;
 
+pub mod transcode;
+pub use transcode::{
+    check_video_compatibility, convert_video_to_compatible, TranscodeResult,
+    VideoCompatibilityStatus,
+};
+
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;

@@ -13,6 +13,7 @@ pub mod ytdlp;
 use commands::{
     add_tag_to_video, add_videos_to_collection, batch_add_tag_to_videos, batch_update_videos_status,
     cancel_download, cancel_download_task, cancel_full_disk_scan, check_app_update, check_ytdlp_update,
+    check_video_compatibility, convert_video_to_compatible,
     clear_completed_tasks, close_video_picker_window, create_collection, create_tag, delete_collection,
     delete_extracted_audio, delete_tag, delete_video, delete_video_subtitles,
     download_and_install_update, echo, export_subtitles_file, extract_audio_from_video,
@@ -146,6 +147,8 @@ pub fn run() {
             delete_video_subtitles,
             export_subtitles_file,
             search_subtitles_snippets,
+            check_video_compatibility,
+            convert_video_to_compatible,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

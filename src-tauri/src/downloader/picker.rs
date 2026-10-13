@@ -753,14 +753,9 @@ pub fn get_video_picker_injected_script() -> &'static str {
 
     const popularSites = [
       { name: 'YouTube', url: 'https://www.youtube.com', bg: '#ef4444', icon: '▶', tag: '全球最大' },
-      { name: '哔哩哔哩', url: 'https://www.bilibili.com', bg: '#00aeec', icon: '📺', tag: '动漫·二次元' },
       { name: 'TikTok', url: 'https://www.tiktok.com', bg: '#fe2c55', icon: '🎵', tag: '国际短视频' },
-      { name: '抖音', url: 'https://www.douyin.com', bg: '#161823', icon: '📱', tag: '国内短视频' },
       { name: 'Twitter / X', url: 'https://x.com', bg: '#000000', icon: '𝕏', tag: '资讯·动态' },
       { name: 'Instagram', url: 'https://www.instagram.com', bg: 'linear-gradient(45deg, #f09433, #dc2743, #bc1888)', icon: '📷', tag: 'Reels短视频' },
-      { name: '小红书', url: 'https://www.xiaohongshu.com', bg: '#ff2442', icon: '📕', tag: '生活精选' },
-      { name: '微博视频', url: 'https://weibo.com', bg: '#e6162d', icon: '👁', tag: '热点短视频' },
-      { name: '快手', url: 'https://www.kuaishou.com', bg: '#ff5000', icon: '⚡', tag: '国民短视频' },
       { name: 'Vimeo', url: 'https://vimeo.com', bg: '#1ab7ea', icon: '🎬', tag: '高清电影' },
       { name: 'Reddit', url: 'https://www.reddit.com', bg: '#ff4500', icon: '🤖', tag: '热帖社区' },
       { name: 'Twitch', url: 'https://www.twitch.tv', bg: '#9146ff', icon: '🎮', tag: '游戏直播' },
@@ -805,7 +800,7 @@ pub fn get_video_picker_injected_script() -> &'static str {
               type="text"
               class="vidnest-nav-input"
               id="vidnest-nav-url"
-              placeholder="输入任意视频网址 (如 bilibili.com) 或关键词，按回车直达..."
+              placeholder="输入任意视频网址 (如 youtube.com) 或关键词，按回车直达..."
               value="${window.location.href}"
             />
           </div>

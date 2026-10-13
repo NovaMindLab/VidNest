@@ -4,9 +4,13 @@ import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
 import SubtitleTranscriptPanel from './SubtitleTranscriptPanel.vue';
-import type { Video, SubtitleSegment } from '../types';
+import type { Video, SubtitleSegment, VideoCompatibilityStatus, TranscodeResult } from '../types';
 
 const video = ref<Video | null>(null);
+const compatibleFilePath = ref<string | null>(null);
+const isConverting = ref(false);
+const convertProgressText = ref('');
+const isCompatibleFormat = ref(true);
 const videoRef = ref<HTMLVideoElement | null>(null);
 const containerRef = ref<HTMLDivElement | null>(null);
 
@@ -73,9 +77,65 @@ function onTranscriptSeek(sec: number) {
 }
 
 const videoSrc = computed(() => {
+  if (compatibleFilePath.value) {
+    return convertFileSrc(compatibleFilePath.value);
+  }
   if (!video.value?.file_path) return '';
   return convertFileSrc(video.value.file_path);
 });
+
+async function checkCompatibility(v: Video) {
+  compatibleFilePath.value = null;
+  isConverting.value = false;
+  if (!v.file_path) return;
+
+  try {
+    const status = await invoke<VideoCompatibilityStatus>('check_video_compatibility', {
+      filePath: v.file_path,
+      fileHash: v.file_hash || null,
+    });
+    if (status.has_cached_transcode && status.cached_path) {
+      compatibleFilePath.value = status.cached_path;
+      isCompatibleFormat.value = true;
+      errorMessage.value = '';
+    } else if (!status.is_compatible) {
+      isCompatibleFormat.value = false;
+      errorMessage.value = status.reason || '当前视频为传统封装格式（如 AVI），需一键优化以在内嵌播放器中流畅播放。';
+      isLoading.value = false;
+    } else {
+      isCompatibleFormat.value = true;
+    }
+  } catch (err) {
+    console.warn('check_video_compatibility error in standalone window:', err);
+  }
+}
+
+async function startCompatibilityConversion() {
+  if (!video.value?.file_path || isConverting.value) return;
+  isConverting.value = true;
+  convertProgressText.value = '正在进行极速兼容优化 (检测编码与硬件加速)...';
+  errorMessage.value = '';
+
+  try {
+    const res = await invoke<TranscodeResult>('convert_video_to_compatible', {
+      filePath: video.value.file_path,
+      fileHash: video.value.file_hash || null,
+    });
+    compatibleFilePath.value = res.compatible_path;
+    isCompatibleFormat.value = true;
+    errorMessage.value = '';
+    if (videoRef.value) {
+      videoRef.value.load();
+      videoRef.value.play().catch(() => {});
+      isPlaying.value = true;
+    }
+  } catch (err: any) {
+    console.error('convert_video_to_compatible error:', err);
+    errorMessage.value = `转换兼容格式失败: ${err?.message || err}`;
+  } finally {
+    isConverting.value = false;
+  }
+}
 
 function formatTime(seconds: number): string {
   if (isNaN(seconds) || seconds < 0) return '00:00';
@@ -155,12 +215,15 @@ function handleError(e: Event) {
         break;
       case 3:
         desc = '视频解码失败，可能存在损坏帧或索引丢失';
+        isCompatibleFormat.value = false;
         break;
       case 4:
-        desc = '当前 Webview 引擎（WebKit 内核）不支持该容器格式或音频流（常见于 MKV、FLV、AC3 环绕声）。';
+        desc = '内嵌渲染器不支持此格式或音视频编码（如 AVI、MKV、FLV、AC3 环绕声）。可一键极速转换为兼容 MP4。';
+        isCompatibleFormat.value = false;
         break;
       default:
         desc = mediaError.message || '未知媒体解码异常';
+        isCompatibleFormat.value = false;
     }
   }
   errorMessage.value = desc;
@@ -347,8 +410,9 @@ function loadVideo(v: Video) {
   errorMessage.value = '';
   currentTime.value = 0;
   fetchSubtitles(v.id);
+  checkCompatibility(v);
   setTimeout(() => {
-    if (videoRef.value) {
+    if (videoRef.value && isCompatibleFormat.value) {
       videoRef.value.play().catch(() => {});
       isPlaying.value = true;
     }
@@ -486,13 +550,28 @@ onUnmounted(() => {
             </div>
           </transition>
 
-          <!-- Unsupported Codec / Error Banner -->
+          <!-- Unsupported Codec / Compatibility / Error Banner -->
           <div v-if="errorMessage" class="player-error-overlay" @click.stop>
             <div class="error-box">
-              <span class="err-icon">⚠️</span>
-              <h3 class="err-title">视频无法直接在 Webview 中解码</h3>
+              <span class="err-icon">{{ isConverting ? '⏳' : (isCompatibleFormat ? '⚠️' : '⚡') }}</span>
+              <h3 class="err-title">{{ isConverting ? '正在优化视频兼容性' : (isCompatibleFormat ? '视频无法直接在 Webview 中解码' : '需要兼容优化以支持流畅播放') }}</h3>
               <p class="err-text">{{ errorMessage }}</p>
-              <div class="err-actions">
+
+              <!-- In-progress state -->
+              <div v-if="isConverting" class="converting-state-bar">
+                <div class="spinner-player mini"></div>
+                <span class="converting-desc">{{ convertProgressText }}</span>
+              </div>
+
+              <!-- Actions -->
+              <div v-else class="err-actions">
+                <button
+                  v-if="!isCompatibleFormat"
+                  class="btn-err-action highlight-transcode"
+                  @click.stop="startCompatibilityConversion"
+                >
+                  <span class="btn-ic">⚡</span> 极速优化为兼容格式 (保留高清原画)
+                </button>
                 <button class="btn-err-action primary" @click="openExternal">
                   <span class="btn-ic">🚀</span> 使用系统专业播放器流畅播放 (IINA/QuickTime)
                 </button>
@@ -1008,9 +1087,35 @@ onUnmounted(() => {
   border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
-.btn-err-action.secondary:hover {
-  background: rgba(255, 255, 255, 0.14);
+.btn-err-action.highlight-transcode {
+  background: linear-gradient(135deg, #f59e0b 0%, #ea580c 100%);
   color: #ffffff;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
+}
+
+.btn-err-action.highlight-transcode:hover {
+  background: linear-gradient(135deg, #d97706 0%, #c2410c 100%);
+  transform: translateY(-1px);
+}
+
+.converting-state-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8rem 0;
+}
+
+.converting-desc {
+  font-size: 0.85rem;
+  color: #fbbf24;
+  font-weight: 500;
+}
+
+.spinner-player.mini {
+  width: 28px;
+  height: 28px;
+  border-width: 3px;
 }
 
 .btn-ic {
