@@ -1,0 +1,29 @@
+# Created using generate-package-manifests.mjs
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+
+PackageIdentifier: NovaMindLab.VidNest
+PackageVersion: 2.7.0
+PackageLocale: en-US
+Publisher: NovaMindLab
+PublisherUrl: https://github.com/NovaMindLab/VidNest
+PublisherSupportUrl: https://github.com/NovaMindLab/VidNest/issues
+PackageName: Local Video Intelligence
+PackageUrl: https://github.com/NovaMindLab/VidNest
+License: MIT
+LicenseUrl: https://github.com/NovaMindLab/VidNest/blob/main/LICENSE
+Copyright: Copyright (c) 2026 NovaMindLab
+ShortDescription: Local-first video analysis, indexing, and intelligent summarization desktop app.
+Description: |-
+  VidNest (Local Video Intelligence) is an enterprise-grade, privacy-first desktop application engineered for local video indexing, transcription, and intelligent multi-modal analysis powered by Tauri and Vue.
+Moniker: vidnest
+Tags:
+  - video
+  - intelligence
+  - transcription
+  - local-first
+  - ai
+  - tauri
+  - vue
+ReleaseNotesUrl: https://github.com/NovaMindLab/VidNest/releases/tag/v2.7.0
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
