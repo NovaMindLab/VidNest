@@ -60,12 +60,12 @@ async function saveAiSettings() {
   aiSaveToast.value = '';
   try {
     await invoke('save_ai_config', { config: aiConfig.value });
-    aiSaveToast.value = '✓ AI 语音模型配置已成功保存！';
+    aiSaveToast.value = t('settings.ai.saveToast');
     setTimeout(() => {
       aiSaveToast.value = '';
     }, 2500);
   } catch (err) {
-    aiSaveToast.value = `保存失败: ${err}`;
+    aiSaveToast.value = t('settings.ai.saveFailed', { err: String(err) });
   } finally {
     isSavingAi.value = false;
   }
@@ -168,7 +168,7 @@ onMounted(() => {
           @click="activeTab = 'ai'"
         >
           <span style="font-size: 1rem; line-height: 1;">✨</span>
-          <span>AI 语音模型</span>
+          <span>{{ t('settings.tabs.ai') }}</span>
         </button>
 
         <button
@@ -341,14 +341,14 @@ onMounted(() => {
             <div class="card-icon-badge">📁</div>
             <div class="card-title-group">
               <h3>{{ t('settings.library.title') }}</h3>
-              <p>配置本地智能扫描深度、过滤条件以及源码误报清洗</p>
+              <p>{{ t('settings.library.desc') }}</p>
             </div>
           </div>
 
           <div class="setting-row-item">
             <div class="row-info">
               <span class="row-label">{{ t('settings.library.minSize') }}</span>
-              <span class="row-sub">小于该体积的文件在扫描时将自动略过，降低碎片干扰</span>
+              <span class="row-sub">{{ t('settings.library.minSizeSub') }}</span>
             </div>
             <div class="row-control">
               <input
@@ -392,7 +392,7 @@ onMounted(() => {
             <div class="card-icon-badge">⚡</div>
             <div class="card-title-group">
               <h3>{{ t('settings.downloader.title') }}</h3>
-              <p>管理解析引擎核心策略与下载队列参数</p>
+              <p>{{ t('settings.downloader.desc') }}</p>
             </div>
           </div>
 
@@ -416,7 +416,7 @@ onMounted(() => {
           <div class="setting-row-item">
             <div class="row-info">
               <span class="row-label">{{ t('settings.downloader.concurrent') }}</span>
-              <span class="row-sub">限制同时执行的视频下载线程数量以保护带宽与 CPU 负载</span>
+              <span class="row-sub">{{ t('settings.downloader.concurrentSub') }}</span>
             </div>
             <div class="row-control">
               <select
@@ -426,7 +426,7 @@ onMounted(() => {
               >
                 <option :value="1">1</option>
                 <option :value="2">2</option>
-                <option :value="3">3 (推荐)</option>
+                <option :value="3">{{ t('settings.downloader.concurrentRecommended') }}</option>
                 <option :value="5">5</option>
                 <option :value="10">{{ t('settings.downloader.unlimited') }}</option>
               </select>
@@ -441,21 +441,21 @@ onMounted(() => {
           <div class="card-header-row">
             <div class="card-icon-badge">✨</div>
             <div class="card-title-group">
-              <h3>AI 语音转写与字幕模型配置</h3>
-              <p>支持配置云端 OpenAI 兼容 API 或本地纯离线 Whisper 模型，实现毫秒级台词提取与全文检索</p>
+              <h3>{{ t('settings.ai.title') }}</h3>
+              <p>{{ t('settings.ai.desc') }}</p>
             </div>
           </div>
 
           <!-- Engine choice -->
           <div class="setting-row-item">
             <div class="row-info">
-              <span class="row-label">转写引擎方案 (Engine)</span>
-              <span class="row-sub">选择使用远程/本地 HTTP API 服务或本地独立 Whisper 执行体</span>
+              <span class="row-label">{{ t('settings.ai.engineLabel') }}</span>
+              <span class="row-sub">{{ t('settings.ai.engineSub') }}</span>
             </div>
             <div class="row-control">
               <select v-model="aiConfig.engine" class="settings-select">
-                <option value="api">☁️ OpenAI 兼容接口 (云端 / Ollama / Faster-Whisper)</option>
-                <option value="local">💻 本地 Whisper CLI (whisper.cpp 纯离线)</option>
+                <option value="api">{{ t('settings.ai.engineApi') }}</option>
+                <option value="local">{{ t('settings.ai.engineLocal') }}</option>
               </select>
             </div>
           </div>
@@ -463,22 +463,22 @@ onMounted(() => {
           <!-- Quick Presets when API -->
           <div v-if="aiConfig.engine === 'api'" class="setting-row-item">
             <div class="row-info">
-              <span class="row-label">常用服务快速预设</span>
-              <span class="row-sub">一键自动填充推荐的 Base URL 与模型名称</span>
+              <span class="row-label">{{ t('settings.ai.presetLabel') }}</span>
+              <span class="row-sub">{{ t('settings.ai.presetSub') }}</span>
             </div>
             <div class="row-control-presets">
-              <button class="preset-pill-btn" @click="applyAiPreset('openai')">OpenAI 官方</button>
-              <button class="preset-pill-btn" @click="applyAiPreset('groq')">Groq 极速</button>
-              <button class="preset-pill-btn" @click="applyAiPreset('local_whisper_api')">本地 Faster-Whisper (8000)</button>
-              <button class="preset-pill-btn" @click="applyAiPreset('ollama')">本地 Ollama (11434)</button>
+              <button class="preset-pill-btn" @click="applyAiPreset('openai')">{{ t('settings.ai.presetOpenai') }}</button>
+              <button class="preset-pill-btn" @click="applyAiPreset('groq')">{{ t('settings.ai.presetGroq') }}</button>
+              <button class="preset-pill-btn" @click="applyAiPreset('local_whisper_api')">{{ t('settings.ai.presetLocalApi') }}</button>
+              <button class="preset-pill-btn" @click="applyAiPreset('ollama')">{{ t('settings.ai.presetOllama') }}</button>
             </div>
           </div>
 
           <!-- API URL -->
           <div v-if="aiConfig.engine === 'api'" class="setting-row-item">
             <div class="row-info">
-              <span class="row-label">API 基础地址 (Base URL)</span>
-              <span class="row-sub">请求将发送至该地址的 /audio/transcriptions 端点</span>
+              <span class="row-label">{{ t('settings.ai.baseUrlLabel') }}</span>
+              <span class="row-sub">{{ t('settings.ai.baseUrlSub') }}</span>
             </div>
             <div class="row-control wide">
               <input
@@ -493,8 +493,8 @@ onMounted(() => {
           <!-- API Key -->
           <div v-if="aiConfig.engine === 'api'" class="setting-row-item">
             <div class="row-info">
-              <span class="row-label">API 密钥 (API Key)</span>
-              <span class="row-sub">用于鉴权 Bearer Token，本地无鉴权服务可留空</span>
+              <span class="row-label">{{ t('settings.ai.apiKeyLabel') }}</span>
+              <span class="row-sub">{{ t('settings.ai.apiKeySub') }}</span>
             </div>
             <div class="row-control wide">
               <input
@@ -509,8 +509,8 @@ onMounted(() => {
           <!-- Model Name -->
           <div v-if="aiConfig.engine === 'api'" class="setting-row-item">
             <div class="row-info">
-              <span class="row-label">模型标识 (Model)</span>
-              <span class="row-sub">传递给接口的模型名称，如 whisper-1、whisper-large-v3 等</span>
+              <span class="row-label">{{ t('settings.ai.modelLabel') }}</span>
+              <span class="row-sub">{{ t('settings.ai.modelSub') }}</span>
             </div>
             <div class="row-control wide">
               <input
@@ -525,15 +525,15 @@ onMounted(() => {
           <!-- Local Model Path -->
           <div v-if="aiConfig.engine === 'local'" class="setting-row-item">
             <div class="row-info">
-              <span class="row-label">本地模型权重文件路径 (.bin)</span>
-              <span class="row-sub">ggml 模型权重路径 (默认留空将自动从数据目录 models 检测)</span>
+              <span class="row-label">{{ t('settings.ai.localWeightLabel') }}</span>
+              <span class="row-sub">{{ t('settings.ai.localWeightSub') }}</span>
             </div>
             <div class="row-control wide">
               <input
                 v-model="aiConfig.local_model_path"
                 type="text"
                 class="settings-text-input"
-                placeholder="例如: /path/to/ggml-base.bin"
+                :placeholder="t('settings.ai.localWeightPlaceholder')"
               />
             </div>
           </div>
@@ -541,19 +541,19 @@ onMounted(() => {
           <!-- Target Language -->
           <div class="setting-row-item">
             <div class="row-info">
-              <span class="row-label">默认识别语言 (Language)</span>
-              <span class="row-sub">自动识别多国语言或指定固定语言以提高识别准确率</span>
+              <span class="row-label">{{ t('settings.ai.langLabel') }}</span>
+              <span class="row-sub">{{ t('settings.ai.langSub') }}</span>
             </div>
             <div class="row-control">
               <select v-model="aiConfig.language" class="settings-select">
-                <option value="auto">🌐 自动识别语言 (Auto)</option>
-                <option value="zh">🇨🇳 中文普通话 (Chinese)</option>
-                <option value="en">🇺🇸 英语 (English)</option>
-                <option value="ja">🇯🇵 日语 (Japanese)</option>
-                <option value="ko">🇰🇷 韩语 (Korean)</option>
-                <option value="es">🇪🇸 西班牙语 (Spanish)</option>
-                <option value="fr">🇫🇷 法语 (French)</option>
-                <option value="de">🇩🇪 德语 (German)</option>
+                <option value="auto">🌐 {{ t('ai.langAuto') }}</option>
+                <option value="zh">🇨🇳 {{ t('ai.langZh') }}</option>
+                <option value="en">🇺🇸 {{ t('ai.langEn') }}</option>
+                <option value="ja">🇯🇵 {{ t('ai.langJa') }}</option>
+                <option value="ko">🇰🇷 한국어 (Korean)</option>
+                <option value="es">🇪🇸 Español (Spanish)</option>
+                <option value="fr">🇫🇷 Français (French)</option>
+                <option value="de">🇩🇪 Deutsch (German)</option>
               </select>
             </div>
           </div>
@@ -561,15 +561,15 @@ onMounted(() => {
           <!-- Prompt -->
           <div class="setting-row-item">
             <div class="row-info">
-              <span class="row-label">转写引导词 / 专业术语 (Prompt)</span>
-              <span class="row-sub">可填写简体中文常见词汇或行业术语以引导模型生成规范文字</span>
+              <span class="row-label">{{ t('settings.ai.promptLabel') }}</span>
+              <span class="row-sub">{{ t('settings.ai.promptSub') }}</span>
             </div>
             <div class="row-control wide">
               <input
                 v-model="aiConfig.prompt"
                 type="text"
                 class="settings-text-input"
-                placeholder="例如: 简体中文、电影对白、学术讲座..."
+                :placeholder="t('settings.ai.promptPlaceholder')"
               />
             </div>
           </div>
@@ -582,7 +582,7 @@ onMounted(() => {
               :disabled="isSavingAi"
               @click="saveAiSettings"
             >
-              <span>{{ isSavingAi ? '正在保存...' : '💾 保存 AI 配置' }}</span>
+              <span>{{ isSavingAi ? t('ai.saving') : t('settings.ai.saveBtn') }}</span>
             </button>
           </div>
         </div>

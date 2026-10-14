@@ -5,6 +5,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
 import SubtitleTranscriptPanel from './SubtitleTranscriptPanel.vue';
 import type { Video, SubtitleSegment, VideoCompatibilityStatus, TranscodeResult } from '../types';
+import { t } from '../i18n';
 
 const video = ref<Video | null>(null);
 const compatibleFilePath = ref<string | null>(null);
@@ -100,7 +101,7 @@ async function checkCompatibility(v: Video) {
       errorMessage.value = '';
     } else if (!status.is_compatible) {
       isCompatibleFormat.value = false;
-      errorMessage.value = status.reason || '当前视频为传统封装格式（如 AVI），需一键优化以在内嵌播放器中流畅播放。';
+      errorMessage.value = status.reason || t('player.needOptimization');
       isLoading.value = false;
     } else {
       isCompatibleFormat.value = true;
@@ -113,7 +114,7 @@ async function checkCompatibility(v: Video) {
 async function startCompatibilityConversion() {
   if (!video.value?.file_path || isConverting.value) return;
   isConverting.value = true;
-  convertProgressText.value = '正在进行极速兼容优化 (检测编码与硬件加速)...';
+  convertProgressText.value = t('player.optimizingCompatibility');
   errorMessage.value = '';
 
   try {
@@ -131,7 +132,7 @@ async function startCompatibilityConversion() {
     }
   } catch (err: any) {
     console.error('convert_video_to_compatible error:', err);
-    errorMessage.value = `转换兼容格式失败: ${err?.message || err}`;
+    errorMessage.value = `${t('player.playbackError')}: ${err?.message || err}`;
   } finally {
     isConverting.value = false;
   }
@@ -204,25 +205,15 @@ function handleError(e: Event) {
   isLoading.value = false;
   const target = e.target as HTMLVideoElement;
   const mediaError = target?.error;
-  let desc = '无法解析此视频格式';
+  let desc = t('player.cannotDecodeDirectly');
   if (mediaError) {
     switch (mediaError.code) {
       case 1:
-        desc = '视频流读取被终止';
-        break;
       case 2:
-        desc = '本地媒体流读取失败（可能权限受限或路径不存在）';
-        break;
       case 3:
-        desc = '视频解码失败，可能存在损坏帧或索引丢失';
-        isCompatibleFormat.value = false;
-        break;
       case 4:
-        desc = '内嵌渲染器不支持此格式或音视频编码（如 AVI、MKV、FLV、AC3 环绕声）。可一键极速转换为兼容 MP4。';
-        isCompatibleFormat.value = false;
-        break;
       default:
-        desc = mediaError.message || '未知媒体解码异常';
+        desc = mediaError.message || t('player.cannotDecodeDirectly');
         isCompatibleFormat.value = false;
     }
   }
@@ -461,8 +452,8 @@ onUnmounted(() => {
     <header class="player-topbar">
       <div class="topbar-left">
         <span class="player-icon">🎬</span>
-        <h2 class="player-title" :title="video?.file_name || 'VidNest 独立播放器'">
-          {{ video?.file_name || '等待选择视频...' }}
+        <h2 class="player-title" :title="video?.file_name || t('player.standaloneWindow')">
+          {{ video?.file_name || t('player.waitVideo') }}
         </h2>
         <span v-if="video?.width && video?.height" class="badge-pill badge-res">
           {{ video.width >= 3840 ? '4K UHD' : video.width >= 1920 ? '1080P' : `${video.width}x${video.height}` }}
@@ -470,8 +461,8 @@ onUnmounted(() => {
         <span v-if="video?.codec" class="badge-pill badge-codec">
           {{ video.codec.toUpperCase() }}
         </span>
-        <span v-if="videoSubtitles.length > 0" class="badge-pill badge-sub-ready" title="AI 语音字幕已就绪">
-          CC · {{ videoSubtitles.length }} 句
+        <span v-if="videoSubtitles.length > 0" class="badge-pill badge-sub-ready" :title="t('player.ccReady')">
+          CC · {{ videoSubtitles.length }}
         </span>
       </div>
 
@@ -480,29 +471,29 @@ onUnmounted(() => {
         <button
           class="act-btn"
           :class="{ 'act-btn-active': isAlwaysOnTop }"
-          :title="isAlwaysOnTop ? '已置顶窗口 (按 T 切换)' : '点击置顶窗口 (按 T 切换)'"
+          :title="isAlwaysOnTop ? t('player.pinned') : t('player.pinTitle')"
           @click="toggleAlwaysOnTop"
         >
           <span class="act-ic">📌</span>
-          <span>{{ isAlwaysOnTop ? '已置顶' : '置顶窗口' }}</span>
+          <span>{{ isAlwaysOnTop ? t('player.pinned') : t('player.pinWindow') }}</span>
         </button>
 
         <!-- System external player button -->
-        <button class="act-btn" title="在系统默认播放器中打开 (IINA/QuickTime)" @click="openExternal">
+        <button class="act-btn" :title="t('player.systemPlayerTitle')" @click="openExternal">
           <span class="act-ic">🚀</span>
-          <span>系统播放器</span>
+          <span>{{ t('player.systemPlayer') }}</span>
         </button>
 
         <!-- Locate file in directory -->
-        <button class="act-btn" title="在资源管理器/访达中定位源文件" @click="revealFile">
+        <button class="act-btn" :title="t('player.locateFileTitle')" @click="revealFile">
           <span class="act-ic">📁</span>
-          <span>定位文件</span>
+          <span>{{ t('player.locateFile') }}</span>
         </button>
 
         <!-- Copy path -->
-        <button class="act-btn" title="复制完整文件路径" @click="copyPath">
+        <button class="act-btn" :title="t('player.copyPathTitle')" @click="copyPath">
           <span class="act-ic">📋</span>
-          <span>{{ copiedPath ? '已复制' : '复制路径' }}</span>
+          <span>{{ copiedPath ? t('player.copied') : t('player.copyPath') }}</span>
         </button>
       </div>
     </header>
@@ -536,10 +527,10 @@ onUnmounted(() => {
             </div>
           </transition>
 
-          <!-- Loading spinner -->
+          <!-- Loading overlay -->
           <div v-if="isLoading && !errorMessage" class="player-center-overlay">
             <div class="spinner-player"></div>
-            <span class="loading-label">正在通过本地流媒体引擎读取视频...</span>
+            <span class="loading-label">{{ t('player.streaming') }}</span>
           </div>
 
           <!-- Big Play Indicator Badge -->
@@ -554,7 +545,7 @@ onUnmounted(() => {
           <div v-if="errorMessage" class="player-error-overlay" @click.stop>
             <div class="error-box">
               <span class="err-icon">{{ isConverting ? '⏳' : (isCompatibleFormat ? '⚠️' : '⚡') }}</span>
-              <h3 class="err-title">{{ isConverting ? '正在优化视频兼容性' : (isCompatibleFormat ? '视频无法直接在 Webview 中解码' : '需要兼容优化以支持流畅播放') }}</h3>
+              <h3 class="err-title">{{ isConverting ? t('player.optimizingCompatibility') : (isCompatibleFormat ? t('player.cannotDecodeDirectly') : t('player.needOptimization')) }}</h3>
               <p class="err-text">{{ errorMessage }}</p>
 
               <!-- In-progress state -->
@@ -570,13 +561,13 @@ onUnmounted(() => {
                   class="btn-err-action highlight-transcode"
                   @click.stop="startCompatibilityConversion"
                 >
-                  <span class="btn-ic">⚡</span> 极速优化为兼容格式 (保留高清原画)
+                  <span class="btn-ic">⚡</span> {{ t('player.btnOptimize') }}
                 </button>
                 <button class="btn-err-action primary" @click="openExternal">
-                  <span class="btn-ic">🚀</span> 使用系统专业播放器流畅播放 (IINA/QuickTime)
+                  <span class="btn-ic">🚀</span> {{ t('player.btnSystemPlayer') }}
                 </button>
                 <button class="btn-err-action secondary" @click="revealFile">
-                  <span class="btn-ic">📁</span> 在访达/资源管理器中查看文件
+                  <span class="btn-ic">📁</span> {{ t('player.btnLocate') }}
                 </button>
               </div>
             </div>
@@ -613,17 +604,17 @@ onUnmounted(() => {
             <div class="ctrl-group ctrl-left">
               <button
                 class="ctrl-btn play-pause-btn"
-                :title="isPlaying ? '暂停 (Space)' : '播放 (Space)'"
+                :title="isPlaying ? t('player.pause') : t('player.play')"
                 @click="togglePlay"
               >
                 <span v-if="isPlaying">❚❚</span>
                 <span v-else>▶</span>
               </button>
 
-              <button class="ctrl-btn" title="后退 5 秒 (←)" @click="seekRelative(-5)">
+              <button class="ctrl-btn" :title="t('player.back5s')" @click="seekRelative(-5)">
                 ↺ 5s
               </button>
-              <button class="ctrl-btn" title="快进 5 秒 (→)" @click="seekRelative(5)">
+              <button class="ctrl-btn" :title="t('player.forward5s')" @click="seekRelative(5)">
                 5s ↻
               </button>
 
@@ -640,7 +631,7 @@ onUnmounted(() => {
               <button
                 class="ctrl-btn"
                 :class="{ 'ctrl-active': showCc }"
-                :title="showCc ? '隐藏画面字幕 (CC / C 键)' : '开启画面悬浮字幕 (CC / C 键)'"
+                :title="showCc ? t('player.hideCc') : t('player.showCc')"
                 @click="showCc = !showCc"
               >
                 <span class="cc-badge-text">CC</span>
@@ -650,16 +641,16 @@ onUnmounted(() => {
               <button
                 class="ctrl-btn transcript-toggle-btn"
                 :class="{ 'ctrl-active': showTranscript }"
-                :title="showTranscript ? '收起 AI 台词抽屉' : '展开 AI 台词同步速览抽屉'"
+                :title="showTranscript ? t('player.collapseTranscript') : t('player.transcriptTitle')"
                 @click="showTranscript = !showTranscript"
               >
-                <span>📝 台词</span>
+                <span>📝 {{ t('player.transcript') }}</span>
                 <span v-if="videoSubtitles.length > 0" class="sub-dot-indicator"></span>
               </button>
 
               <!-- Speed Menu -->
               <div class="speed-menu-wrap">
-                <button class="ctrl-btn speed-btn" title="倍速播放" @click="showSpeedMenu = !showSpeedMenu">
+                <button class="ctrl-btn speed-btn" :title="t('player.speed')" @click="showSpeedMenu = !showSpeedMenu">
                   {{ playbackRate }}x
                 </button>
                 <div v-if="showSpeedMenu" class="speed-dropdown">
@@ -677,7 +668,7 @@ onUnmounted(() => {
 
               <!-- Volume Slider -->
               <div class="volume-box">
-                <button class="ctrl-btn vol-btn" :title="isMuted ? '取消静音 (M)' : '静音 (M)'" @click="toggleMute">
+                <button class="ctrl-btn vol-btn" :title="isMuted ? t('player.unmute') : t('player.mute')" @click="toggleMute">
                   <span v-if="isMuted || volume === 0">🔇</span>
                   <span v-else-if="volume < 0.5">🔉</span>
                   <span v-else>🔊</span>
@@ -697,14 +688,14 @@ onUnmounted(() => {
               <button
                 class="ctrl-btn"
                 :class="{ 'ctrl-active': isLooping }"
-                title="循环播放"
+                :title="t('player.loop')"
                 @click="toggleLoop"
               >
                 🔁
               </button>
 
               <!-- Fullscreen toggle -->
-              <button class="ctrl-btn" :title="isFullscreen ? '退出全屏 (F)' : '全屏 (F)'" @click="toggleFullscreen">
+              <button class="ctrl-btn" :title="isFullscreen ? t('player.exitFullscreen') : t('player.fullscreen')" @click="toggleFullscreen">
                 <span v-if="isFullscreen">⛶</span>
                 <span v-else>⛶</span>
               </button>
@@ -715,13 +706,13 @@ onUnmounted(() => {
         <!-- Bottom Specs Strip -->
         <div class="specs-strip">
           <div class="specs-left">
-            <span class="s-item">格式: <b>{{ video?.codec?.toUpperCase() || 'MP4' }}</b></span>
+            <span class="s-item">{{ t('player.specFormat') }}: <b>{{ video?.codec?.toUpperCase() || 'MP4' }}</b></span>
             <span class="s-sep">•</span>
-            <span class="s-item">分辨率: <b>{{ video?.width && video?.height ? `${video.width}×${video.height}` : '未知' }}</b></span>
+            <span class="s-item">{{ t('player.specResolution') }}: <b>{{ video?.width && video?.height ? `${video.width}×${video.height}` : t('system.unknown') }}</b></span>
             <span class="s-sep">•</span>
-            <span class="s-item">文件大小: <b>{{ formatBytes(video?.file_size || 0) }}</b></span>
+            <span class="s-item">{{ t('player.specSize') }}: <b>{{ formatBytes(video?.file_size || 0) }}</b></span>
             <span class="s-sep">•</span>
-            <span class="s-item">时长: <b>{{ formatTime(video?.duration || duration) }}</b></span>
+            <span class="s-item">{{ t('player.specDuration') }}: <b>{{ formatTime(video?.duration || duration) }}</b></span>
           </div>
           <div class="specs-right">
             <span class="s-path" :title="video?.file_path">{{ video?.file_path || '' }}</span>

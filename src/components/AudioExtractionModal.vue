@@ -131,9 +131,9 @@ async function revealFile() {
   if (!extractionResult.value?.outputPath) return;
   try {
     await invoke('reveal_in_explorer', { path: extractionResult.value.outputPath });
-    showToast('📂 已在系统文件管理器中定位');
+    showToast(t('library.locatedInFileManager'));
   } catch (err: unknown) {
-    showToast(`定位失败: ${err instanceof Error ? err.message : String(err)}`);
+    showToast(t('audioExtract.locateFailed', { err: err instanceof Error ? err.message : String(err) }));
   }
 }
 
@@ -143,7 +143,7 @@ async function copyPath() {
     await navigator.clipboard.writeText(extractionResult.value.outputPath);
     showToast(t('audioExtract.copied'));
   } catch (e) {
-    showToast('复制路径失败');
+    showToast(t('audioExtract.copyFailed'));
   }
 }
 
@@ -173,7 +173,7 @@ function handleClose() {
           <h3 class="header-title">{{ t('audioExtract.title') }}</h3>
           <p class="header-subtitle">{{ t('audioExtract.subtitle') }}</p>
         </div>
-        <button class="modal-close-btn" @click="handleClose" title="关闭">✕</button>
+        <button class="modal-close-btn" @click="handleClose" :title="t('common.close')">✕</button>
       </div>
 
       <!-- Source Video Preview Banner -->
@@ -378,7 +378,7 @@ function handleClose() {
 
         <!-- Result File Info -->
         <div class="result-path-box">
-          <span class="path-label">文件路径:</span>
+          <span class="path-label">{{ t('audioExtract.filePath') }}:</span>
           <span class="path-val font-mono" :title="extractionResult.outputPath">
             {{ extractionResult.outputPath }}
           </span>
@@ -389,7 +389,7 @@ function handleClose() {
       <div class="audio-modal-footer">
         <template v-if="!extractionResult">
           <button class="btn btn-secondary" :disabled="isExtracting" @click="handleClose">
-            取消
+            {{ t('common.cancel') }}
           </button>
           <button
             class="btn btn-primary btn-extract"

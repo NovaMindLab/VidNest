@@ -40,7 +40,7 @@ async function fetchDuplicates() {
     duplicateGroups.value = groups;
     applySmartSelect('best_quality');
   } catch (err: unknown) {
-    showToast(`查重分析失败: ${err instanceof Error ? err.message : String(err)}`);
+    showToast(t('dedup.analysisFailed', { err: err instanceof Error ? err.message : String(err) }));
   } finally {
     isLoading.value = false;
   }
@@ -122,7 +122,7 @@ const totalReclaimableBytes = computed(() => {
 async function playVideo(video: Video) {
   try {
     await invoke('open_video_player_window', { video });
-    showToast(`▶ 正在播放: ${video.file_name}`);
+    showToast(t('dedup.playingVideo', { name: video.file_name }));
   } catch {
     emit('playVideo', video);
   }
@@ -131,24 +131,24 @@ async function playVideo(video: Video) {
 async function revealFile(filePath: string) {
   try {
     await invoke('reveal_in_explorer', { path: filePath });
-    showToast('📂 已在系统文件管理器中定位');
+    showToast(t('library.locatedInFileManager'));
   } catch (err: unknown) {
-    showToast(`定位失败: ${err instanceof Error ? err.message : String(err)}`);
+    showToast(t('audioExtract.locateFailed', { err: err instanceof Error ? err.message : String(err) }));
   }
 }
 
 async function copyPath(filePath: string) {
   try {
     await navigator.clipboard.writeText(filePath);
-    showToast('📋 文件路径已复制到剪贴板');
+    showToast(t('audioLibrary.copySuccess'));
   } catch {
-    showToast('复制失败');
+    showToast(t('audioLibrary.copyFailed'));
   }
 }
 
 function promptResolve() {
   if (totalRedundantVideos.value === 0) {
-    showToast('当前没有标记待清理的冗余视频');
+    showToast(t('dedup.noRedundantSelected'));
     return;
   }
   showConfirmModal.value = true;
@@ -180,7 +180,7 @@ async function executeResolve() {
     showToast(res.message);
     await fetchDuplicates();
   } catch (err: unknown) {
-    showToast(`去重清理失败: ${err instanceof Error ? err.message : String(err)}`);
+    showToast(t('dedup.dedupFailed', { err: err instanceof Error ? err.message : String(err) }));
   } finally {
     isResolving.value = false;
   }
@@ -211,7 +211,7 @@ function promptResolveSingle(group: DuplicateGroup) {
   const keepId = selections.value[group.group_id];
   const deleteVideos = group.videos.filter((v) => v.id !== keepId);
   if (deleteVideos.length === 0) {
-    showToast('本组未选择需要清理的冗余视频');
+    showToast(t('dedup.noRedundantSelected'));
     return;
   }
   singleGroupToResolve.value = group;
@@ -242,7 +242,7 @@ async function executeResolveSingle() {
       actions: [action],
     });
 
-    showToast(`✅ 已合并本组：${res.message}`);
+    showToast(t('dedup.groupMerged', { msg: res.message }));
 
     // Remove this group locally and clean up selection
     duplicateGroups.value = duplicateGroups.value.filter((g) => g.group_id !== group.group_id);
@@ -250,7 +250,7 @@ async function executeResolveSingle() {
     delete newSelections[group.group_id];
     selections.value = newSelections;
   } catch (err: unknown) {
-    showToast(`单独合并失败: ${err instanceof Error ? err.message : String(err)}`);
+    showToast(t('dedup.singleMergeFailed', { err: err instanceof Error ? err.message : String(err) }));
   } finally {
     isResolving.value = false;
     singleGroupToResolve.value = null;
@@ -368,7 +368,7 @@ onMounted(() => {
       </div>
 
       <div class="strategy-desc-banner">
-        <span class="desc-tag">说明</span>
+        <span class="desc-tag">{{ t('dedup.descTag') }}</span>
         <span class="desc-text">
           {{
             currentStrategy === 'exact_hash'
@@ -469,19 +469,19 @@ onMounted(() => {
           <!-- Group Header -->
           <div class="group-header">
             <div class="group-header-left">
-              <span class="group-index-badge">组 #{{ idx + 1 }}</span>
+              <span class="group-index-badge">{{ t('dedup.groupBadge', { index: idx + 1 }) }}</span>
               <span class="group-match-label">{{ group.match_label }}</span>
             </div>
             <div class="group-header-right font-mono">
-              <span>{{ group.videos.length }} 个副本</span>
+              <span>{{ t('dedup.redundantCount', { count: group.videos.length }) }}</span>
               <span class="separator">·</span>
-              <span>总大小: {{ formatBytes(group.total_size) }}</span>
+              <span>{{ t('dedup.totalSize', { size: formatBytes(group.total_size) }) }}</span>
               <span class="separator">·</span>
-              <span class="text-success font-semibold">清理释放: {{ formatBytes(getGroupReclaimable(group)) }}</span>
+              <span class="text-success font-semibold">{{ t('dedup.reclaimable', { size: formatBytes(getGroupReclaimable(group)) }) }}</span>
               <button
                 class="btn-single-merge"
                 :disabled="isResolving"
-                title="单独合并本组重复项"
+                :title="t('dedup.mergeThisGroupTooltip')"
                 @click.stop="promptResolveSingle(group)"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="merge-icon">
@@ -491,7 +491,7 @@ onMounted(() => {
                   <path d="M15 15l6 6"></path>
                   <path d="M4 4l5 5"></path>
                 </svg>
-                <span>单独合并本组</span>
+                <span>{{ t('dedup.mergeThisGroup') }}</span>
               </button>
             </div>
           </div>
@@ -564,24 +564,24 @@ onMounted(() => {
               <div class="video-actions-col" @click.stop>
                 <button
                   class="act-btn btn-play"
-                  title="播放预览"
+                  :title="t('dedup.playPreview')"
                   @click="playVideo(video)"
                 >
-                  ▶ 播放
+                  {{ t('library.playBtn') }}
                 </button>
                 <button
                   class="act-btn"
-                  title="在文件管理器中定位"
+                  :title="t('dedup.locateFolder')"
                   @click="revealFile(video.file_path)"
                 >
-                  📁 定位
+                  {{ t('library.locateBtn') }}
                 </button>
                 <button
                   class="act-btn"
-                  title="复制路径"
+                  :title="t('dedup.copyPath')"
                   @click="copyPath(video.file_path)"
                 >
-                  📋 复制
+                  {{ t('library.copyBtn') }}
                 </button>
               </div>
             </div>
@@ -603,8 +603,8 @@ onMounted(() => {
 
       <div class="action-bar-right">
         <div class="summary-counts font-mono">
-          待清理: <span class="highlight-count">{{ totalRedundantVideos }}</span> 个副本 ·
-          释放约: <span class="highlight-bytes">{{ formatBytes(totalReclaimableBytes) }}</span>
+          {{ t('dedup.pendingCleanLabel') }} <span class="highlight-count">{{ t('dedup.redundantCount', { count: totalRedundantVideos }) }}</span> ·
+          {{ t('dedup.pendingReclaimLabel') }} <span class="highlight-bytes">{{ formatBytes(totalReclaimableBytes) }}</span>
         </div>
         <button
           class="btn btn-danger btn-resolve"
@@ -630,7 +630,7 @@ onMounted(() => {
           </div>
           <div>
             <h3 class="modal-title">{{ t('dedup.confirmTitle') }}</h3>
-            <p class="modal-subtitle">请仔细核对即将执行的清理操作</p>
+            <p class="modal-subtitle">{{ t('dedup.verifyModalSubtitle') }}</p>
           </div>
         </div>
 
@@ -640,10 +640,10 @@ onMounted(() => {
           </p>
 
           <div class="stats-preview-box font-mono">
-            <div>处理组数: <strong>{{ totalGroups }}</strong> 组</div>
-            <div>清理冗余: <strong>{{ totalRedundantVideos }}</strong> 个副本</div>
-            <div>释放存储: <strong class="text-success">{{ formatBytes(totalReclaimableBytes) }}</strong></div>
-            <div>保留主视频: <strong>{{ totalGroups }}</strong> 个</div>
+            <div>{{ t('dedup.processedGroups', { count: totalGroups }) }}</div>
+            <div>{{ t('dedup.redundantCleaned', { count: totalRedundantVideos }) }}</div>
+            <div>{{ t('dedup.spaceReclaimed', { size: formatBytes(totalReclaimableBytes) }) }}</div>
+            <div>{{ t('dedup.primaryKept', { count: totalGroups }) }}</div>
           </div>
 
           <div v-if="alsoDeleteDiskFile" class="danger-warning-callout">
@@ -655,18 +655,18 @@ onMounted(() => {
             <span>{{ t('dedup.confirmDiskWarning') }}</span>
           </div>
           <div v-else class="info-callout">
-            <span>💡 提示：当前未勾选“删除原文件”，将仅从软件数据库移除多余记录，磁盘原文件将完整保留。</span>
+            <span>{{ t('dedup.keepOriginalWarning') }}</span>
           </div>
         </div>
 
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="showConfirmModal = false">取消</button>
+          <button class="btn btn-secondary" @click="showConfirmModal = false">{{ t('common.cancel') }}</button>
           <button
             class="btn btn-danger"
             :disabled="isResolving"
             @click="executeResolve"
           >
-            {{ alsoDeleteDiskFile ? '彻底清理并删除原文件' : '确认仅清理媒体库索引' }}
+            {{ alsoDeleteDiskFile ? t('dedup.confirmCleanDisk') : t('dedup.confirmCleanIndexOnly') }}
           </button>
         </div>
       </div>
@@ -686,31 +686,31 @@ onMounted(() => {
             </svg>
           </div>
           <div>
-            <h3 class="modal-title">单独合并本组重复视频</h3>
-            <p class="modal-subtitle">仅处理当前组的副本，其他组保持不变</p>
+            <h3 class="modal-title">{{ t('dedup.singleGroupTitle') }}</h3>
+            <p class="modal-subtitle">{{ t('dedup.singleGroupSubtitle') }}</p>
           </div>
         </div>
 
         <div class="modal-body">
           <div class="single-group-info-box">
             <div class="info-row">
-              <span class="info-label">匹配说明:</span>
+              <span class="info-label">{{ t('dedup.matchReasonLabel') }}</span>
               <span class="info-val font-semibold">{{ singleGroupToResolve.match_label }}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">保留视频:</span>
+              <span class="info-label">{{ t('dedup.keepVideoLabel') }}</span>
               <span class="info-val text-success font-semibold" :title="singleGroupToResolve.videos.find((v) => v.id === selections[singleGroupToResolve!.group_id])?.file_name">
                 {{ singleGroupToResolve.videos.find((v) => v.id === selections[singleGroupToResolve!.group_id])?.file_name }}
               </span>
             </div>
             <div class="info-row">
-              <span class="info-label">待删副本:</span>
+              <span class="info-label">{{ t('dedup.deleteCopiesLabel') }}</span>
               <span class="info-val text-danger font-mono font-semibold">
-                {{ singleGroupToResolve.videos.filter((v) => v.id !== selections[singleGroupToResolve!.group_id]).length }} 个
+                {{ t('dedup.deleteCopiesCount', { count: singleGroupToResolve.videos.filter((v) => v.id !== selections[singleGroupToResolve!.group_id]).length }) }}
               </span>
             </div>
             <div class="info-row">
-              <span class="info-label">释放存储:</span>
+              <span class="info-label">{{ t('dedup.pendingReclaimLabel') }}</span>
               <span class="info-val text-emerald font-mono font-semibold">
                 {{ formatBytes(getGroupReclaimable(singleGroupToResolve)) }}
               </span>
@@ -723,21 +723,21 @@ onMounted(() => {
               <line x1="12" y1="8" x2="12" y2="12"></line>
               <line x1="12" y1="16" x2="12.01" y2="16"></line>
             </svg>
-            <span>注意：已勾选「同时删除磁盘文件」，本组待删副本将被物理彻底删除或移至回收站！</span>
+            <span>{{ t('dedup.diskWarningSingle') }}</span>
           </div>
           <div v-else class="info-callout">
-            <span>💡 提示：当前未勾选「删除原文件」，将仅从软件媒体库移除多余记录，磁盘原文件将完整保留。</span>
+            <span>{{ t('dedup.keepOriginalWarning') }}</span>
           </div>
         </div>
 
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="showSingleConfirmModal = false">取消</button>
+          <button class="btn btn-secondary" @click="showSingleConfirmModal = false">{{ t('common.cancel') }}</button>
           <button
             class="btn btn-primary btn-confirm-single"
             :disabled="isResolving"
             @click="executeResolveSingle"
           >
-            {{ alsoDeleteDiskFile ? '彻底清理本组并删除原文件' : '确认合并本组索引' }}
+            {{ alsoDeleteDiskFile ? t('dedup.confirmCleanDiskSingle') : t('dedup.confirmCleanIndexSingle') }}
           </button>
         </div>
       </div>

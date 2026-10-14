@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import { t } from '../i18n';
 import type { SubtitleSegment, AiTranscriptionConfig } from '../types';
 
 const props = withDefaults(
@@ -133,7 +134,7 @@ function handleSeek(seg: SubtitleSegment) {
 async function triggerTranscription() {
   if (!props.videoId) return;
   isTranscribing.value = true;
-  transcribeMessage.value = '正在提取 16kHz PCM 音频并启动 Whisper 转写...';
+  transcribeMessage.value = t('ai.transcribingWhisper');
   transcribeElapsed.value = 0;
   if (transcribeTimer) clearInterval(transcribeTimer);
   transcribeTimer = window.setInterval(() => {
@@ -147,11 +148,11 @@ async function triggerTranscription() {
     });
     subtitles.value = segs || [];
     emit('subtitlesUpdated', subtitles.value);
-    showToast(`✓ 转写成功，共生成 ${subtitles.value.length} 条带时间戳台词！`);
+    showToast(t('subtitles.transcribeSuccess', { count: subtitles.value.length }));
     showConfigModal.value = false;
   } catch (err) {
     console.error('Transcription error:', err);
-    showToast(`转写失败: ${err instanceof Error ? err.message : String(err)}`);
+    showToast(t('subtitles.transcribeFailed', { err: err instanceof Error ? err.message : String(err) }));
   } finally {
     isTranscribing.value = false;
     if (transcribeTimer) {
@@ -162,20 +163,20 @@ async function triggerTranscription() {
 }
 
 async function handleDeleteSubtitles() {
-  if (!confirm('确定要清空该视频的全部转写字幕吗？该操作不可撤销。')) return;
+  if (!confirm(t('subtitles.deleteConfirm'))) return;
   try {
     await invoke('delete_video_subtitles', { videoId: props.videoId });
     subtitles.value = [];
     emit('subtitlesUpdated', []);
-    showToast('已清空当前视频字幕');
+    showToast(t('subtitles.cleared'));
   } catch (err) {
-    showToast(`清空失败: ${err}`);
+    showToast(t('subtitles.clearFailed', { err: String(err) }));
   }
 }
 
 function exportSubtitles(format: 'srt' | 'vtt') {
   if (subtitles.value.length === 0) {
-    showToast('当前暂无字幕可导出');
+    showToast(t('subtitles.emptyPrompt'));
     return;
   }
 
@@ -210,7 +211,7 @@ function exportSubtitles(format: 'srt' | 'vtt') {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  showToast(`已导出 ${format.toUpperCase()} 字幕文件`);
+  showToast(t('subtitles.exportSuccess', { format: format.toUpperCase() }));
 }
 
 function formatSrtTimestamp(ms: number): string {
@@ -242,9 +243,9 @@ onMounted(() => {
       <div class="title-group">
         <span class="header-icon">🎙️</span>
         <div class="header-texts">
-          <h4 class="header-title">AI 台词同步速览</h4>
+          <h4 class="header-title">{{ t('subtitles.title') }}</h4>
           <span class="sub-counter">
-            {{ subtitles.length > 0 ? `${subtitles.length} 句字幕` : '暂无台词' }}
+            {{ subtitles.length > 0 ? t('subtitles.lineCount', { count: subtitles.length }) : t('subtitles.noDialogue') }}
           </span>
         </div>
       </div>
@@ -254,27 +255,27 @@ onMounted(() => {
         <button
           v-if="!isTranscribing"
           class="btn-act-sub ai-glow"
-          :title="subtitles.length > 0 ? '重新使用 AI 提取字幕' : '提取视频音频并生成台词'"
+          :title="subtitles.length > 0 ? t('subtitles.reExtract') : t('subtitles.quickAiTranscribe')"
           @click="showConfigModal = true"
         >
           <span class="btn-ic">✨</span>
-          <span>{{ subtitles.length > 0 ? '重新提取' : 'AI 转写' }}</span>
+          <span>{{ subtitles.length > 0 ? t('subtitles.reExtract') : t('subtitles.aiTranscribe') }}</span>
         </button>
 
         <!-- Export Dropdown -->
         <div v-if="subtitles.length > 0" class="export-group">
-          <button class="btn-act-sub" title="导出 SRT 字幕" @click="exportSubtitles('srt')">
+          <button class="btn-act-sub" :title="t('subtitles.exportSrt')" @click="exportSubtitles('srt')">
             SRT
           </button>
-          <button class="btn-act-sub" title="导出 VTT 字幕" @click="exportSubtitles('vtt')">
+          <button class="btn-act-sub" :title="t('subtitles.exportVtt')" @click="exportSubtitles('vtt')">
             VTT
           </button>
-          <button class="btn-act-sub danger" title="清空字幕" @click="handleDeleteSubtitles">
+          <button class="btn-act-sub danger" :title="t('subtitles.clearSubtitles')" @click="handleDeleteSubtitles">
             🗑️
           </button>
         </div>
 
-        <button class="btn-close-sub" title="关闭台词抽屉" @click="emit('close')">
+        <button class="btn-close-sub" :title="t('subtitles.closeDrawer')" @click="emit('close')">
           ✕
         </button>
       </div>
@@ -287,13 +288,13 @@ onMounted(() => {
         <input
           v-model="searchQuery"
           type="text"
-          placeholder="检索视频内台词与关键词..."
+          :placeholder="t('subtitles.searchPlaceholder')"
           class="search-sub-input"
         />
         <button
           v-if="searchQuery"
           class="clear-q-btn"
-          title="清空搜索"
+          :title="t('common.cancel')"
           @click="searchQuery = ''"
         >
           ✕
@@ -303,11 +304,11 @@ onMounted(() => {
       <button
         class="btn-toggle-scroll"
         :class="{ active: autoScroll }"
-        :title="autoScroll ? '已开启播放跟随滚动 (点击暂停)' : '点击开启播放跟随滚动'"
+        :title="autoScroll ? t('subtitles.followScrollOn') : t('subtitles.followScrollOff')"
         @click="autoScroll = !autoScroll"
       >
         <span class="scroll-dot" :class="{ pulsing: autoScroll && isPlaying }"></span>
-        <span>跟随</span>
+        <span>{{ t('subtitles.followScroll') }}</span>
       </button>
     </div>
 
@@ -322,9 +323,9 @@ onMounted(() => {
     <div v-if="isTranscribing" class="transcribing-overlay-card">
       <div class="spinner-ai"></div>
       <div class="ai-status-text">
-        <h5>AI 语音模型转写中</h5>
+        <h5>{{ t('subtitles.transcribingOverlay') }}</h5>
         <p>{{ transcribeMessage }}</p>
-        <span class="timer-badge">已耗时: {{ transcribeElapsed }} 秒</span>
+        <span class="timer-badge">{{ t('subtitles.timeElapsed', { sec: transcribeElapsed }) }}</span>
       </div>
     </div>
 
@@ -332,7 +333,7 @@ onMounted(() => {
     <div class="segments-container" :class="{ 'is-loading': isLoading }">
       <div v-if="isLoading" class="loading-state">
         <div class="mini-spinner"></div>
-        <span>正在读取台词时间轴...</span>
+        <span>{{ t('subtitles.readingTimeline') }}</span>
       </div>
 
       <div
@@ -340,10 +341,10 @@ onMounted(() => {
         class="empty-transcript-state"
       >
         <div class="empty-ai-icon">🎙️</div>
-        <h4>该视频暂未提取台词字幕</h4>
-        <p>一键调用本地 Whisper 模型或云端 API，快速生成精确到毫秒级的时间戳字幕。</p>
+        <h4>{{ t('subtitles.emptyPrompt') }}</h4>
+        <p>{{ t('subtitles.emptyPromptDesc') }}</p>
         <button class="btn-primary-ai" @click="showConfigModal = true">
-          <span class="ic">✨</span> 立即提取 AI 智能字幕
+          <span class="ic">✨</span> {{ t('subtitles.startExtractBtn') }}
         </button>
       </div>
 
@@ -351,7 +352,7 @@ onMounted(() => {
         v-else-if="filteredSubtitles.length === 0"
         class="no-search-results"
       >
-        <span>未检索到包含「{{ searchQuery }}」的台词</span>
+        <span>{{ t('subtitles.noSearchResults', { query: searchQuery }) }}</span>
       </div>
 
       <div v-else class="segments-list">
@@ -374,7 +375,7 @@ onMounted(() => {
           <div class="seg-content-col">
             <p class="seg-text">{{ seg.content }}</p>
           </div>
-          <button class="btn-play-line" title="从本句开始播放">
+          <button class="btn-play-line" :title="t('subtitles.playFromHere')">
             ▶
           </button>
         </div>
@@ -387,49 +388,49 @@ onMounted(() => {
         <div class="ai-modal-header">
           <div class="ai-modal-title">
             <span>✨</span>
-            <h4>AI 智能语音字幕提取</h4>
+            <h4>{{ t('subtitles.modalTitle') }}</h4>
           </div>
           <button class="close-x" @click="showConfigModal = false">✕</button>
         </div>
 
         <div class="ai-modal-body">
           <p class="ai-tip">
-            系统将自动从视频提取 16kHz PCM 单声道音频流并输入 Whisper 模型，转写完成后自动落库与建立 FTS5 全文索引。
+            {{ t('subtitles.modalDesc') }}
           </p>
 
           <div class="form-group">
-            <label class="form-label">转写引擎方案</label>
+            <label class="form-label">{{ t('subtitles.enginePlan') }}</label>
             <div class="engine-pills">
               <button
                 class="engine-pill"
                 :class="{ active: aiConfig.engine === 'api' }"
                 @click="aiConfig.engine = 'api'"
               >
-                ☁️ OpenAI 兼容接口 (云端 / 本地 Ollama / Faster-Whisper)
+                {{ t('subtitles.engineApiDesc') }}
               </button>
               <button
                 class="engine-pill"
                 :class="{ active: aiConfig.engine === 'local' }"
                 @click="aiConfig.engine = 'local'"
               >
-                💻 本地 Whisper CLI (whisper.cpp 离线免联网)
+                {{ t('subtitles.engineLocalDesc') }}
               </button>
             </div>
           </div>
 
           <div v-if="aiConfig.engine === 'api'" class="api-fields">
             <div class="form-group">
-              <label class="form-label">API 基础地址 (Base URL)</label>
+              <label class="form-label">{{ t('subtitles.apiBaseUrl') }}</label>
               <input
                 v-model="aiConfig.api_url"
                 type="text"
                 class="ai-input"
-                placeholder="例如: https://api.openai.com/v1 或 http://localhost:8000/v1"
+                placeholder="https://api.openai.com/v1"
               />
             </div>
 
             <div class="form-group">
-              <label class="form-label">API 密钥 (API Key，本地端如无需鉴权可留空)</label>
+              <label class="form-label">{{ t('subtitles.apiKey') }}</label>
               <input
                 v-model="aiConfig.api_key"
                 type="password"
@@ -439,7 +440,7 @@ onMounted(() => {
             </div>
 
             <div class="form-group">
-              <label class="form-label">模型标识 (Model)</label>
+              <label class="form-label">{{ t('subtitles.modelLabel') }}</label>
               <input
                 v-model="aiConfig.model"
                 type="text"
@@ -451,47 +452,47 @@ onMounted(() => {
 
           <div v-else class="local-fields">
             <div class="form-group">
-              <label class="form-label">本地模型权重路径 (.bin 格式，选填)</label>
+              <label class="form-label">{{ t('subtitles.localModelPath') }}</label>
               <input
                 v-model="aiConfig.local_model_path"
                 type="text"
                 class="ai-input"
-                placeholder="ggml-base.bin 路径 (默认自动从 app_data/models 探测)"
+                placeholder="ggml-base.bin"
               />
             </div>
           </div>
 
           <div class="form-row-grid">
             <div class="form-group">
-              <label class="form-label">目标语言</label>
+              <label class="form-label">{{ t('subtitles.targetLanguage') }}</label>
               <select v-model="aiConfig.language" class="ai-select">
-                <option value="auto">🌐 自动识别语言 (Auto)</option>
-                <option value="zh">🇨🇳 中文普通话 (Chinese)</option>
-                <option value="en">🇺🇸 英语 (English)</option>
-                <option value="ja">🇯🇵 日语 (Japanese)</option>
-                <option value="ko">🇰🇷 韩语 (Korean)</option>
-                <option value="es">🇪🇸 西班牙语 (Spanish)</option>
-                <option value="fr">🇫🇷 法语 (French)</option>
-                <option value="de">🇩🇪 德语 (German)</option>
+                <option value="auto">🌐 {{ t('ai.langAuto') }}</option>
+                <option value="zh">🇨🇳 {{ t('ai.langZh') }}</option>
+                <option value="en">🇺🇸 {{ t('ai.langEn') }}</option>
+                <option value="ja">🇯🇵 {{ t('ai.langJa') }}</option>
+                <option value="ko">🇰🇷 한국어 (Korean)</option>
+                <option value="es">🇪🇸 Español (Spanish)</option>
+                <option value="fr">🇫🇷 Français (French)</option>
+                <option value="de">🇩🇪 Deutsch (German)</option>
               </select>
             </div>
 
             <div class="form-group">
-              <label class="form-label">提示词 / 专用名词引导 (Prompt)</label>
+              <label class="form-label">{{ t('subtitles.promptGuide') }}</label>
               <input
                 v-model="aiConfig.prompt"
                 type="text"
                 class="ai-input"
-                placeholder="引导词汇，如: 简体中文、专业术语..."
+                :placeholder="t('subtitles.promptPlaceholder')"
               />
             </div>
           </div>
         </div>
 
         <div class="ai-modal-footer">
-          <button class="btn-cancel" @click="showConfigModal = false">取消</button>
+          <button class="btn-cancel" @click="showConfigModal = false">{{ t('common.cancel') }}</button>
           <button class="btn-confirm-ai" @click="triggerTranscription">
-            <span>🚀 启动 AI 语音转写</span>
+            <span>{{ t('subtitles.launchBtn') }}</span>
           </button>
         </div>
       </div>

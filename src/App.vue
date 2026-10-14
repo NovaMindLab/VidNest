@@ -48,7 +48,7 @@ const ytdlpUpdateSuccess = ref<boolean | null>(null);
 const autoCheckYtdlpOnLaunch = ref<boolean>(true);
 
 // IPC console
-const echoInput = ref<string>('视频媒体库与 FTS5 引擎基线测试');
+const echoInput = ref<string>('VidNest IPC Benchmark');
 const echoOutput = ref<string>('');
 const pingOutput = ref<string>('');
 const pingLatency = ref<number | null>(null);
@@ -75,7 +75,7 @@ async function checkYtdlpUpdate() {
     ytdlpUpdateMsg.value = res.message;
     ytdlpUpdateSuccess.value = true;
   } catch (err: unknown) {
-    ytdlpUpdateMsg.value = `检查更新失败: ${err instanceof Error ? err.message : String(err)}`;
+    ytdlpUpdateMsg.value = `${t('update.checkFailed')}: ${err instanceof Error ? err.message : String(err)}`;
     ytdlpUpdateSuccess.value = false;
   } finally {
     isCheckingYtdlp.value = false;
@@ -84,17 +84,17 @@ async function checkYtdlpUpdate() {
 
 async function triggerYtdlpUpdate() {
   isUpdatingYtdlp.value = true;
-  ytdlpUpdateMsg.value = '正在下载并自动更新 yt-dlp 核心引擎，请稍候...';
+  ytdlpUpdateMsg.value = t('system.updating');
   ytdlpUpdateSuccess.value = null;
   try {
     const res = await invoke<YtDlpUpdateResult>('update_ytdlp');
     ytdlpUpdateSuccess.value = res.success;
-    ytdlpUpdateMsg.value = `[${res.method === 'github_download' ? 'GitHub 独立托管下载' : '原生更新'}] ${res.message}`;
+    ytdlpUpdateMsg.value = `[${res.method === 'github_download' ? t('system.modeManaged') : t('system.modeSystem')}] ${res.message}`;
     await fetchHealth();
     await checkYtdlpUpdate();
   } catch (err: unknown) {
     ytdlpUpdateSuccess.value = false;
-    ytdlpUpdateMsg.value = `更新失败: ${err instanceof Error ? err.message : String(err)}`;
+    ytdlpUpdateMsg.value = `${t('common.failed')}: ${err instanceof Error ? err.message : String(err)}`;
   } finally {
     isUpdatingYtdlp.value = false;
   }
@@ -107,7 +107,7 @@ async function testPing() {
     pingLatency.value = Math.round(performance.now() - start);
     pingOutput.value = res;
   } catch (err: unknown) {
-    pingOutput.value = `Ping 失败: ${err}`;
+    pingOutput.value = `Ping ${t('common.failed')}: ${err}`;
   }
 }
 
@@ -116,7 +116,7 @@ async function testEcho() {
     const res = await invoke<string>('echo', { message: echoInput.value });
     echoOutput.value = res;
   } catch (err: unknown) {
-    echoOutput.value = `Echo 失败: ${err}`;
+    echoOutput.value = `Echo ${t('common.failed')}: ${err}`;
   }
 }
 
@@ -295,7 +295,7 @@ onMounted(() => {
           </div>
         </div>
 
-        <button class="btn-refresh-sidebar" :disabled="isLoading" @click="fetchHealth" title="刷新系统健康状态">
+        <button class="btn-refresh-sidebar" :disabled="isLoading" @click="fetchHealth" :title="t('health.refresh')">
           <svg class="refresh-icon" :class="{ 'spin-anim': isLoading }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M23 4v6h-6"></path>
             <path d="M1 20v-6h6"></path>
@@ -418,24 +418,24 @@ onMounted(() => {
           <!-- Overview Mini Cards -->
           <div class="stat-banner-grid">
             <div class="mini-stat-card">
-              <span class="stat-title">应用版本</span>
+              <span class="stat-title">{{ t('system.appVersion') }}</span>
               <span class="stat-number">{{ healthReport?.app_version || '0.1.0' }}</span>
               <span class="stat-sub">Tauri 2 + Rust + Vue 3</span>
             </div>
             <div class="mini-stat-card">
-              <span class="stat-title">操作系统</span>
+              <span class="stat-title">{{ t('system.os') }}</span>
               <span class="stat-number">{{ healthReport?.os.os }} ({{ healthReport?.os.arch }})</span>
               <span class="stat-sub">{{ healthReport?.os.family || 'Desktop' }}</span>
             </div>
             <div class="mini-stat-card">
-              <span class="stat-title">Rust IPC 响应延迟</span>
+              <span class="stat-title">{{ t('system.ipcLatency') }}</span>
               <span class="stat-number accent-num">{{ pingLatency !== null ? `${pingLatency} ms` : '-' }}</span>
               <span class="stat-sub">Native Core Bridge</span>
             </div>
             <div class="mini-stat-card">
-              <span class="stat-title">健康检测时间</span>
+              <span class="stat-title">{{ t('system.healthCheckTime') }}</span>
               <span class="stat-number">{{ healthReport ? formatTime(healthReport.timestamp_ms) : '-' }}</span>
-              <span class="stat-sub">自动基线监控</span>
+              <span class="stat-sub">{{ t('system.baselineMonitoring') }}</span>
             </div>
           </div>
 
@@ -446,34 +446,34 @@ onMounted(() => {
               <div class="card ytdlp-dashboard-card">
                 <div class="card-title-bar">
                   <div class="title-with-pill">
-                    <h3 class="panel-h3">yt-dlp 引擎自动更新控制台</h3>
+                    <h3 class="panel-h3">{{ t('system.ytdlpConsoleTitle') }}</h3>
                     <span class="mode-pill" :class="ytdlpCheck?.is_managed ? 'mode-managed' : 'mode-system'">
-                      {{ ytdlpCheck?.is_managed ? '独立托管模式' : '系统环境变量' }}
+                      {{ ytdlpCheck?.is_managed ? t('system.modeManaged') : t('system.modeSystem') }}
                     </span>
                   </div>
                 </div>
 
                 <div class="meta-field-list">
                   <div class="meta-field-item">
-                    <span class="field-k">当前运行版本</span>
-                    <span class="field-v font-mono highlight-v">{{ ytdlpCheck?.current_version || '未检测到' }}</span>
+                    <span class="field-k">{{ t('system.currentVersion') }}</span>
+                    <span class="field-v font-mono highlight-v">{{ ytdlpCheck?.current_version || t('system.notDetected') }}</span>
                   </div>
                   <div class="meta-field-item">
-                    <span class="field-k">官方最新发布</span>
-                    <span class="field-v font-mono">{{ ytdlpCheck?.latest_version || (isCheckingYtdlp ? '获取中...' : '未知') }}</span>
+                    <span class="field-k">{{ t('system.latestRelease') }}</span>
+                    <span class="field-v font-mono">{{ ytdlpCheck?.latest_version || (isCheckingYtdlp ? t('system.fetching') : t('system.unknown')) }}</span>
                   </div>
                   <div class="meta-field-item">
-                    <span class="field-k">更新状态</span>
+                    <span class="field-k">{{ t('system.updateStatus') }}</span>
                     <div>
-                      <span v-if="ytdlpCheck?.has_update" class="badge badge-warning">发现新版本</span>
-                      <span v-else-if="ytdlpCheck?.current_version" class="badge badge-success">已是最新版本</span>
-                      <span v-else class="badge badge-danger">未安装</span>
+                      <span v-if="ytdlpCheck?.has_update" class="badge badge-warning">{{ t('system.newVersionFound') }}</span>
+                      <span v-else-if="ytdlpCheck?.current_version" class="badge badge-success">{{ t('system.upToDate') }}</span>
+                      <span v-else class="badge badge-danger">{{ t('system.notInstalled') }}</span>
                     </div>
                   </div>
                   <div class="meta-field-item">
-                    <span class="field-k">二进制路径</span>
+                    <span class="field-k">{{ t('system.binaryPath') }}</span>
                     <span class="field-path font-mono" :title="ytdlpCheck?.executable_path || ''">
-                      {{ ytdlpCheck?.executable_path || '未定位' }}
+                      {{ ytdlpCheck?.executable_path || t('system.notLocated') }}
                     </span>
                   </div>
                 </div>
@@ -489,7 +489,7 @@ onMounted(() => {
                         <circle cx="11" cy="11" r="8"></circle>
                         <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                       </svg>
-                      {{ isCheckingYtdlp ? '检查中...' : '检查新版本' }}
+                      {{ isCheckingYtdlp ? t('system.checking') : t('system.checkNewVersion') }}
                     </button>
 
                     <button
@@ -502,13 +502,13 @@ onMounted(() => {
                         <polyline points="7 10 12 15 17 10"></polyline>
                         <line x1="12" y1="15" x2="12" y2="3"></line>
                       </svg>
-                      {{ isUpdatingYtdlp ? '更新进行中...' : (ytdlpCheck?.has_update ? '立即更新 yt-dlp' : '重装/更新最新版本') }}
+                      {{ isUpdatingYtdlp ? t('system.updating') : (ytdlpCheck?.has_update ? t('system.updateYtdlp') : t('system.reinstallUpdate')) }}
                     </button>
                   </div>
 
                   <label class="auto-chk-label">
                     <input type="checkbox" v-model="autoCheckYtdlpOnLaunch" />
-                    <span>启动应用时自动静默检查更新</span>
+                    <span>{{ t('system.autoCheckOnLaunch') }}</span>
                   </label>
                 </div>
 
@@ -522,14 +522,14 @@ onMounted(() => {
             <div class="split-col-right">
               <!-- Storage & Cache -->
               <div class="card section-card">
-                <h3 class="panel-h3">本地存储与缓存环境</h3>
+                <h3 class="panel-h3">{{ t('system.storageEnvTitle') }}</h3>
                 <div class="storage-list">
                   <div class="storage-item">
-                    <div class="storage-title">应用持久化数据目录 (App Data)</div>
+                    <div class="storage-title">{{ t('system.appDataDir') }}</div>
                     <div class="storage-val font-mono">{{ healthReport?.storage.app_data_dir || '-' }}</div>
                   </div>
                   <div class="storage-item">
-                    <div class="storage-title">临时处理缓存目录 (Temp Dir)</div>
+                    <div class="storage-title">{{ t('system.tempDir') }}</div>
                     <div class="storage-val font-mono">{{ healthReport?.storage.temp_dir || '-' }}</div>
                   </div>
                 </div>
@@ -537,12 +537,12 @@ onMounted(() => {
 
               <!-- IPC Console -->
               <div class="card section-card">
-                <h3 class="panel-h3">前后端通信联调控制台 (IPC Bridge)</h3>
+                <h3 class="panel-h3">{{ t('system.ipcConsoleTitle') }}</h3>
                 <div class="ipc-input-row">
                   <input
                     v-model="echoInput"
                     class="ipc-input font-mono"
-                    placeholder="输入测试内容..."
+                    :placeholder="t('system.testInputPlaceholder')"
                     @keyup.enter="testEcho"
                   />
                   <button class="btn btn-primary btn-sm" @click="testEcho">Echo</button>
@@ -577,7 +577,7 @@ onMounted(() => {
               {{ t('update.newVersionFoundDesc', { version: discoveredUpdate.latest_version }) }}
             </p>
           </div>
-          <button class="toast-btn-close" @click="showStartupUpdateNotice = false" title="关闭">✕</button>
+          <button class="toast-btn-close" @click="showStartupUpdateNotice = false" :title="t('common.close')">✕</button>
         </div>
         <div class="toast-action-row">
           <button class="btn-toast-dismiss" @click="showStartupUpdateNotice = false">

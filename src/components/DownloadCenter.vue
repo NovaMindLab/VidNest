@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { t } from '../i18n';
 import type { UrlInspectResult, DownloadTask } from '../types';
 
 interface QualityOptionItem {
@@ -47,18 +48,25 @@ const thumbMap = ref<Record<string, string>>({});
 export interface SupportedSiteItem {
   id: string;
   name: string;
-  category: '综合主流' | '短视频' | '社交动态' | '知识音乐';
+  category: 'mainstream' | 'shorts' | 'social' | 'musicKnowledge';
   homeUrl: string;
   exampleUrl?: string;
-  tag: string;
+  tagKey: string;
   color: string;
   iconText: string;
-  desc: string;
+  descKey: string;
 }
 
-const siteCategories = ['全部', '综合主流', '短视频', '社交动态', '知识音乐'] as const;
-type SiteCategory = typeof siteCategories[number];
-const selectedSiteCategory = ref<SiteCategory>('全部');
+const siteCategoryDefs = [
+  { key: 'catAll', id: 'all' },
+  { key: 'catMainstream', id: 'mainstream' },
+  { key: 'catShorts', id: 'shorts' },
+  { key: 'catSocial', id: 'social' },
+  { key: 'catMusicKnowledge', id: 'musicKnowledge' },
+] as const;
+
+type SiteCategory = typeof siteCategoryDefs[number]['id'];
+const selectedSiteCategory = ref<SiteCategory>('all');
 const siteSearchQuery = ref<string>('');
 
 // Popular supported video platforms (yt-dlp powered)
@@ -66,140 +74,140 @@ const supportedSites: SupportedSiteItem[] = [
   {
     id: 'youtube',
     name: 'YouTube',
-    category: '综合主流',
+    category: 'mainstream',
     homeUrl: 'https://www.youtube.com',
     exampleUrl: 'https://www.youtube.com/watch?v=rRK8KP4Y68g',
-    tag: '全球最大',
+    tagKey: 'siteTagYoutube',
     color: '#ff0000',
     iconText: '▶',
-    desc: '全球最大视频分享平台，超清 4K / 1080P',
+    descKey: 'siteDescYoutube',
   },
   {
     id: 'tiktok',
     name: 'TikTok',
-    category: '短视频',
+    category: 'shorts',
     homeUrl: 'https://www.tiktok.com',
     exampleUrl: 'https://www.tiktok.com/@tiktok/video/7106594312292453678',
-    tag: '全球短视频',
+    tagKey: 'siteTagTiktok',
     color: '#fe2c55',
     iconText: '🎵',
-    desc: '全球热门短视频与爆款创作者分享平台',
+    descKey: 'siteDescTiktok',
   },
   {
     id: 'twitter',
     name: 'Twitter / X',
-    category: '社交动态',
+    category: 'social',
     homeUrl: 'https://x.com',
     exampleUrl: 'https://x.com/NASA/status/1700000000000000000',
-    tag: '实时资讯',
+    tagKey: 'siteTagTwitter',
     color: '#000000',
     iconText: '𝕏',
-    desc: '全球资讯、动态短片、新闻速递与现场视频',
+    descKey: 'siteDescTwitter',
   },
   {
     id: 'instagram',
     name: 'Instagram',
-    category: '社交动态',
+    category: 'social',
     homeUrl: 'https://www.instagram.com',
     exampleUrl: 'https://www.instagram.com/reel/C3XXXXX/',
-    tag: 'Reels短片',
+    tagKey: 'siteTagInstagram',
     color: '#e1306c',
     iconText: '📷',
-    desc: '精美照片、Reels 短片与创作者视觉灵感',
+    descKey: 'siteDescInstagram',
   },
   {
     id: 'vimeo',
     name: 'Vimeo',
-    category: '综合主流',
+    category: 'mainstream',
     homeUrl: 'https://vimeo.com',
     exampleUrl: 'https://vimeo.com/76979871',
-    tag: '艺术高清',
+    tagKey: 'siteTagVimeo',
     color: '#1ab7ea',
     iconText: '🎬',
-    desc: '独立电影人、高质量创意短片与视觉艺术社群',
+    descKey: 'siteDescVimeo',
   },
   {
     id: 'reddit',
     name: 'Reddit',
-    category: '社交动态',
+    category: 'social',
     homeUrl: 'https://www.reddit.com',
     exampleUrl: 'https://www.reddit.com/r/videos/comments/xyz',
-    tag: '热帖社区',
+    tagKey: 'siteTagReddit',
     color: '#ff4500',
     iconText: '🤖',
-    desc: '互联网头条看板，海量社区热帖与自制视频',
+    descKey: 'siteDescReddit',
   },
   {
     id: 'twitch',
     name: 'Twitch',
-    category: '综合主流',
+    category: 'mainstream',
     homeUrl: 'https://www.twitch.tv',
     exampleUrl: 'https://www.twitch.tv/videos/1234567890',
-    tag: '游戏直播',
+    tagKey: 'siteTagTwitch',
     color: '#9146ff',
     iconText: '🎮',
-    desc: '全球最大游戏实况、电竞赛事与长视频回放',
+    descKey: 'siteDescTwitch',
   },
   {
     id: 'facebook',
     name: 'Facebook',
-    category: '社交动态',
+    category: 'social',
     homeUrl: 'https://www.facebook.com',
     exampleUrl: 'https://www.facebook.com/watch/?v=123',
-    tag: 'Watch视频',
+    tagKey: 'siteTagFacebook',
     color: '#1877f2',
     iconText: '👥',
-    desc: 'Facebook Watch 与全球社交圈热门分享视频',
+    descKey: 'siteDescFacebook',
   },
   {
     id: 'dailymotion',
     name: 'DailyMotion',
-    category: '综合主流',
+    category: 'mainstream',
     homeUrl: 'https://www.dailymotion.com',
     exampleUrl: 'https://www.dailymotion.com/video/x7tgad0',
-    tag: '综合娱乐',
+    tagKey: 'siteTagDailymotion',
     color: '#0066dc',
     iconText: '🎥',
-    desc: '法国大型主流视频门户，海量电影预告与资讯',
+    descKey: 'siteDescDailymotion',
   },
   {
     id: 'ted',
     name: 'TED Talks',
-    category: '知识音乐',
+    category: 'musicKnowledge',
     homeUrl: 'https://www.ted.com',
     exampleUrl: 'https://www.ted.com/talks/al_gore_the_case_for_optimism_on_climate_change',
-    tag: '思想盛宴',
+    tagKey: 'siteTagTed',
     color: '#e62b1e',
     iconText: '💡',
-    desc: '值得传播的思想，全球大师公开演讲与深度对话',
+    descKey: 'siteDescTed',
   },
   {
     id: 'soundcloud',
     name: 'SoundCloud',
-    category: '知识音乐',
+    category: 'musicKnowledge',
     homeUrl: 'https://soundcloud.com',
     exampleUrl: 'https://soundcloud.com/user/track',
-    tag: '音乐音频',
+    tagKey: 'siteTagSoundcloud',
     color: '#ff5500',
     iconText: '🎧',
-    desc: '独立音乐人、播客原创音轨与全球电音先锋',
+    descKey: 'siteDescSoundcloud',
   },
   {
     id: 'rumble',
     name: 'Rumble',
-    category: '综合主流',
+    category: 'mainstream',
     homeUrl: 'https://rumble.com',
     exampleUrl: 'https://rumble.com/v20847w-top-news.html',
-    tag: '独立创作',
+    tagKey: 'siteTagRumble',
     color: '#85c742',
     iconText: '🥊',
-    desc: '独立视频平台与创作者社区，自由分享媒体',
+    descKey: 'siteDescRumble',
   },
 ];
 
 const filteredSites = computed(() => {
   let list = supportedSites;
-  if (selectedSiteCategory.value !== '全部') {
+  if (selectedSiteCategory.value !== 'all') {
     list = list.filter((s) => s.category === selectedSiteCategory.value);
   }
   if (siteSearchQuery.value.trim()) {
@@ -207,8 +215,8 @@ const filteredSites = computed(() => {
     list = list.filter(
       (s) =>
         s.name.toLowerCase().includes(q) ||
-        s.desc.toLowerCase().includes(q) ||
-        s.tag.toLowerCase().includes(q)
+        t('downloads.' + s.descKey).toLowerCase().includes(q) ||
+        t('downloads.' + s.tagKey).toLowerCase().includes(q)
     );
   }
   return list;
@@ -329,7 +337,7 @@ const currentSelectedOption = computed<QualityOptionItem | undefined>(() => {
 async function inspectVideoUrl() {
   const url = inputUrl.value.trim();
   if (!url) {
-    inspectError.value = '请粘贴需要解析的视频链接 (Paste video link)';
+    inspectError.value = t('downloads.pasteLinkPrompt');
     return;
   }
   inspectError.value = '';
@@ -346,10 +354,10 @@ async function inspectVideoUrl() {
     if (videoOptions.value.length > 0) {
       selectedOptionId.value = videoOptions.value[0].id;
     }
-    showToast('视频信息解析成功！');
+    showToast(t('downloads.inspectSuccess'));
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    inspectError.value = `视频解析失败: ${msg}`;
+    inspectError.value = t('downloads.inspectFailed', { msg });
   } finally {
     isInspecting.value = false;
   }
@@ -374,14 +382,14 @@ async function startSelectedDownload() {
       title: inspectResult.value.title || undefined,
       author: inspectResult.value.uploader || undefined,
     });
-    showToast(`已开始下载: ${targetOption?.label || '最佳画质'}`);
+    showToast(t('downloads.downloadStarted', { label: targetOption?.label || t('downloads.bestQuality') }));
     await fetchTasks();
     scheduleNextPoll();
     // Switch to task view or keep in parser with toast
     currentView.value = 'tasks';
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    showToast(`下载启动失败: ${msg}`);
+    showToast(t('downloads.downloadStartFailed', { msg }));
   } finally {
     isStartingDownload.value = false;
   }
@@ -395,11 +403,11 @@ async function openWebviewPicker(url?: string) {
     const siteObj = supportedSites.find((s) =>
       targetUrl.includes(s.homeUrl.replace('https://', '').replace('www.', ''))
     );
-    const siteName = siteObj ? siteObj.name : '视频网页';
-    showToast(`已打开「${siteName}」网页嗅探窗口，可直接在网页中挑选视频下载`);
+    const siteName = siteObj ? siteObj.name : t('downloads.defaultSiteName');
+    showToast(t('downloads.browserSnifferOpened', { site: siteName }));
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    showToast(`打开网页嗅探窗口失败: ${msg}`);
+    showToast(t('downloads.browserSnifferOpenFailed', { msg }));
   }
 }
 
@@ -411,18 +419,18 @@ function fillExampleUrl(site: SupportedSiteItem) {
   if (site.exampleUrl) {
     inputUrl.value = site.exampleUrl;
     inspectVideoUrl();
-    showToast(`已填入 ${site.name} 示例链接并开始解析`);
+    showToast(t('downloads.sampleUrlFilled', { site: site.name }));
   } else {
-    showToast(`请在网页中复制 ${site.name} 的视频链接`);
+    showToast(t('downloads.copyLinkInstruction', { site: site.name }));
   }
 }
 
 async function copySiteUrl(site: SupportedSiteItem) {
   try {
     await navigator.clipboard.writeText(site.homeUrl);
-    showToast(`已复制 ${site.name} 官网网址`);
+    showToast(t('downloads.siteUrlCopied', { site: site.name }));
   } catch {
-    showToast('复制失败');
+    showToast(t('downloads.copyFailed'));
   }
 }
 
@@ -445,7 +453,7 @@ async function openInStandaloneWindow() {
   try {
     await invoke('open_ytd_window');
   } catch (err: unknown) {
-    showToast(`打开独立窗口失败: ${err}`);
+    showToast(t('downloads.openWindowFailed', { err: String(err) }));
   }
 }
 
@@ -453,32 +461,32 @@ async function openInStandaloneWindow() {
 async function pauseTask(task: DownloadTask) {
   try {
     await invoke('pause_download_task', { task_id: task.id, taskId: task.id, id: task.id });
-    showToast('任务已暂停');
+    showToast(t('downloads.taskPaused'));
     await fetchTasks();
   } catch (err: unknown) {
-    showToast(`暂停失败: ${err}`);
+    showToast(t('downloads.pauseFailed', { err: String(err) }));
   }
 }
 
 async function resumeTask(task: DownloadTask) {
   try {
     await invoke('resume_download_task', { task_id: task.id, taskId: task.id, id: task.id });
-    showToast('任务已恢复');
+    showToast(t('downloads.taskResumed'));
     await fetchTasks();
     scheduleNextPoll();
   } catch (err: unknown) {
-    showToast(`恢复失败: ${err}`);
+    showToast(t('downloads.resumeFailed', { err: String(err) }));
   }
 }
 
 async function cancelTask(task: DownloadTask) {
-  if (!confirm(`确定取消任务 "${task.title}" 吗？`)) return;
+  if (!confirm(t('downloads.confirmCancel', { title: task.title || '' }))) return;
   try {
     await invoke('cancel_download_task', { task_id: task.id, taskId: task.id, id: task.id });
-    showToast('任务已取消');
+    showToast(t('downloads.taskCancelled'));
     await fetchTasks();
   } catch (err: unknown) {
-    showToast(`取消失败: ${err}`);
+    showToast(t('downloads.cancelFailed', { err: String(err) }));
   }
 }
 
@@ -487,7 +495,7 @@ async function clearCompleted() {
   try {
     await invoke('clear_completed_tasks');
     await fetchTasks();
-    showToast('已清空已完成记录');
+    showToast(t('downloads.clearedCompleted'));
   } catch {
     tasks.value = tasks.value.filter((t) => t.status !== 'completed');
   }
@@ -511,7 +519,7 @@ function getTaskThumbnail(task: DownloadTask): string | undefined {
 
 async function retryTask(task: DownloadTask) {
   try {
-    showToast(`正在重试下载: ${task.title || '视频'}`);
+    showToast(t('downloads.retryingDownload', { title: task.title || t('downloads.defaultVideoTitle') }));
     await invoke('start_download', {
       url: task.url,
       format_id: task.format_id || undefined,
@@ -524,7 +532,7 @@ async function retryTask(task: DownloadTask) {
     await fetchTasks();
     scheduleNextPoll();
   } catch (err: unknown) {
-    showToast(`重试失败: ${err instanceof Error ? err.message : String(err)}`);
+    showToast(t('downloads.retryFailed', { err: err instanceof Error ? err.message : String(err) }));
   }
 }
 
@@ -536,7 +544,7 @@ async function pasteFromClipboard() {
       inspectError.value = '';
     }
   } catch {
-    showToast('请直接在输入框按 ⌘V / Ctrl+V 粘贴');
+    showToast(t('downloads.pasteShortcutHint'));
   }
 }
 
@@ -573,12 +581,12 @@ onMounted(async () => {
         inputUrl.value = event.payload;
         currentView.value = 'parser';
         inspectVideoUrl();
-        showToast('已从网页嗅探器载入视频链接');
+        showToast(t('downloads.snifferLoadedUrl'));
       }
     });
 
     unlistenPickerTask = await listen<DownloadTask>('picker-task-started', async () => {
-      showToast('网页嗅探：新下载任务已加入队列');
+      showToast(t('downloads.snifferTaskAdded'));
       await fetchTasks();
       scheduleNextPoll();
     });
@@ -616,7 +624,7 @@ onUnmounted(() => {
             <polyline points="7 10 12 15 17 10"/>
             <line x1="12" y1="15" x2="12" y2="3"/>
           </svg>
-          <span>嗅探下载器</span>
+          <span>{{ t('downloads.tabParser') }}</span>
         </button>
 
         <button
@@ -632,7 +640,7 @@ onUnmounted(() => {
             <line x1="3" y1="12" x2="3.01" y2="12"></line>
             <line x1="3" y1="18" x2="3.01" y2="18"></line>
           </svg>
-          <span>下载任务列表</span>
+          <span>{{ t('downloads.tabTasks') }}</span>
           <span v-if="activeTasks.length > 0" class="badge-count">{{ activeTasks.length }}</span>
         </button>
       </div>
@@ -640,7 +648,7 @@ onUnmounted(() => {
       <div class="topbar-right">
         <button
           class="action-pill-btn browser-picker-btn"
-          title="打开内置网页浏览器直接挑选视频与下载 (支持 YouTube、TikTok、Twitter/X 等任意站点)"
+          :title="t('downloads.browserPickerTitle')"
           @click="openWebviewPicker()"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -648,13 +656,13 @@ onUnmounted(() => {
             <line x1="2" y1="12" x2="22" y2="12"></line>
             <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
           </svg>
-          <span>🌐 网页嗅探找资源</span>
+          <span>{{ t('downloads.browserPickerBtn') }}</span>
         </button>
 
         <button
           v-if="!props.isStandaloneWindow"
           class="action-pill-btn"
-          title="在新独立窗口中打开下载器"
+          :title="t('downloads.standaloneTitle')"
           @click="openInStandaloneWindow"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -662,7 +670,7 @@ onUnmounted(() => {
             <polyline points="15 3 21 3 21 9"></polyline>
             <line x1="10" y1="14" x2="21" y2="3"></line>
           </svg>
-          <span>独立窗口</span>
+          <span>{{ t('downloads.standaloneBtn') }}</span>
         </button>
       </div>
     </div>
@@ -670,7 +678,7 @@ onUnmounted(() => {
     <!-- MAIN PARSER VIEW (Matching Image 1 & Image 2) -->
     <div v-show="currentView === 'parser'" class="parser-wrapper">
       <!-- Title -->
-      <h1 class="main-heading">Download Video and Music</h1>
+      <h1 class="main-heading">{{ t('downloads.titleHeading') }}</h1>
 
       <!-- Giant Input Card (Matching Image 1 & Image 2) -->
       <div class="search-input-box" :class="{ 'has-error': !!inspectError }">
@@ -679,21 +687,21 @@ onUnmounted(() => {
             v-model="inputUrl"
             type="text"
             class="video-url-input"
-            placeholder="Paste the video link here..."
+            :placeholder="t('downloads.urlInputPlaceholder')"
             @keydown.enter="inspectVideoUrl"
           />
           <button
             v-if="!inputUrl"
             class="paste-btn"
-            title="从剪贴板粘贴链接"
+            :title="t('downloads.btnPaste')"
             @click="pasteFromClipboard"
           >
-            📋 粘贴
+            {{ t('downloads.btnPaste') }}
           </button>
           <button
             v-else
             class="clear-btn"
-            title="清空输入"
+            :title="t('common.cancel')"
             @click="inputUrl = ''; inspectResult = null; inspectError = '';"
           >
             ✕
@@ -706,7 +714,7 @@ onUnmounted(() => {
           @click="inspectVideoUrl"
         >
           <span v-if="isInspecting" class="spinner-small"></span>
-          <span>{{ isInspecting ? '解析中...' : 'Download' }}</span>
+          <span>{{ isInspecting ? t('downloads.btnInspecting') : t('downloads.btnDownload') }}</span>
         </button>
       </div>
 
@@ -727,12 +735,12 @@ onUnmounted(() => {
               </svg>
             </div>
             <div class="picker-banner-info">
-              <div class="picker-banner-title">打开内置网页嗅探器直接找资源</div>
-              <div class="picker-banner-sub">内嵌悬浮嗅探助手，支持 YouTube、TikTok、X (Twitter)、Instagram、Vimeo 等 1000+ 视频网站，一键识别、画质选择与高速下载</div>
+              <div class="picker-banner-title">{{ t('downloads.quickPickerBannerTitle') }}</div>
+              <div class="picker-banner-sub">{{ t('downloads.quickPickerBannerSub') }}</div>
             </div>
           </div>
           <button class="picker-banner-action" type="button">
-            <span>立即浏览</span>
+            <span>{{ t('downloads.quickPickerBrowseNow') }}</span>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="9 18 15 12 9 6"></polyline>
             </svg>
@@ -741,14 +749,14 @@ onUnmounted(() => {
 
         <div class="sites-header-bar">
           <div class="sites-title-group">
-            <h2 class="supported-heading">支持的主流视频平台 (yt-dlp 强劲驱动)</h2>
-            <span class="sites-count-badge">共收录 {{ supportedSites.length }} 个热门站点 · 点击直达网页浏览与嗅探</span>
+            <h2 class="supported-heading">{{ t('downloads.popularHeading') }}</h2>
+            <span class="sites-count-badge">{{ t('downloads.popularSub', { count: supportedSites.length }) }}</span>
           </div>
           <div class="site-search-wrap">
             <input
               v-model="siteSearchQuery"
               class="site-search-input"
-              placeholder="搜索平台名称、分类或标签..."
+              :placeholder="t('downloads.searchSitePlaceholder')"
             />
           </div>
         </div>
@@ -756,13 +764,13 @@ onUnmounted(() => {
         <!-- Category Filter Pills -->
         <div class="site-category-pills">
           <button
-            v-for="cat in siteCategories"
-            :key="cat"
+            v-for="cat in siteCategoryDefs"
+            :key="cat.key"
             class="site-cat-pill"
-            :class="{ active: selectedSiteCategory === cat }"
-            @click="selectedSiteCategory = cat"
+            :class="{ active: selectedSiteCategory === cat.id }"
+            @click="selectedSiteCategory = cat.id"
           >
-            {{ cat }}
+            {{ t('downloads.' + cat.key) }}
           </button>
         </div>
 
@@ -780,31 +788,29 @@ onUnmounted(() => {
               <div class="site-card-meta">
                 <div class="site-name-row">
                   <span class="site-name-text">{{ site.name }}</span>
-                  <span class="site-tag-badge">{{ site.tag }}</span>
+                  <span class="site-tag-badge">{{ t('downloads.' + site.tagKey) }}</span>
                 </div>
-                <div class="site-desc-text" :title="site.desc">{{ site.desc }}</div>
+                <div class="site-desc-text" :title="t('downloads.' + site.descKey)">{{ t('downloads.' + site.descKey) }}</div>
               </div>
             </div>
 
             <div class="site-card-footer">
               <button
                 class="btn-site-act btn-open-picker"
-                title="打开内置网页嗅探窗口浏览并下载"
+                :title="t('downloads.browserPickerTitle')"
                 @click.stop="openSiteInWebview(site)"
               >
-                🌐 网页找资源
+                {{ t('downloads.siteActFind') }}
               </button>
               <button
                 v-if="site.exampleUrl"
                 class="btn-site-act btn-fill-example"
-                title="填入示例链接并在当前页解析"
                 @click.stop="fillExampleUrl(site)"
               >
-                📋 示例
+                {{ t('downloads.siteActExample') }}
               </button>
               <button
                 class="btn-site-act btn-copy-link"
-                title="复制官网地址"
                 @click.stop="copySiteUrl(site)"
               >
                 🔗
@@ -818,8 +824,8 @@ onUnmounted(() => {
       <div v-if="isInspecting" class="inspecting-skeleton">
         <div class="skeleton-spinner-box">
           <div class="spinner-large"></div>
-          <p class="skeleton-text">正在深度解析多媒体视频流与音频格式...</p>
-          <span class="skeleton-sub">借助 yt-dlp 核心引擎秒级萃取全分辨率列表</span>
+          <p class="skeleton-text">{{ t('downloads.inspectingTitle') }}</p>
+          <span class="skeleton-sub">{{ t('downloads.inspectingSub') }}</span>
         </div>
       </div>
 
@@ -852,7 +858,7 @@ onUnmounted(() => {
         <div class="result-right-col">
           <!-- Video Section -->
           <div class="format-section">
-            <h4 class="format-heading">Video</h4>
+            <h4 class="format-heading">{{ t('downloads.videoHeading') }}</h4>
 
             <div class="format-options-grid">
               <label
@@ -880,7 +886,7 @@ onUnmounted(() => {
 
           <!-- Music Section -->
           <div class="format-section">
-            <h4 class="format-heading">Music</h4>
+            <h4 class="format-heading">{{ t('downloads.musicHeading') }}</h4>
 
             <div class="format-options-grid">
               <label
@@ -910,7 +916,7 @@ onUnmounted(() => {
               @click="startSelectedDownload"
             >
               <span v-if="isStartingDownload" class="spinner-small"></span>
-              <span>DOWNLOAD</span>
+              <span>{{ t('downloads.giantDownload') }}</span>
             </button>
           </div>
         </div>
@@ -926,28 +932,28 @@ onUnmounted(() => {
             :class="{ active: activeFilter === 'all' }"
             @click="activeFilter = 'all'"
           >
-            全部 ({{ tasks.length }})
+            {{ t('downloads.tasksFilterAll', { count: tasks.length }) }}
           </button>
           <button
             class="filter-pill"
             :class="{ active: activeFilter === 'active' }"
             @click="activeFilter = 'active'"
           >
-            进行中 ({{ activeTasks.length }})
+            {{ t('downloads.tasksFilterActive', { count: activeTasks.length }) }}
           </button>
           <button
             class="filter-pill"
             :class="{ active: activeFilter === 'completed' }"
             @click="activeFilter = 'completed'"
           >
-            已完成 ({{ completedTasks.length }})
+            {{ t('downloads.tasksFilterCompleted', { count: completedTasks.length }) }}
           </button>
           <button
             class="filter-pill"
             :class="{ active: activeFilter === 'failed' }"
             @click="activeFilter = 'failed'"
           >
-            失败 ({{ failedTasks.length }})
+            {{ t('downloads.tasksFilterFailed', { count: failedTasks.length }) }}
           </button>
         </div>
 
@@ -957,7 +963,7 @@ onUnmounted(() => {
             class="clear-tasks-btn"
             @click="clearCompleted"
           >
-            清空已完成
+            {{ t('downloads.clearCompleted') }}
           </button>
         </div>
       </div>
@@ -969,9 +975,9 @@ onUnmounted(() => {
           <polyline points="7 10 12 15 17 10"/>
           <line x1="12" y1="15" x2="12" y2="3"/>
         </svg>
-        <p>暂无符合条件的下载任务</p>
+        <p>{{ t('downloads.emptyTasks') }}</p>
         <button class="return-parser-btn" @click="currentView = 'parser'">
-          去添加新视频下载
+          {{ t('downloads.addNewDownload') }}
         </button>
       </div>
 
@@ -1017,7 +1023,7 @@ onUnmounted(() => {
               <span v-if="task.downloaded_bytes && task.total_bytes">
                 {{ formatFileSize(task.downloaded_bytes) }} / {{ formatFileSize(task.total_bytes) }}
               </span>
-              <span v-if="task.eta || task.eta_str">⏳ 剩余 {{ task.eta || task.eta_str }}</span>
+              <span v-if="task.eta || task.eta_str">⏳ {{ t('downloads.remaining', { eta: task.eta || task.eta_str || '' }) }}</span>
             </div>
 
             <!-- Error message if error or failed -->
@@ -1030,15 +1036,15 @@ onUnmounted(() => {
             <button
               v-if="task.status === 'error' || task.status === 'failed'"
               class="task-btn retry"
-              title="重新下载"
+              :title="t('downloads.btnRetry')"
               @click="retryTask(task)"
             >
-              🔄 重试
+              {{ t('downloads.btnRetry') }}
             </button>
             <button
               v-if="task.status === 'downloading'"
               class="task-btn"
-              title="暂停"
+              :title="t('downloads.btnPause')"
               @click="pauseTask(task)"
             >
               ⏸️
@@ -1046,7 +1052,7 @@ onUnmounted(() => {
             <button
               v-else-if="task.status === 'paused'"
               class="task-btn"
-              title="继续"
+              :title="t('downloads.btnResume')"
               @click="resumeTask(task)"
             >
               ▶️
@@ -1054,15 +1060,15 @@ onUnmounted(() => {
             <button
               v-if="task.status === 'completed'"
               class="task-btn success"
-              title="在媒体库中查看"
+              :title="t('downloads.btnViewLibrary')"
               @click="viewInLibrary(task)"
             >
-              📁 查看
+              {{ t('downloads.btnViewLibrary') }}
             </button>
             <button
               v-if="task.status !== 'completed'"
               class="task-btn danger"
-              title="取消任务"
+              :title="t('downloads.btnCancel')"
               @click="cancelTask(task)"
             >
               ✕

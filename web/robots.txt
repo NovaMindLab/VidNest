@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://vidnest.app/sitemap.xml
+Sitemap: https://novamindlab.github.io/VidNest/sitemap.xml

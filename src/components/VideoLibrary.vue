@@ -8,6 +8,7 @@ import VideoAiDrawer from './VideoAiDrawer.vue';
 import AudioExtractionModal from './AudioExtractionModal.vue';
 import CategorySidebar, { type CategorySelection } from './CategorySidebar.vue';
 import type { Video, VideoFilter, VideoListResponse, ScanSummary, ScanProgress, CategoryStats, Tag, SubtitleSnippetMatch, VideoAiStatus } from '../types';
+import { t } from '../i18n';
 
 const emit = defineEmits<{
   (e: 'navigateDedup'): void;
@@ -26,7 +27,7 @@ const playerInitialSeek = ref<number>(0);
 // Classification & Organization state
 const categoryStats = ref<CategoryStats | null>(null);
 const isCategorySidebarCollapsed = ref<boolean>(localStorage.getItem('vidnest_category_collapsed') === 'true');
-const activeCategory = ref<CategorySelection>({ type: 'all', value: 'all', label: '全部视频' });
+const activeCategory = ref<CategorySelection>({ type: 'all', value: 'all', label: t('library.allVideos') });
 
 // Multi-dimensional filters
 const selectedQuality = ref<string>('');
@@ -124,7 +125,7 @@ function clearSearch() {
 
 async function openVideo(video: Video, startSec: number = 0) {
   try {
-    showToast(`▶ 正在启动播放: ${video.file_name}`);
+    showToast(t('library.startingPlayback', { name: video.file_name }));
     await invoke('open_video_player_window', { video });
   } catch (err) {
     console.warn('Failed to open native player window, falling back to modal:', err);
@@ -168,14 +169,14 @@ async function fetchAiStatusForVideos(videoList?: Video[]) {
 async function revealVideo(filePath: string) {
   try {
     await invoke('reveal_in_explorer', { path: filePath });
-    showToast('📂 已在系统文件管理器中定位');
+    showToast(t('library.locatedInFileManager'));
   } catch (err) {
     try {
       await revealItemInDir(filePath);
-      showToast('📂 已在系统文件管理器中定位');
+      showToast(t('library.locatedInFileManager'));
     } catch (e) {
       console.error('Failed to reveal video:', e);
-      showToast(`定位失败: ${e instanceof Error ? e.message : String(e)}`);
+      showToast(t('library.locateFailed', { err: e instanceof Error ? e.message : String(e) }));
     }
   }
 }
@@ -191,7 +192,7 @@ const availableCodecs = computed(() => {
 // Date grouping logic (按天时间分割)
 function getDateKeyAndLabel(timestampMs: number): { key: string; label: string; dateStr: string } {
   if (!timestampMs || timestampMs <= 0) {
-    return { key: 'unknown', label: '更早 / 未知日期', dateStr: '未知日期' };
+    return { key: 'unknown', label: t('library.olderOrUnknown'), dateStr: t('library.olderOrUnknown') };
   }
   const date = new Date(timestampMs);
   const y = date.getFullYear();
@@ -206,18 +207,18 @@ function getDateKeyAndLabel(timestampMs: number): { key: string; label: string; 
   yesterday.setDate(now.getDate() - 1);
   const yesterdayKey = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
 
-  const weekDays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
-  const weekDayStr = weekDays[date.getDay()];
+  const dateFormatted = date.toLocaleDateString(undefined, {
+    year: date.getFullYear() === now.getFullYear() ? undefined : 'numeric',
+    month: 'short',
+    day: 'numeric',
+    weekday: 'short',
+  });
 
-  let label = '';
+  let label = dateFormatted;
   if (key === todayKey) {
-    label = `今天 · ${date.getMonth() + 1}月${date.getDate()}日 (${weekDayStr})`;
+    label = `${t('library.today')} · ${dateFormatted}`;
   } else if (key === yesterdayKey) {
-    label = `昨天 · ${date.getMonth() + 1}月${date.getDate()}日 (${weekDayStr})`;
-  } else if (date.getFullYear() === now.getFullYear()) {
-    label = `${date.getMonth() + 1}月${date.getDate()}日 · ${weekDayStr}`;
-  } else {
-    label = `${y}年${date.getMonth() + 1}月${date.getDate()}日 · ${weekDayStr}`;
+    label = `${t('library.yesterday')} · ${dateFormatted}`;
   }
 
   return { key, label, dateStr: `${y}-${m}-${d}` };
@@ -416,7 +417,7 @@ function handleCategorySelect(selection: CategorySelection) {
 }
 
 function resetAllFilters() {
-  activeCategory.value = { type: 'all', value: 'all', label: '全部视频' };
+  activeCategory.value = { type: 'all', value: 'all', label: t('library.allVideos') };
   selectedCodec.value = '';
   selectedQuality.value = '';
   selectedDurationRange.value = '';
@@ -429,10 +430,10 @@ async function toggleStar(video: Video) {
   try {
     const newStarred = await invoke<boolean>('toggle_video_star', { videoId: video.id });
     video.is_starred = newStarred;
-    showToast(newStarred ? '★ 已加入我的收藏' : '已取消收藏');
+    showToast(newStarred ? t('library.addedToFavorites') : t('library.removedFromFavorites'));
     fetchCategoryStats();
   } catch (err) {
-    showToast(`收藏失败: ${err}`);
+    showToast(t('library.favoriteFailed', { err: String(err) }));
   }
 }
 
@@ -447,17 +448,17 @@ async function cycleWatchStatus(video: Video) {
     });
     video.watch_status = nextStatus as any;
     video.playback_progress = progress;
-    showToast(`已标记为: ${formatWatchStatus(nextStatus)}`);
+    showToast(t('library.markedAs', { status: formatWatchStatus(nextStatus) }));
     fetchCategoryStats();
   } catch (err) {
-    showToast(`更新状态失败: ${err}`);
+    showToast(t('library.updateStatusFailed', { err: String(err) }));
   }
 }
 
 function formatWatchStatus(status: string): string {
-  if (status === 'watched') return '已看';
-  if (status === 'in_progress') return '在看';
-  return '未看';
+  if (status === 'watched') return t('library.watched');
+  if (status === 'in_progress') return t('library.inProgress');
+  return t('library.unwatched');
 }
 
 async function cycleColorTag(video: Video) {
@@ -470,10 +471,10 @@ async function cycleColorTag(video: Video) {
       color: nextColor,
     });
     video.color_tag = nextColor;
-    showToast(nextColor ? `已标记颜色` : '已清除颜色标记');
+    showToast(nextColor ? t('library.colorMarked') : t('library.colorCleared'));
     fetchCategoryStats();
   } catch (err) {
-    showToast(`标记失败: ${err}`);
+    showToast(t('library.colorMarkFailed', { err: String(err) }));
   }
 }
 
@@ -497,7 +498,7 @@ async function toggleTagOnVideo(tag: Tag) {
     }
     fetchCategoryStats();
   } catch (err) {
-    showToast(`修改标签失败: ${err}`);
+    showToast(t('library.tagUpdateFailed', { err: String(err) }));
   }
 }
 
@@ -527,11 +528,11 @@ async function batchMarkWatched() {
         v.playback_progress = 1.0;
       }
     }
-    showToast(`已批量标记 ${ids.length} 个视频为已看`);
+    showToast(t('library.batchMarkedWatched', { count: ids.length }));
     clearSelection();
     fetchCategoryStats();
   } catch (err) {
-    showToast(`批量操作失败: ${err}`);
+    showToast(t('library.batchActionFailed', { err: String(err) }));
   }
 }
 
@@ -548,11 +549,11 @@ async function batchStarVideos() {
         v.is_starred = true;
       }
     }
-    showToast(`已批量收藏 ${ids.length} 个视频`);
+    showToast(t('library.batchStarred', { count: ids.length }));
     clearSelection();
     fetchCategoryStats();
   } catch (err) {
-    showToast(`批量收藏失败: ${err}`);
+    showToast(t('library.batchStarFailed', { err: String(err) }));
   }
 }
 
@@ -678,7 +679,7 @@ async function triggerFullDiskScan() {
   scanSummary.value = null;
   scanProgress.value = {
     phase: 'discovering',
-    message: '正在极速发现全盘视频...',
+    message: t('library.btnScanning'),
     total_found: 0,
     processed: 0,
   };
@@ -690,7 +691,7 @@ async function triggerFullDiskScan() {
     scanSummary.value = res;
     await fetchVideos(true);
   } catch (err: unknown) {
-    scanError.value = `全盘扫描失败: ${err instanceof Error ? err.message : String(err)}`;
+    scanError.value = `${t('common.failed')}: ${err instanceof Error ? err.message : String(err)}`;
   } finally {
     isScanning.value = false;
     isCancelling.value = false;
@@ -709,7 +710,7 @@ async function cancelScan() {
 
 async function triggerScan() {
   if (!scanPath.value.trim()) {
-    scanError.value = '请输入有效的扫描目录路径';
+    scanError.value = t('library.invalidPathError');
     return;
   }
   isScanning.value = true;
@@ -723,7 +724,7 @@ async function triggerScan() {
     scanSummary.value = res;
     await fetchVideos(true);
   } catch (err: unknown) {
-    scanError.value = `扫描失败: ${err instanceof Error ? err.message : String(err)}`;
+    scanError.value = `${t('common.failed')}: ${err instanceof Error ? err.message : String(err)}`;
   } finally {
     isScanning.value = false;
   }
@@ -748,11 +749,11 @@ async function confirmRemoveVideo() {
     });
     videos.value = videos.value.filter((item) => item.id !== v.id);
     totalVideos.value = Math.max(0, totalVideos.value - 1);
-    showToast(deleteFile ? `已永久删除文件: ${v.file_name}` : `已从媒体库移除: ${v.file_name}`);
+    showToast(deleteFile ? t('library.fileDeletedPermanently', { name: v.file_name }) : t('library.fileRemovedFromLibrary', { name: v.file_name }));
     showDeleteConfirmModal.value = false;
     videoToDelete.value = null;
   } catch (err: unknown) {
-    showToast(`移除失败: ${err instanceof Error ? err.message : String(err)}`);
+    showToast(t('library.removeFailed', { err: err instanceof Error ? err.message : String(err) }));
   } finally {
     isDeletingVideo.value = false;
   }
@@ -761,7 +762,7 @@ async function confirmRemoveVideo() {
 async function copyToClipboard(text: string) {
   try {
     await navigator.clipboard.writeText(text);
-    showToast('📋 文件路径已复制到剪贴板');
+    showToast(t('library.pathCopiedToClipboard'));
   } catch {
     const el = document.createElement('textarea');
     el.value = text;
@@ -769,7 +770,7 @@ async function copyToClipboard(text: string) {
     el.select();
     document.execCommand('copy');
     document.body.removeChild(el);
-    showToast('📋 文件路径已复制到剪贴板');
+    showToast(t('library.pathCopiedToClipboard'));
   }
 }
 
@@ -878,13 +879,13 @@ onUnmounted(() => {
               <input
                 v-model="searchText"
                 class="search-input-field"
-                placeholder="搜索视频标题、文件名或路径..."
+                :placeholder="t('library.searchInputPlaceholder')"
                 @input="onSearchInput"
               />
               <button
                 v-if="searchText"
                 class="search-clear-btn"
-                title="清除搜索"
+                :title="t('library.clearSearch')"
                 @click="clearSearch"
               >✕</button>
             </div>
@@ -897,32 +898,32 @@ onUnmounted(() => {
               <button
                 class="btn-toolbar-action"
                 :class="{ active: showScanner }"
-                title="展开/收起全盘与目录扫描面板"
+                :title="t('library.scannerTooltip')"
                 @click="showScanner = !showScanner"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
                 </svg>
-                <span>{{ showScanner ? '收起扫描' : '扫描导入' }}</span>
+                <span>{{ showScanner ? t('library.collapseScanner') : t('library.openScanner') }}</span>
               </button>
 
               <!-- Jump to Deduplication View Button -->
               <button
                 class="btn-toolbar-action"
-                title="查找相同或重复视频并清理"
+                :title="t('library.dedupTooltip')"
                 @click="emit('navigateDedup')"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                 </svg>
-                <span>查重清理</span>
+                <span>{{ t('library.dedupBtn') }}</span>
               </button>
 
               <!-- Audio Library Button -->
               <button
                 class="btn-toolbar-action"
-                title="查看已提取音频资产中枢"
+                :title="t('library.audiosTooltip')"
                 @click="emit('navigateAudios')"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -930,7 +931,7 @@ onUnmounted(() => {
                   <circle cx="6" cy="18" r="3"></circle>
                   <circle cx="18" cy="16" r="3"></circle>
                 </svg>
-                <span>已提取音频</span>
+                <span>{{ t('library.audiosBtn') }}</span>
               </button>
             </div>
           </div>
@@ -940,16 +941,16 @@ onUnmounted(() => {
             <select
               v-model="selectedSort"
               class="sort-select"
-              title="视频列表排序规则"
+              :title="t('library.sortRecent')"
               @change="fetchVideos(true)"
             >
-              <option value="created_desc">入库 (最新)</option>
-              <option value="created_asc">入库 (最早)</option>
-              <option value="duration_desc">时长 (长到短)</option>
-              <option value="duration_asc">时长 (短到长)</option>
-              <option value="size_desc">体积 (大到小)</option>
-              <option value="size_asc">体积 (小到大)</option>
-              <option value="name_asc">文件名 (A-Z)</option>
+              <option value="created_desc">{{ t('library.sortCreatedDesc') }}</option>
+              <option value="created_asc">{{ t('library.sortCreatedAsc') }}</option>
+              <option value="duration_desc">{{ t('library.sortDurationDesc') }}</option>
+              <option value="duration_asc">{{ t('library.sortDurationAsc') }}</option>
+              <option value="size_desc">{{ t('library.sortSizeDesc') }}</option>
+              <option value="size_asc">{{ t('library.sortSizeAsc') }}</option>
+              <option value="name_asc">{{ t('library.sortNameAsc') }}</option>
             </select>
 
             <div class="toolbar-divider"></div>
@@ -959,7 +960,7 @@ onUnmounted(() => {
               <button
                 class="view-btn"
                 :class="{ active: viewMode === 'grid' }"
-                title="网格平铺"
+                :title="t('library.gridPave')"
                 @click="viewMode = 'grid'"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -972,7 +973,7 @@ onUnmounted(() => {
               <button
                 class="view-btn"
                 :class="{ active: viewMode === 'list' }"
-                title="紧凑列表"
+                :title="t('library.compactList')"
                 @click="viewMode = 'list'"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -987,7 +988,7 @@ onUnmounted(() => {
             </div>
 
             <span class="video-counter-tag">
-              共 <strong>{{ totalVideos }}</strong> 部
+              {{ t('library.totalCount', { count: totalVideos }) }}
             </span>
           </div>
         </header>
@@ -996,7 +997,7 @@ onUnmounted(() => {
         <div class="category-breadcrumb-bar">
           <div class="breadcrumb-left">
             <div class="active-category-pill">
-              <span class="breadcrumb-prefix-label">当前视图</span>
+              <span class="breadcrumb-prefix-label">{{ t('library.currentView') }}</span>
               <span class="active-category-title">{{ activeCategory.label }}</span>
             </div>
 
@@ -1008,50 +1009,50 @@ onUnmounted(() => {
                 v-model="selectedQuality"
                 class="filter-select font-mono"
                 :class="{ 'is-filtered': selectedQuality }"
-                title="按画质分辨率过滤"
+                :title="t('library.filterQualityTooltip')"
                 @change="fetchVideos(true)"
               >
-                <option value="">画质: 全部</option>
-                <option value="4k">4K 超清</option>
-                <option value="1080p">1080P 高清</option>
-                <option value="720p">720P 标清</option>
-                <option value="sd">普通 / SD</option>
+                <option value="">{{ t('library.filterQualityAll') }}</option>
+                <option value="4k">{{ t('library.filterQuality4k') }}</option>
+                <option value="1080p">{{ t('library.filterQuality1080p') }}</option>
+                <option value="720p">{{ t('library.filterQuality720p') }}</option>
+                <option value="sd">{{ t('library.filterQualitySd') }}</option>
               </select>
 
               <select
                 v-model="selectedDurationRange"
                 class="filter-select"
                 :class="{ 'is-filtered': selectedDurationRange }"
-                title="按视频时长区间过滤"
+                :title="t('library.filterDurationTooltip')"
                 @change="fetchVideos(true)"
               >
-                <option value="">时长: 全部</option>
-                <option value="under_3m">&lt; 3分钟 (短片)</option>
-                <option value="3_to_30m">3 ~ 30分钟</option>
-                <option value="over_30m">&gt; 30分钟 (长片)</option>
+                <option value="">{{ t('library.filterDurationAll') }}</option>
+                <option value="under_3m">{{ t('library.filterDurationUnder3') }}</option>
+                <option value="3_to_30m">{{ t('library.filterDuration3to30') }}</option>
+                <option value="over_30m">{{ t('library.filterDurationOver30') }}</option>
               </select>
 
               <select
                 v-model="selectedWatchStatus"
                 class="filter-select"
                 :class="{ 'is-filtered': selectedWatchStatus }"
-                title="按观看状态过滤"
+                :title="t('library.filterStatusTooltip')"
                 @change="fetchVideos(true)"
               >
-                <option value="">状态: 全部</option>
-                <option value="unwatched">⚪ 待观看</option>
-                <option value="in_progress">🟡 正在看</option>
-                <option value="watched">🟢 已看</option>
+                <option value="">{{ t('library.filterStatusAll') }}</option>
+                <option value="unwatched">{{ t('library.filterStatusUnwatched') }}</option>
+                <option value="in_progress">{{ t('library.filterStatusInProgress') }}</option>
+                <option value="watched">{{ t('library.filterStatusWatched') }}</option>
               </select>
 
               <select
                 v-model="selectedCodec"
                 class="filter-select font-mono"
                 :class="{ 'is-filtered': selectedCodec }"
-                title="按视频编码格式过滤"
+                :title="t('library.filterCodecTooltip')"
                 @change="fetchVideos(true)"
               >
-                <option value="">编码: 全部</option>
+                <option value="">{{ t('library.filterCodecAll') }}</option>
                 <option v-for="c in (availableCodecs.length > 0 ? availableCodecs : ['H264', 'HEVC', 'AV1'])" :key="c" :value="c">
                   {{ c }}
                 </option>
@@ -1064,16 +1065,16 @@ onUnmounted(() => {
               v-if="selectedQuality || selectedDurationRange || selectedWatchStatus || selectedCodec"
               class="filter-badge-hint"
             >
-              复合筛选已生效
+              {{ t('library.filterAppliedHint') }}
             </span>
 
             <button
               v-if="selectedQuality || selectedDurationRange || selectedWatchStatus || selectedCodec || activeCategory.type !== 'all' || searchText"
               class="btn-reset-filters"
-              title="一键重置当前筛选与搜索条件"
+              :title="t('library.resetFiltersTooltip')"
               @click="resetAllFilters"
             >
-              重置筛选 ✕
+              {{ t('library.resetFilters') }} ✕
             </button>
           </div>
         </div>
@@ -1086,15 +1087,15 @@ onUnmounted(() => {
           <div class="full-disk-card">
             <div class="full-disk-left">
               <div class="full-disk-heading">
-                <span class="badge-smart">⚡️ 系统级极速</span>
-                <span class="full-disk-title">全盘低开销智能扫描 (Win & Mac)</span>
+                <span class="badge-smart">{{ t('library.systemFast') }}</span>
+                <span class="full-disk-title">{{ t('library.fullDiskSmartScan') }}</span>
               </div>
               <p class="full-disk-desc">
-                优先调用操作系统底层索引（macOS Spotlight / Windows 索引）与智能剪枝，秒级发现所有视频。零高强度磁盘磨损，自动排除系统目录、代码与碎片。
+                {{ t('library.fullDiskDesc') }}
               </p>
               <div class="full-disk-filter-row">
                 <label class="filter-opt-label">
-                  <span>过滤体积门槛：忽略小于</span>
+                  <span>{{ t('library.minSizeThreshold') }}</span>
                   <input
                     type="number"
                     v-model.number="minSizeMb"
@@ -1103,7 +1104,7 @@ onUnmounted(() => {
                     class="min-size-input font-mono"
                     :disabled="isScanning"
                   />
-                  <span>MB 的文件 (默认 10MB)</span>
+                  <span>{{ t('library.minSizeThresholdSuffix') }}</span>
                 </label>
               </div>
             </div>
@@ -1115,7 +1116,7 @@ onUnmounted(() => {
                 class="btn btn-primary btn-run-full-scan"
                 @click="triggerFullDiskScan"
               >
-                <span>⚡️ 启动全盘极速扫描</span>
+                <span>{{ t('library.btnStartFullScan') }}</span>
               </button>
               <button
                 v-else
@@ -1125,7 +1126,7 @@ onUnmounted(() => {
                 @click="cancelScan"
               >
                 <span class="spinner-sm"></span>
-                <span>{{ isCancelling ? '正在中止...' : '⏹ 停止扫描' }}</span>
+                <span>{{ isCancelling ? t('library.btnStopping') : t('library.btnStopScan') }}</span>
               </button>
             </div>
           </div>
@@ -1157,7 +1158,7 @@ onUnmounted(() => {
 
           <!-- Divider -->
           <div class="drawer-divider">
-            <span>或者指定单个特定文件夹扫描</span>
+            <span>{{ t('library.orSpecificFolder') }}</span>
           </div>
 
           <!-- 3. Custom Single Folder Line -->
@@ -1168,13 +1169,13 @@ onUnmounted(() => {
             <input
               v-model="scanPath"
               class="scan-dir-input font-mono"
-              placeholder="输入待扫描的文件夹绝对路径，如 /Users/hou/Movies 或 D:\Videos..."
+              :placeholder="t('library.scanFolderPlaceholder')"
               :disabled="isScanning"
               @keyup.enter="triggerScan"
             />
             <button class="btn btn-secondary" :disabled="isScanning" @click="triggerScan">
               <span v-if="isScanning" class="spinner-sm"></span>
-              <span>{{ isScanning ? '扫描中...' : '扫描指定目录' }}</span>
+              <span>{{ isScanning ? t('library.btnScanning') : t('library.btnScanSpecific') }}</span>
             </button>
           </div>
 
@@ -1184,14 +1185,14 @@ onUnmounted(() => {
 
           <div v-if="scanSummary" class="scan-feedback-alert fb-ok">
             <div class="summary-line">
-              {{ scanSummary.scanned_dir }} · 耗时 <strong>{{ scanSummary.duration_ms }} ms</strong>
+              {{ scanSummary.scanned_dir }} · {{ t('library.scannedCost') }} <strong>{{ scanSummary.duration_ms }} ms</strong>
             </div>
             <div class="summary-tags-row">
-              <span>发现视频: <strong>{{ scanSummary.video_files_found }}</strong></span>
-              <span class="hl-green">新增导入: <strong>+{{ scanSummary.new_imported }}</strong></span>
-              <span>更新: <strong>{{ scanSummary.updated }}</strong></span>
-              <span>跳过已存在: <strong>{{ scanSummary.skipped }}</strong></span>
-              <span v-if="scanSummary.failed > 0" class="hl-red">失败: <strong>{{ scanSummary.failed }}</strong></span>
+              <span>{{ t('library.foundVideos') }}: <strong>{{ scanSummary.video_files_found }}</strong></span>
+              <span class="hl-green">{{ t('library.newImported') }}: <strong>+{{ scanSummary.new_imported }}</strong></span>
+              <span>{{ t('library.updated') }}: <strong>{{ scanSummary.updated }}</strong></span>
+              <span>{{ t('library.skippedExist') }}: <strong>{{ scanSummary.skipped }}</strong></span>
+              <span v-if="scanSummary.failed > 0" class="hl-red">{{ t('library.failedCount') }}: <strong>{{ scanSummary.failed }}</strong></span>
             </div>
           </div>
         </div>
@@ -1212,17 +1213,17 @@ onUnmounted(() => {
               <line x1="2" y1="12" x2="22" y2="12"></line>
             </svg>
           </div>
-          <h3 class="empty-h3">媒体库暂无匹配视频</h3>
-          <p class="empty-p">点击右上角“扫描导入”指定本地目录，快速提取视频元数据并入库管理。</p>
+          <h3 class="empty-h3">{{ t('library.emptyTitle') }}</h3>
+          <p class="empty-p">{{ t('library.emptyDesc') }}</p>
           <button class="btn btn-secondary" @click="showScanner = true">
-            展开扫描目录面板
+            {{ t('library.openScannerBtn') }}
           </button>
         </div>
 
         <!-- Initial Loading State Skeleton -->
         <div v-else-if="isLoading && videos.length === 0" class="gallery-loading-skeleton">
           <div class="spinner-lg"></div>
-          <span>正在极速载入媒体库...</span>
+          <span>{{ t('library.loadingVideos') }}</span>
         </div>
 
         <!-- Virtual Scroll Container with Date Grouping -->
@@ -1231,13 +1232,13 @@ onUnmounted(() => {
           <div v-if="viewMode === 'list'" class="list-head-sticky-row">
             <span class="lh-check"></span>
             <span class="lh-star"></span>
-            <span class="lh-thumb">缩略图</span>
-            <span class="lh-title">文件名与路径 / 标签</span>
-            <span class="lh-dur">时长</span>
-            <span class="lh-reso">分辨率</span>
-            <span class="lh-codec">编码</span>
-            <span class="lh-size">大小</span>
-            <span class="lh-actions">操作</span>
+            <span class="lh-thumb">{{ t('library.colThumbnail') }}</span>
+            <span class="lh-title">{{ t('library.colTitlePath') }}</span>
+            <span class="lh-dur">{{ t('library.colDuration') }}</span>
+            <span class="lh-reso">{{ t('library.colResolution') }}</span>
+            <span class="lh-codec">{{ t('library.colCodec') }}</span>
+            <span class="lh-size">{{ t('library.colSize') }}</span>
+            <span class="lh-actions">{{ t('library.colActions') }}</span>
           </div>
 
           <!-- Virtual Rows (Headers + Grid/List Rows) -->
@@ -1260,10 +1261,10 @@ onUnmounted(() => {
                   <line x1="3" y1="10" x2="21" y2="10"></line>
                 </svg>
                 <span class="dgh-title">{{ item.row.group.label }}</span>
-                <span class="dgh-badge">{{ item.row.group.videos.length }} 部视频</span>
+                <span class="dgh-badge">{{ t('library.videosCount', { count: item.row.group.videos.length }) }}</span>
               </div>
               <div class="dgh-right">
-                <span class="dgh-size font-mono">共 {{ formatFileSize(item.row.group.totalSize) }}</span>
+                <span class="dgh-size font-mono">{{ t('library.totalSize', { size: formatFileSize(item.row.group.totalSize) }) }}</span>
               </div>
             </div>
 
@@ -1286,7 +1287,7 @@ onUnmounted(() => {
                 <div
                   class="card-select-checkbox"
                   :class="{ checked: selectedVideoIds.has(video.id) }"
-                  title="多选"
+                  :title="t('library.multiSelect')"
                   @click.stop="toggleSelectVideo(video.id)"
                 >
                   <span v-if="selectedVideoIds.has(video.id)">✓</span>
@@ -1297,7 +1298,7 @@ onUnmounted(() => {
                   <button
                     class="badge-star-btn"
                     :class="{ starred: video.is_starred }"
-                    :title="video.is_starred ? '已收藏 (点击取消)' : '收藏视频'"
+                    :title="video.is_starred ? t('library.starred') : t('library.unstarred')"
                     @click.stop="toggleStar(video)"
                   >
                     ★
@@ -1306,13 +1307,13 @@ onUnmounted(() => {
                     v-if="video.color_tag"
                     class="badge-color-dot"
                     :class="video.color_tag"
-                    title="颜色标记 (点击切换)"
+                    :title="t('library.colorTagTooltip')"
                     @click.stop="cycleColorTag(video)"
                   ></button>
                   <button
                     class="badge-watch-status"
                     :class="video.watch_status"
-                    title="点击切换观看状态"
+                    :title="t('library.watchStatusTooltip')"
                     @click.stop="cycleWatchStatus(video)"
                   >
                     {{ formatWatchStatus(video.watch_status) }}
@@ -1325,7 +1326,7 @@ onUnmounted(() => {
                   @click="openVideo(video)"
                   @mousemove="handleThumbMouseMove(video, $event)"
                   @mouseleave="handleThumbMouseLeave"
-                  title="点击播放视频 (左右滑动预览)"
+                  :title="t('library.clickToPlayPreview')"
                 >
                   <img
                     v-if="video.thumbnail_data"
@@ -1359,7 +1360,7 @@ onUnmounted(() => {
                   <div
                     v-if="video.playback_progress > 0"
                     class="playback-progress-track"
-                    :title="`已播放 ${Math.round(video.playback_progress * 100)}%`"
+                    :title="t('library.playedPercent', { percent: Math.round(video.playback_progress * 100) })"
                   >
                     <div
                       class="playback-progress-fill"
@@ -1377,18 +1378,18 @@ onUnmounted(() => {
                   <span
                     v-if="aiStatusMap.get(video.id)?.has_analysis"
                     class="pill-badge-corner pill-ai-analysis font-mono"
-                    title="🧠 AI 智能摘要已就绪 (点击打开 AI 智能中枢)"
+                    :title="t('library.aiSummaryReady')"
                     @click.stop="openAiDrawer(video)"
                   >
-                    🧠 AI 摘要
+                    {{ t('library.aiBadgeSummary') }}
                   </span>
                   <span
                     v-else-if="aiStatusMap.get(video.id)?.has_subtitles"
                     class="pill-badge-corner pill-ai-subtitles font-mono"
-                    :title="`✨ 已提取 ${aiStatusMap.get(video.id)?.subtitle_count} 句台词 (点击打开 AI 智能中枢)`"
+                    :title="t('library.aiSubtitlesReady', { count: aiStatusMap.get(video.id)?.subtitle_count ?? 0 })"
                     @click.stop="openAiDrawer(video)"
                   >
-                    ✨ {{ aiStatusMap.get(video.id)?.subtitle_count }}句
+                    {{ t('library.aiBadgeLines', { count: aiStatusMap.get(video.id)?.subtitle_count ?? 0 }) }}
                   </span>
                 </div>
 
@@ -1401,16 +1402,16 @@ onUnmounted(() => {
                   <!-- Tags List / Add Tag Button -->
                   <div class="card-tags-row">
                     <span
-                      v-for="t in video.tags || []"
-                      :key="t.id"
+                      v-for="tagItem in video.tags || []"
+                      :key="tagItem.id"
                       class="card-tag-pill"
-                      :title="`筛选 #${t.name}`"
-                      @click.stop="handleCategorySelect({ type: 'tag', value: String(t.id), label: `#${t.name}` })"
+                      :title="t('library.filterByTag', { name: tagItem.name })"
+                      @click.stop="handleCategorySelect({ type: 'tag', value: String(tagItem.id), label: `#${tagItem.name}` })"
                     >
-                      #{{ t.name }}
+                      #{{ tagItem.name }}
                     </span>
-                    <button class="add-tag-pill-btn" title="为视频添加标签" @click.stop="openTagModal(video)">
-                      + 标签
+                    <button class="add-tag-pill-btn" :title="t('library.addTagTooltip')" @click.stop="openTagModal(video)">
+                      {{ t('library.addTagBtn') }}
                     </button>
                   </div>
 
@@ -1418,10 +1419,10 @@ onUnmounted(() => {
                   <div
                     v-if="subtitleSnippets.get(video.id)?.length"
                     class="sub-snippet-match-bar"
-                    title="点击播放视频并定位到台词位置"
+                    :title="t('library.clickToSeekDialogue')"
                     @click.stop="openVideo(video, subtitleSnippets.get(video.id)![0].start_time_ms / 1000)"
                   >
-                    <span class="sub-match-ic">🗣️ 命中台词</span>
+                    <span class="sub-match-ic">{{ t('library.hitDialogue') }}</span>
                     <span class="sub-match-text">"{{ subtitleSnippets.get(video.id)![0].snippet }}"</span>
                     <span class="sub-match-time font-mono">
                       ▶ {{ formatDuration(subtitleSnippets.get(video.id)![0].start_time_ms / 1000) }}
@@ -1429,40 +1430,40 @@ onUnmounted(() => {
                   </div>
 
                   <div class="grid-card-sub">
-                    <span v-if="video.file_name.toLowerCase().endsWith('.avi')" class="format-pill avi-pill font-mono" title="AVI 传统封装 (支持内嵌一键极速兼容播放)">AVI</span>
+                    <span v-if="video.file_name.toLowerCase().endsWith('.avi')" class="format-pill avi-pill font-mono" :title="t('library.aviLegacy')">AVI</span>
                     <span v-if="video.codec" class="codec-pill font-mono">{{ video.codec }}</span>
                     <span class="size-text font-mono">{{ formatFileSize(video.file_size) }}</span>
                   </div>
 
                   <!-- Quick Actions Row -->
                   <div class="card-quick-actions">
-                    <button class="card-act-btn" title="播放" @click.stop="openVideo(video)">
-                      ▶ 播放
+                    <button class="card-act-btn" :title="t('library.playTooltip')" @click.stop="openVideo(video)">
+                      {{ t('library.playBtn') }}
                     </button>
                     <button
                       class="card-act-btn btn-act-ai"
                       :class="{ 'has-ai-active': aiStatusMap.get(video.id)?.has_subtitles || aiStatusMap.get(video.id)?.has_analysis }"
-                      :title="aiStatusMap.get(video.id)?.has_analysis ? '查看 AI 智能摘要与核心看点' : '打开 AI 视频智能中枢'"
+                      :title="aiStatusMap.get(video.id)?.has_analysis ? t('library.aiSummaryTooltip') : t('library.aiDrawerTooltip')"
                       @click.stop="openAiDrawer(video)"
                     >
-                      <span v-if="aiStatusMap.get(video.id)?.has_analysis">🧠 摘要</span>
-                      <span v-else-if="aiStatusMap.get(video.id)?.has_subtitles">✨ 字幕</span>
-                      <span v-else>✨ AI</span>
+                      <span v-if="aiStatusMap.get(video.id)?.has_analysis">{{ t('library.aiSummaryBtn') }}</span>
+                      <span v-else-if="aiStatusMap.get(video.id)?.has_subtitles">{{ t('library.aiSubtitlesBtn') }}</span>
+                      <span v-else>{{ t('library.aiDrawerBtn') }}</span>
                     </button>
-                    <button class="card-act-btn btn-act-tag" title="管理标签" @click.stop="openTagModal(video)">
-                      🏷️ 标签
+                    <button class="card-act-btn btn-act-tag" :title="t('library.manageTagsTooltip')" @click.stop="openTagModal(video)">
+                      {{ t('library.tagBtn') }}
                     </button>
-                    <button class="card-act-btn btn-act-audio" title="提取音频" @click.stop="openAudioExtract(video)">
-                      🎵 提取
+                    <button class="card-act-btn btn-act-audio" :title="t('library.extractAudio')" @click.stop="openAudioExtract(video)">
+                      {{ t('library.audioExtractBtn') }}
                     </button>
-                    <button class="card-act-btn" title="在文件夹中定位" @click.stop="revealVideo(video.file_path)">
-                      📁 定位
+                    <button class="card-act-btn" :title="t('library.locateFolderTooltip')" @click.stop="revealVideo(video.file_path)">
+                      {{ t('library.locateBtn') }}
                     </button>
-                    <button class="card-act-btn" title="复制路径" @click.stop="copyToClipboard(video.file_path)">
-                      📋 复制
+                    <button class="card-act-btn" :title="t('library.copyPathTooltip')" @click.stop="copyToClipboard(video.file_path)">
+                      {{ t('library.copyBtn') }}
                     </button>
-                    <button class="card-act-btn btn-act-del" title="从媒体库移除" @click.stop="promptRemoveVideo(video)">
-                      ✕ 移除
+                    <button class="card-act-btn btn-act-del" :title="t('library.removeTooltip')" @click.stop="promptRemoveVideo(video)">
+                      {{ t('library.removeBtn') }}
                     </button>
                   </div>
                 </div>
@@ -1487,12 +1488,12 @@ onUnmounted(() => {
               <button
                 class="li-star-btn"
                 :class="{ starred: item.row.video.is_starred }"
-                :title="item.row.video.is_starred ? '已收藏' : '未收藏'"
+                :title="item.row.video.is_starred ? t('library.starred') : t('library.unstarred')"
                 @click.stop="toggleStar(item.row.video)"
               >
                 ★
               </button>
-              <div class="li-thumb" @click="openVideo(item.row.video)" title="点击播放">
+              <div class="li-thumb" @click="openVideo(item.row.video)" :title="t('library.clickToPlayPreview')">
                 <img
                   v-if="item.row.video.thumbnail_data"
                   :src="item.row.video.thumbnail_data"
@@ -1516,7 +1517,7 @@ onUnmounted(() => {
                     v-if="item.row.video.color_tag"
                     class="badge-color-dot small"
                     :class="item.row.video.color_tag"
-                    title="颜色标记 (点击切换)"
+                    :title="t('library.colorTagTooltip')"
                     @click.stop="cycleColorTag(item.row.video)"
                   ></span>
                   <span class="li-name" :title="item.row.video.file_name" @click="openVideo(item.row.video)">
@@ -1525,7 +1526,7 @@ onUnmounted(() => {
                   <span
                     class="badge-watch-status compact"
                     :class="item.row.video.watch_status"
-                    title="点击切换观看状态"
+                    :title="t('library.watchStatusTooltip')"
                     @click.stop="cycleWatchStatus(item.row.video)"
                   >
                     {{ formatWatchStatus(item.row.video.watch_status) }}
@@ -1535,34 +1536,35 @@ onUnmounted(() => {
                   <span
                     v-if="aiStatusMap.get(item.row.video.id)?.has_analysis"
                     class="li-ai-badge has-analysis font-mono"
-                    title="🧠 AI 智能摘要已就绪 (点击打开 AI 智能中枢)"
+                    :title="t('library.aiSummaryReady')"
                     @click.stop="openAiDrawer(item.row.video)"
                   >
-                    🧠 AI 摘要
+                    {{ t('library.aiBadgeSummary') }}
                   </span>
                   <span
                     v-else-if="aiStatusMap.get(item.row.video.id)?.has_subtitles"
                     class="li-ai-badge has-subtitles font-mono"
-                    :title="`✨ 已提取 ${aiStatusMap.get(item.row.video.id)?.subtitle_count} 句台词 (点击打开 AI 智能中枢)`"
+                    :title="t('library.aiSubtitlesReady', { count: aiStatusMap.get(item.row.video.id)?.subtitle_count ?? 0 })"
                     @click.stop="openAiDrawer(item.row.video)"
                   >
-                    ✨ {{ aiStatusMap.get(item.row.video.id)?.subtitle_count }}句
+                    {{ t('library.aiBadgeLines', { count: aiStatusMap.get(item.row.video.id)?.subtitle_count ?? 0 }) }}
                   </span>
                   <span
-                    v-for="t in item.row.video.tags || []"
-                    :key="t.id"
+                    v-for="tagItem in item.row.video.tags || []"
+                    :key="tagItem.id"
                     class="card-tag-pill compact"
-                    @click.stop="handleCategorySelect({ type: 'tag', value: String(t.id), label: `#${t.name}` })"
+                    :title="t('library.filterByTag', { name: tagItem.name })"
+                    @click.stop="handleCategorySelect({ type: 'tag', value: String(tagItem.id), label: `#${tagItem.name}` })"
                   >
-                    #{{ t.name }}
+                    #{{ tagItem.name }}
                   </span>
                   <span
                     v-if="subtitleSnippets.get(item.row.video.id)?.length"
                     class="li-sub-match-pill"
-                    title="点击播放视频并定位到该秒"
+                    :title="t('library.clickToSeekDialogue')"
                     @click.stop="openVideo(item.row.video, subtitleSnippets.get(item.row.video.id)![0].start_time_ms / 1000)"
                   >
-                    🗣️ 台词: "{{ subtitleSnippets.get(item.row.video.id)![0].snippet }}"
+                    {{ t('library.hitDialogue') }}"{{ subtitleSnippets.get(item.row.video.id)![0].snippet }}"
                     <span class="li-time-chip font-mono">▶ {{ formatDuration(subtitleSnippets.get(item.row.video.id)![0].start_time_ms / 1000) }}</span>
                   </span>
                   <span class="li-path font-mono" :title="item.row.video.file_path">
@@ -1575,20 +1577,20 @@ onUnmounted(() => {
               <div class="li-codec font-mono">{{ item.row.video.codec || '-' }}</div>
               <div class="li-size font-mono">{{ formatFileSize(item.row.video.file_size) }}</div>
               <div class="li-actions">
-                <button class="li-btn" title="播放" @click.stop="openVideo(item.row.video)">▶</button>
+                <button class="li-btn" :title="t('library.playTooltip')" @click.stop="openVideo(item.row.video)">▶</button>
                 <button
                   class="li-btn btn-act-ai"
                   :class="{ 'has-ai-active': aiStatusMap.get(item.row.video.id)?.has_subtitles || aiStatusMap.get(item.row.video.id)?.has_analysis }"
-                  :title="aiStatusMap.get(item.row.video.id)?.has_analysis ? '查看 AI 智能摘要' : '打开 AI 视频智能中枢'"
+                  :title="aiStatusMap.get(item.row.video.id)?.has_analysis ? t('library.aiSummaryTooltip') : t('library.aiDrawerTooltip')"
                   @click.stop="openAiDrawer(item.row.video)"
                 >
                   ✨
                 </button>
-                <button class="li-btn btn-act-tag" title="管理标签" @click.stop="openTagModal(item.row.video)">🏷️</button>
-                <button class="li-btn btn-act-audio" title="提取音频" @click.stop="openAudioExtract(item.row.video)">🎵</button>
-                <button class="li-btn" title="定位文件" @click.stop="revealVideo(item.row.video.file_path)">📁</button>
-                <button class="li-btn" title="复制路径" @click.stop="copyToClipboard(item.row.video.file_path)">📋</button>
-                <button class="li-btn btn-act-del" title="从媒体库移除" @click.stop="promptRemoveVideo(item.row.video)">✕</button>
+                <button class="li-btn btn-act-tag" :title="t('library.manageTagsTooltip')" @click.stop="openTagModal(item.row.video)">🏷️</button>
+                <button class="li-btn btn-act-audio" :title="t('library.extractAudio')" @click.stop="openAudioExtract(item.row.video)">🎵</button>
+                <button class="li-btn" :title="t('library.locateFolderTooltip')" @click.stop="revealVideo(item.row.video.file_path)">📁</button>
+                <button class="li-btn" :title="t('library.copyPathTooltip')" @click.stop="copyToClipboard(item.row.video.file_path)">📋</button>
+                <button class="li-btn btn-act-del" :title="t('library.removeTooltip')" @click.stop="promptRemoveVideo(item.row.video)">✕</button>
               </div>
             </div>
           </div>
@@ -1598,10 +1600,10 @@ onUnmounted(() => {
         <div v-if="videos.length > 0" class="infinite-scroll-footer">
           <div v-if="isLoadingMore" class="loading-more-pill">
             <span class="spinner-sm"></span>
-            <span>正在加载更多视频...</span>
+            <span>{{ t('library.loadingMore') }}</span>
           </div>
           <div v-else-if="!hasMore" class="all-loaded-pill">
-            <span>✓ 已加载全部 {{ totalVideos }} 部视频</span>
+            <span>{{ t('library.allLoaded', { count: totalVideos }) }}</span>
           </div>
         </div>
       </section>
@@ -1613,17 +1615,17 @@ onUnmounted(() => {
     <transition name="fade-slide">
       <div v-if="selectedVideoIds.size > 0" class="batch-floating-bar">
         <div class="batch-bar-left">
-          <span class="batch-count-badge">已选择 <strong>{{ selectedVideoIds.size }}</strong> 部视频</span>
+          <span class="batch-count-badge">{{ t('library.batchSelectedCount', { count: selectedVideoIds.size }) }}</span>
         </div>
         <div class="batch-bar-actions">
           <button class="btn-batch-act btn-batch-star" @click="batchStarVideos">
-            ★ 批量收藏
+            {{ t('library.batchStar') }}
           </button>
           <button class="btn-batch-act btn-batch-watched" @click="batchMarkWatched">
-            ✓ 设为已看
+            {{ t('library.batchMarkWatched') }}
           </button>
           <button class="btn-batch-act btn-batch-clear" @click="clearSelection">
-            取消选择
+            {{ t('library.batchDeselect') }}
           </button>
         </div>
       </div>
@@ -1634,7 +1636,7 @@ onUnmounted(() => {
       <div class="tag-modal-card">
         <div class="tag-modal-header">
           <div class="tag-modal-header-info">
-            <h3 class="tag-modal-title">🏷️ 管理视频标签</h3>
+            <h3 class="tag-modal-title">{{ t('library.manageTagsTitle') }}</h3>
             <p class="tag-modal-subtitle" :title="videoForTagging.file_name">
               {{ videoForTagging.file_name }}
             </p>
@@ -1643,7 +1645,7 @@ onUnmounted(() => {
         </div>
 
         <div class="tag-modal-body">
-          <div class="tag-checklist-label">点击勾选或取消标签关联：</div>
+          <div class="tag-checklist-label">{{ t('library.manageTagsSubtitle') }}</div>
           <div v-if="categoryStats?.tags && categoryStats.tags.length > 0" class="tag-chips-wrap">
             <button
               v-for="tag in categoryStats.tags"
@@ -1658,12 +1660,12 @@ onUnmounted(() => {
             </button>
           </div>
           <div v-else class="tag-empty-hint">
-            暂无自定义标签。可在左侧分类栏的“自定义标签”区域点击“+”新建。
+            {{ t('library.noCustomTags') }}
           </div>
         </div>
 
         <div class="tag-modal-footer">
-          <button class="btn btn-primary" @click="showTagModal = false">完成</button>
+          <button class="btn btn-primary" @click="showTagModal = false">{{ t('library.btnDone') }}</button>
         </div>
       </div>
     </div>
@@ -1706,8 +1708,8 @@ onUnmounted(() => {
             </svg>
           </div>
           <div class="confirm-header-text">
-            <h3 class="confirm-title">从媒体库移除视频</h3>
-            <p class="confirm-subtitle">请确认对该视频的操作</p>
+            <h3 class="confirm-title">{{ t('library.removeModalTitle') }}</h3>
+            <p class="confirm-subtitle">{{ t('library.removeModalSubtitle') }}</p>
           </div>
           <button class="confirm-close-btn" @click="showDeleteConfirmModal = false">✕</button>
         </div>
@@ -1721,8 +1723,8 @@ onUnmounted(() => {
           <label class="confirm-checkbox-row">
             <input type="checkbox" v-model="alsoDeleteDiskFile" />
             <span class="checkbox-label-text">
-              同时从本地磁盘彻底删除原视频文件
-              <strong class="text-danger">（不可撤销）</strong>
+              {{ t('library.alsoDeleteFile') }}
+              <strong class="text-danger">{{ t('library.irreversible') }}</strong>
             </span>
           </label>
         </div>
@@ -1733,14 +1735,14 @@ onUnmounted(() => {
             :disabled="isDeletingVideo"
             @click="showDeleteConfirmModal = false"
           >
-            取消
+            {{ t('common.cancel') }}
           </button>
           <button
             class="btn btn-danger"
             :disabled="isDeletingVideo"
             @click="confirmRemoveVideo"
           >
-            {{ isDeletingVideo ? '正在处理...' : (alsoDeleteDiskFile ? '彻底删除原文件' : '确认仅从媒体库移除') }}
+            {{ isDeletingVideo ? t('library.processing') : (alsoDeleteDiskFile ? t('library.btnPermanentlyDelete') : t('library.btnRemoveFromLibraryOnly')) }}
           </button>
         </div>
       </div>

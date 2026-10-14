@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { t } from '../i18n';
 import type { AppUpdateInfo, UpdateProgressPayload, UpdateInstallResult } from '../types';
 
 const props = defineProps<{
@@ -36,7 +37,7 @@ async function checkForUpdate(mock = false) {
     const res = await invoke<AppUpdateInfo>('check_app_update', { mock });
     updateInfo.value = res;
   } catch (err: unknown) {
-    errorMessage.value = `检查更新失败: ${err instanceof Error ? err.message : String(err)}`;
+    errorMessage.value = `${t('update.checkFailed')}: ${err instanceof Error ? err.message : String(err)}`;
   } finally {
     isChecking.value = false;
   }
@@ -52,7 +53,7 @@ async function startUpdate() {
     total_bytes: updateInfo.value.download_size_bytes,
     percentage: 0,
     speed_mbps: 0,
-    message: '正在初始化下载链接...',
+    message: t('update.preparingDownload'),
   };
 
   try {
@@ -68,7 +69,7 @@ async function startUpdate() {
       errorMessage.value = res.message;
     }
   } catch (err: unknown) {
-    errorMessage.value = `下载更新失败: ${err instanceof Error ? err.message : String(err)}`;
+    errorMessage.value = t('update.downloadFailed', { err: err instanceof Error ? err.message : String(err) });
   } finally {
     isDownloading.value = false;
   }
@@ -154,34 +155,34 @@ onUnmounted(() => {
         <div class="header-title-box">
           <span class="header-icon">🚀</span>
           <div>
-            <h3 class="update-title">应用内极速升级</h3>
-            <span class="update-subtitle">全自动进度覆盖升级 · 无需手动选择与烦琐向导</span>
+            <h3 class="update-title">{{ t('update.modalTitle') }}</h3>
+            <span class="update-subtitle">{{ t('update.modalSubtitle') }}</span>
           </div>
         </div>
-        <button class="btn-close" title="关闭 (Esc)" @click="close">✕</button>
+        <button class="btn-close" :title="t('common.close')" @click="close">✕</button>
       </div>
 
       <!-- Loading State -->
       <div v-if="isChecking" class="update-body state-loading">
         <div class="spinner-lg"></div>
-        <p class="loading-text">正在查询最新版本与增量补丁，请稍候...</p>
+        <p class="loading-text">{{ t('update.querying') }}</p>
       </div>
 
       <!-- Error State -->
       <div v-else-if="errorMessage" class="update-body state-error">
         <div class="err-icon">⚠️</div>
         <p class="err-msg">{{ errorMessage }}</p>
-        <button class="btn-retry" @click="checkForUpdate(false)">重新检查更新</button>
+        <button class="btn-retry" @click="checkForUpdate(false)">{{ t('update.retryCheck') }}</button>
       </div>
 
       <!-- Up to Date -->
       <div v-else-if="updateInfo && !updateInfo.has_update" class="update-body state-uptodate">
         <div class="success-icon">✓</div>
-        <h4 class="uptodate-h4">当前已是最新版本</h4>
-        <p class="uptodate-p">当前版本 v{{ updateInfo.current_version }}，无需更新。</p>
+        <h4 class="uptodate-h4">{{ t('update.upToDate') }}</h4>
+        <p class="uptodate-p">{{ t('update.upToDateDesc', { version: updateInfo.current_version }) }}</p>
         <div class="uptodate-actions" style="display: flex; gap: 12px; justify-content: center; margin-top: 1rem;">
-          <button class="btn-retry" style="margin: 0;" @click="checkForUpdate(false)">↻ 重新检查</button>
-          <button class="btn-primary" @click="close">好的</button>
+          <button class="btn-retry" style="margin: 0;" @click="checkForUpdate(false)">↻ {{ t('update.retryCheck') }}</button>
+          <button class="btn-primary" @click="close">{{ t('update.close') }}</button>
         </div>
       </div>
 
@@ -190,20 +191,20 @@ onUnmounted(() => {
         <!-- Versions & Delta Badge -->
         <div class="version-banner">
           <div class="ver-col">
-            <span class="ver-label">当前版本</span>
+            <span class="ver-label">{{ t('update.currentVersion') }}</span>
             <span class="ver-val v-cur">v{{ updateInfo.current_version }}</span>
           </div>
           <div class="arrow-sep">➔</div>
           <div class="ver-col">
-            <span class="ver-label">最新版本</span>
+            <span class="ver-label">{{ t('update.latestVersion') }}</span>
             <span class="ver-val v-new">v{{ updateInfo.latest_version }}</span>
           </div>
 
-          <div v-if="updateInfo.is_differential" class="delta-badge" title="差分增量更新仅下载新旧版本差异字节">
+          <div v-if="updateInfo.is_differential" class="delta-badge" :title="t('update.deltaTitle')">
             <span class="delta-bolt">⚡</span>
             <div class="delta-texts">
-              <span class="delta-t1">差分增量包</span>
-              <span class="delta-t2">节约 78% 流量</span>
+              <span class="delta-t1">{{ t('update.deltaBadge') }}</span>
+              <span class="delta-t2">{{ t('update.deltaSaved') }}</span>
             </div>
           </div>
         </div>
@@ -211,22 +212,22 @@ onUnmounted(() => {
         <!-- Size comparison bar -->
         <div class="size-specs-box">
           <div class="size-spec">
-            <span class="s-k">下载体积:</span>
+            <span class="s-k">{{ t('update.downloadSize') }}:</span>
             <span class="s-v highlight">{{ formatBytes(updateInfo.download_size_bytes) }}</span>
           </div>
           <div class="size-spec">
-            <span class="s-k">全量包体积:</span>
+            <span class="s-k">{{ t('update.fullSize') }}:</span>
             <span class="s-v strike">{{ formatBytes(updateInfo.original_size_bytes) }}</span>
           </div>
           <div class="size-spec">
-            <span class="s-k">发布时间:</span>
-            <span class="s-v">{{ updateInfo.published_at ? new Date(updateInfo.published_at).toLocaleDateString() : '刚刚' }}</span>
+            <span class="s-k">{{ t('update.releaseDate') }}:</span>
+            <span class="s-v">{{ updateInfo.published_at ? new Date(updateInfo.published_at).toLocaleDateString() : '-' }}</span>
           </div>
         </div>
 
         <!-- Release Notes Section -->
         <div class="notes-container">
-          <h4 class="notes-h4">更新日志与新特性:</h4>
+          <h4 class="notes-h4">{{ t('update.notes') }}:</h4>
           <div class="notes-markdown">
             <pre class="notes-text">{{ updateInfo.release_notes }}</pre>
           </div>
@@ -235,7 +236,7 @@ onUnmounted(() => {
         <!-- Progress Bar if Downloading or Ready -->
         <div v-if="isDownloading || isReady" class="progress-section">
           <div class="progress-labels">
-            <span class="p-msg">{{ progress?.message || '正在准备下载...' }}</span>
+            <span class="p-msg">{{ progress?.message || t('update.preparingDownload') }}</span>
             <span class="p-pct">{{ progress ? `${progress.percentage.toFixed(1)}%` : '0%' }}</span>
           </div>
           <div class="progress-bar-bg">
@@ -246,10 +247,10 @@ onUnmounted(() => {
             ></div>
           </div>
           <div class="progress-stats">
-            <span class="stat-item">已下载: {{ formatBytes(progress?.downloaded_bytes || 0) }} / {{ formatBytes(progress?.total_bytes || 0) }}</span>
-            <span v-if="isDownloading" class="stat-item stat-speed">速度: {{ (progress?.speed_mbps || 0).toFixed(1) }} MB/s</span>
+            <span class="stat-item">{{ t('update.downloaded', { downloaded: formatBytes(progress?.downloaded_bytes || 0), total: formatBytes(progress?.total_bytes || 0) }) }}</span>
+            <span v-if="isDownloading" class="stat-item stat-speed">{{ t('update.speed', { speed: (progress?.speed_mbps || 0).toFixed(1) }) }}</span>
             <span v-if="isReady" class="stat-item stat-success">
-              ✓ 校验完成！即将直接自动覆盖安装并重启
+              {{ t('update.readyRelaunch') }}
               <span v-if="autoRelaunchCountdown !== null">({{ autoRelaunchCountdown }}s)</span>...
             </span>
           </div>
@@ -258,20 +259,20 @@ onUnmounted(() => {
         <!-- Action Buttons Footer -->
         <div class="update-actions">
           <button class="btn-cancel" :disabled="isDownloading" @click="close">
-            {{ isReady ? '暂不重启' : '暂不更新' }}
+            {{ isReady ? t('update.btnCancelRelaunch') : t('update.btnCancelUpdate') }}
           </button>
 
           <button v-if="!isDownloading && !isReady" class="btn-primary-action" @click="startUpdate">
-            ⚡ 一键直接升级 ({{ formatBytes(updateInfo.download_size_bytes) }})
+            {{ t('update.btnOneClick', { size: formatBytes(updateInfo.download_size_bytes) }) }}
           </button>
 
           <button v-else-if="isDownloading" class="btn-primary-action disabled" disabled>
             <span class="spinner-sm"></span>
-            正在全速下载并准备自动安装...
+            {{ t('update.btnDownloading') }}
           </button>
 
           <button v-else-if="isReady" class="btn-relaunch-action" @click="relaunch">
-            🚀 立即重启生效
+            {{ t('update.btnRelaunchNow') }}
             <span v-if="autoRelaunchCountdown !== null">({{ autoRelaunchCountdown }}s)</span>
           </button>
         </div>

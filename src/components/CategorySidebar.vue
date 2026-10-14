@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import { t } from '../i18n';
 import type { CategoryStats, Tag, Collection } from '../types';
 
 export interface CategorySelection {
@@ -30,12 +31,12 @@ const newTagColor = ref('#3b82f6');
 const isCreatingCollection = ref(false);
 const newCollectionName = ref('');
 
-const colorOptions = [
-  { name: '红', value: 'red', bg: '#ef4444' },
-  { name: '黄', value: 'yellow', bg: '#f59e0b' },
-  { name: '绿', value: 'green', bg: '#10b981' },
-  { name: '蓝', value: 'blue', bg: '#3b82f6' },
-];
+const colorOptions = computed(() => [
+  { name: t('sidebar.colorRed'), value: 'red', bg: '#ef4444' },
+  { name: t('sidebar.colorYellow'), value: 'yellow', bg: '#f59e0b' },
+  { name: t('sidebar.colorGreen'), value: 'green', bg: '#10b981' },
+  { name: t('sidebar.colorBlue'), value: 'blue', bg: '#3b82f6' },
+]);
 
 function selectItem(type: CategorySelection['type'], value: string, label: string) {
   emit('select', { type, value, label });
@@ -60,11 +61,11 @@ async function handleCreateTag() {
 
 async function handleDeleteTag(tag: Tag, event: Event) {
   event.stopPropagation();
-  if (!confirm(`确定删除标签 "${tag.name}" 吗？关联视频不会被删除。`)) return;
+  if (!confirm(t('sidebar.deleteCollectionConfirm', { name: tag.name }))) return;
   try {
     await invoke('delete_tag', { id: tag.id });
     if (props.activeSelection.type === 'tag' && props.activeSelection.value === String(tag.id)) {
-      selectItem('all', 'all', '全部视频');
+      selectItem('all', 'all', t('sidebar.allVideos'));
     }
     emit('refreshStats');
   } catch (err) {
@@ -87,11 +88,11 @@ async function handleCreateCollection() {
 
 async function handleDeleteCollection(coll: Collection, event: Event) {
   event.stopPropagation();
-  if (!confirm(`确定删除合集 "${coll.name}" 吗？视频原文件不会被删除。`)) return;
+  if (!confirm(t('sidebar.deleteCollectionConfirm', { name: coll.name }))) return;
   try {
     await invoke('delete_collection', { id: coll.id });
     if (props.activeSelection.type === 'collection' && props.activeSelection.value === String(coll.id)) {
-      selectItem('all', 'all', '全部视频');
+      selectItem('all', 'all', t('sidebar.allVideos'));
     }
     emit('refreshStats');
   } catch (err) {
@@ -113,11 +114,11 @@ async function handleDeleteCollection(coll: Collection, event: Event) {
           <rect x="14" y="14" width="7" height="7"></rect>
           <rect x="3" y="14" width="7" height="7"></rect>
         </svg>
-        <span class="header-text">智能分类中枢</span>
+        <span class="header-text">{{ t('sidebar.hubTitle') }}</span>
       </div>
       <button
         class="toggle-collapse-btn"
-        :title="props.isCollapsed ? '展开分类导航' : '收起分类导航'"
+        :title="props.isCollapsed ? t('sidebar.expand') : t('sidebar.collapse')"
         @click="emit('toggleCollapse')"
       >
         <svg
@@ -137,16 +138,16 @@ async function handleDeleteCollection(coll: Collection, event: Event) {
     <div v-show="!props.isCollapsed" class="sidebar-scrollable-content">
       <!-- SECTION 1: 智能视图 (Smart Views) -->
       <div class="sidebar-section">
-        <div class="section-title">智能视图</div>
+        <div class="section-title">{{ t('sidebar.smartViews') }}</div>
         <div class="nav-list">
           <!-- All -->
           <button
             class="category-nav-btn"
             :class="{ active: isSelected('all', 'all') }"
-            @click="selectItem('all', 'all', '全部视频')"
+            @click="selectItem('all', 'all', t('sidebar.allVideos'))"
           >
             <span class="btn-icon">🎞️</span>
-            <span class="btn-label">全部视频</span>
+            <span class="btn-label">{{ t('sidebar.allVideos') }}</span>
             <span class="btn-badge">{{ props.stats?.total_videos || 0 }}</span>
           </button>
 
@@ -154,10 +155,10 @@ async function handleDeleteCollection(coll: Collection, event: Event) {
           <button
             class="category-nav-btn"
             :class="{ active: isSelected('smart', 'starred') }"
-            @click="selectItem('smart', 'starred', '我的收藏')"
+            @click="selectItem('smart', 'starred', t('sidebar.starred'))"
           >
             <span class="btn-icon">⭐</span>
-            <span class="btn-label">我的收藏</span>
+            <span class="btn-label">{{ t('sidebar.starred') }}</span>
             <span class="btn-badge highlight">{{ props.stats?.starred_count || 0 }}</span>
           </button>
 
@@ -165,10 +166,10 @@ async function handleDeleteCollection(coll: Collection, event: Event) {
           <button
             class="category-nav-btn"
             :class="{ active: isSelected('smart', 'unwatched') }"
-            @click="selectItem('smart', 'unwatched', '待看清单')"
+            @click="selectItem('smart', 'unwatched', t('sidebar.unwatched'))"
           >
             <span class="btn-icon">⏳</span>
-            <span class="btn-label">待看清单</span>
+            <span class="btn-label">{{ t('sidebar.unwatched') }}</span>
             <span class="btn-badge">{{ props.stats?.unwatched_count || 0 }}</span>
           </button>
 
@@ -176,10 +177,10 @@ async function handleDeleteCollection(coll: Collection, event: Event) {
           <button
             class="category-nav-btn"
             :class="{ active: isSelected('smart', 'in_progress') }"
-            @click="selectItem('smart', 'in_progress', '正在观看')"
+            @click="selectItem('smart', 'in_progress', t('sidebar.inProgress'))"
           >
             <span class="btn-icon">🟡</span>
-            <span class="btn-label">正在观看</span>
+            <span class="btn-label">{{ t('sidebar.inProgress') }}</span>
             <span class="btn-badge">{{ props.stats?.in_progress_count || 0 }}</span>
           </button>
 
@@ -187,10 +188,10 @@ async function handleDeleteCollection(coll: Collection, event: Event) {
           <button
             class="category-nav-btn"
             :class="{ active: isSelected('smart', 'watched') }"
-            @click="selectItem('smart', 'watched', '已观看完')"
+            @click="selectItem('smart', 'watched', t('sidebar.watched'))"
           >
             <span class="btn-icon">🟢</span>
-            <span class="btn-label">已观看完</span>
+            <span class="btn-label">{{ t('sidebar.watched') }}</span>
             <span class="btn-badge">{{ props.stats?.watched_count || 0 }}</span>
           </button>
         </div>
@@ -198,45 +199,45 @@ async function handleDeleteCollection(coll: Collection, event: Event) {
 
       <!-- SECTION 2: 内容形态 (Content Formats) -->
       <div class="sidebar-section">
-        <div class="section-title">内容形态</div>
+        <div class="section-title">{{ t('sidebar.contentFormats') }}</div>
         <div class="nav-list">
           <button
             class="category-nav-btn"
             :class="{ active: isSelected('format', 'shorts') }"
-            @click="selectItem('format', 'shorts', '竖屏 / 短视频')"
+            @click="selectItem('format', 'shorts', t('sidebar.shorts'))"
           >
             <span class="btn-icon">📱</span>
-            <span class="btn-label">竖屏短视频</span>
+            <span class="btn-label">{{ t('sidebar.shorts') }}</span>
             <span class="btn-badge">{{ props.stats?.shorts_count || 0 }}</span>
           </button>
 
           <button
             class="category-nav-btn"
             :class="{ active: isSelected('format', 'movies') }"
-            @click="selectItem('format', 'movies', '电影 / 长片')"
+            @click="selectItem('format', 'movies', t('sidebar.moviesSeries'))"
           >
             <span class="btn-icon">🎬</span>
-            <span class="btn-label">电影长片</span>
+            <span class="btn-label">{{ t('sidebar.moviesSeries') }}</span>
             <span class="btn-badge">{{ props.stats?.movies_count || 0 }}</span>
           </button>
 
           <button
             class="category-nav-btn"
             :class="{ active: isSelected('format', 'series') }"
-            @click="selectItem('format', 'series', '系列 / 剧集')"
+            @click="selectItem('format', 'series', t('sidebar.moviesSeries'))"
           >
             <span class="btn-icon">📺</span>
-            <span class="btn-label">系列剧集</span>
+            <span class="btn-label">{{ t('sidebar.moviesSeries') }}</span>
             <span class="btn-badge">{{ props.stats?.series_count || 0 }}</span>
           </button>
 
           <button
             class="category-nav-btn"
             :class="{ active: isSelected('format', 'screen') }"
-            @click="selectItem('format', 'screen', '屏幕录制')"
+            @click="selectItem('format', 'screen', t('sidebar.tutorials'))"
           >
             <span class="btn-icon">💻</span>
-            <span class="btn-label">屏幕录制</span>
+            <span class="btn-label">{{ t('sidebar.tutorials') }}</span>
             <span class="btn-badge">{{ props.stats?.screen_count || 0 }}</span>
           </button>
         </div>
@@ -245,13 +246,13 @@ async function handleDeleteCollection(coll: Collection, event: Event) {
       <!-- SECTION 3: 颜色与标签 (Tags) -->
       <div class="sidebar-section">
         <div class="section-title-row">
-          <span class="section-title">标签与标记</span>
+          <span class="section-title">{{ t('sidebar.customTags') }}</span>
           <button
             class="btn-inline-add"
-            title="添加新标签"
+            :title="t('sidebar.newTag')"
             @click="isCreatingTag = !isCreatingTag"
           >
-            {{ isCreatingTag ? '取消' : '+ 新建' }}
+            {{ isCreatingTag ? t('common.cancel') : '+ ' + t('sidebar.newTag') }}
           </button>
         </div>
 
@@ -263,14 +264,14 @@ async function handleDeleteCollection(coll: Collection, event: Event) {
             class="color-dot-btn"
             :class="{ active: isSelected('color', c.value) }"
             :style="{ backgroundColor: c.bg }"
-            :title="`筛选 ${c.name}色 标记`"
-            @click="selectItem('color', c.value, `${c.name}色标记`)"
+            :title="`#${c.name}`"
+            @click="selectItem('color', c.value, `#${c.name}`)"
           ></button>
           <button
             v-if="props.activeSelection.type === 'color'"
             class="clear-color-btn"
-            title="清除颜色过滤"
-            @click="selectItem('all', 'all', '全部视频')"
+            :title="t('common.cancel')"
+            @click="selectItem('all', 'all', t('sidebar.allVideos'))"
           >
             ✕
           </button>
@@ -281,10 +282,10 @@ async function handleDeleteCollection(coll: Collection, event: Event) {
           <input
             v-model="newTagName"
             class="inline-input"
-            placeholder="输入标签名..."
+            :placeholder="t('sidebar.tagNamePlaceholder')"
             @keydown.enter="handleCreateTag"
           />
-          <button class="inline-submit-btn" @click="handleCreateTag">保存</button>
+          <button class="inline-submit-btn" @click="handleCreateTag">{{ t('common.save') }}</button>
         </div>
 
         <!-- Custom User Tags -->
@@ -301,26 +302,26 @@ async function handleDeleteCollection(coll: Collection, event: Event) {
             <span class="btn-badge">{{ tag.video_count || 0 }}</span>
             <button
               class="tag-delete-btn"
-              title="删除标签"
+              :title="t('common.delete')"
               @click="handleDeleteTag(tag, $event)"
             >
               ✕
             </button>
           </div>
-          <div v-if="!props.stats?.tags?.length" class="empty-hint">暂无自定义标签</div>
+          <div v-if="!props.stats?.tags?.length" class="empty-hint">{{ t('sidebar.customTags') }} (0)</div>
         </div>
       </div>
 
       <!-- SECTION 4: 自定义合集 (Collections) -->
       <div class="sidebar-section">
         <div class="section-title-row">
-          <span class="section-title">合集与播单</span>
+          <span class="section-title">{{ t('sidebar.collections') }}</span>
           <button
             class="btn-inline-add"
-            title="新建合集"
+            :title="t('sidebar.newCollection')"
             @click="isCreatingCollection = !isCreatingCollection"
           >
-            {{ isCreatingCollection ? '取消' : '+ 新建' }}
+            {{ isCreatingCollection ? t('common.cancel') : '+ ' + t('sidebar.newCollection') }}
           </button>
         </div>
 
@@ -329,10 +330,10 @@ async function handleDeleteCollection(coll: Collection, event: Event) {
           <input
             v-model="newCollectionName"
             class="inline-input"
-            placeholder="输入合集名称..."
+            :placeholder="t('sidebar.collectionNamePlaceholder')"
             @keydown.enter="handleCreateCollection"
           />
-          <button class="inline-submit-btn" @click="handleCreateCollection">保存</button>
+          <button class="inline-submit-btn" @click="handleCreateCollection">{{ t('common.save') }}</button>
         </div>
 
         <div class="nav-list collections-list">
@@ -348,13 +349,13 @@ async function handleDeleteCollection(coll: Collection, event: Event) {
             <span class="btn-badge">{{ coll.video_count }}</span>
             <button
               class="tag-delete-btn"
-              title="删除合集"
+              :title="t('common.delete')"
               @click="handleDeleteCollection(coll, $event)"
             >
               ✕
             </button>
           </div>
-          <div v-if="!props.stats?.collections?.length" class="empty-hint">暂无自定义合集</div>
+          <div v-if="!props.stats?.collections?.length" class="empty-hint">{{ t('sidebar.collections') }} (0)</div>
         </div>
       </div>
     </div>
@@ -364,40 +365,40 @@ async function handleDeleteCollection(coll: Collection, event: Event) {
       <button
         class="slim-icon-btn"
         :class="{ active: props.activeSelection.type === 'all' }"
-        title="全部视频"
-        @click="selectItem('all', 'all', '全部视频')"
+        :title="t('sidebar.allVideos')"
+        @click="selectItem('all', 'all', t('sidebar.allVideos'))"
       >
         🎞️
       </button>
       <button
         class="slim-icon-btn"
         :class="{ active: props.activeSelection.value === 'starred' }"
-        title="我的收藏"
-        @click="selectItem('smart', 'starred', '我的收藏')"
+        :title="t('sidebar.starred')"
+        @click="selectItem('smart', 'starred', t('sidebar.starred'))"
       >
         ⭐
       </button>
       <button
         class="slim-icon-btn"
         :class="{ active: props.activeSelection.value === 'unwatched' }"
-        title="待看清单"
-        @click="selectItem('smart', 'unwatched', '待看清单')"
+        :title="t('sidebar.unwatched')"
+        @click="selectItem('smart', 'unwatched', t('sidebar.unwatched'))"
       >
         ⏳
       </button>
       <button
         class="slim-icon-btn"
         :class="{ active: props.activeSelection.value === 'shorts' }"
-        title="短视频"
-        @click="selectItem('format', 'shorts', '竖屏 / 短视频')"
+        :title="t('sidebar.shorts')"
+        @click="selectItem('format', 'shorts', t('sidebar.shorts'))"
       >
         📱
       </button>
       <button
         class="slim-icon-btn"
         :class="{ active: props.activeSelection.value === 'movies' }"
-        title="电影长片"
-        @click="selectItem('format', 'movies', '电影 / 长片')"
+        :title="t('sidebar.moviesSeries')"
+        @click="selectItem('format', 'movies', t('sidebar.moviesSeries'))"
       >
         🎬
       </button>

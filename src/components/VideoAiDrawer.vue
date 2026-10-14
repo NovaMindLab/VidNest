@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import { t } from '../i18n';
 import type { Video, SubtitleSegment, AiAnalysis, AiTranscriptionConfig } from '../types';
 
 const props = defineProps<{
@@ -113,9 +114,9 @@ async function saveConfig() {
   isSavingConfig.value = true;
   try {
     await invoke('save_ai_config', { config: aiConfig.value });
-    showToast('✓ AI 配置保存成功！');
+    showToast(t('ai.configSavedToast'));
   } catch (err) {
-    showToast(`保存失败: ${err}`);
+    showToast(t('ai.saveConfigFailed', { err: String(err) }));
   } finally {
     isSavingConfig.value = false;
   }
@@ -163,9 +164,9 @@ async function handleGenerateAnalysis(force: boolean = false) {
     });
     analysis.value = res;
     emit('analysisUpdated');
-    showToast('✓ AI 智能摘要已生成！');
+    showToast(t('ai.summaryGeneratedToast'));
   } catch (err) {
-    showToast(`生成摘要失败: ${err}`);
+    showToast(t('ai.summaryGenerateFailed', { err: String(err) }));
   } finally {
     isAnalyzing.value = false;
   }
@@ -186,7 +187,7 @@ async function handleTranscribeVideo() {
       config: aiConfig.value,
     });
     subtitles.value = segs || [];
-    showToast(`✓ 转写成功，提取了 ${subtitles.value.length} 句台词！正在生成 AI 摘要...`);
+    showToast(t('ai.transcribeSuccessToast', { count: subtitles.value.length }));
 
     // Auto trigger analysis upon transcription completion
     try {
@@ -196,12 +197,12 @@ async function handleTranscribeVideo() {
       });
       analysis.value = res;
       emit('analysisUpdated');
-      showToast('✓ AI 台词与智能摘要已全部生成就绪！');
+      showToast(t('ai.allGeneratedToast'));
     } catch (aErr) {
       console.warn('Auto analysis error:', aErr);
     }
   } catch (err) {
-    showToast(`语音转写失败: ${err}`);
+    showToast(t('ai.transcribeFailed', { err: String(err) }));
   } finally {
     isTranscribing.value = false;
     if (transcribeTimer) {
@@ -219,9 +220,9 @@ async function handleApplyTags() {
       tags: analysis.value.tags,
     });
     emit('tagsUpdated');
-    showToast(`✓ 已将 ${analysis.value.tags.length} 个推荐标签成功绑定至该视频！`);
+    showToast(t('ai.tagsBoundToast', { count: analysis.value.tags.length }));
   } catch (err) {
-    showToast(`绑定标签失败: ${err}`);
+    showToast(t('ai.bindTagsFailed', { err: String(err) }));
   }
 }
 
@@ -239,7 +240,7 @@ const filteredSubtitles = computed(() => {
 
 function exportSubtitles(format: 'srt' | 'vtt') {
   if (subtitles.value.length === 0) {
-    showToast('暂无字幕内容可导出');
+    showToast(t('ai.noSubtitlesToExport'));
     return;
   }
   let content = '';
@@ -269,7 +270,7 @@ function exportSubtitles(format: 'srt' | 'vtt') {
   a.download = `${baseName}.${format}`;
   a.click();
   URL.revokeObjectURL(url);
-  showToast(`✓ 已导出 ${format.toUpperCase()} 字幕文件`);
+  showToast(t('ai.exportSuccess', { format: format.toUpperCase() }));
 }
 
 watch(
@@ -310,7 +311,7 @@ onUnmounted(() => {
             <span class="ai-badge-text font-mono">VidNest AI Intelligence</span>
           </div>
           <h2 class="drawer-title" :title="video?.file_name">
-            {{ video?.file_name || '视频 AI 智能中枢' }}
+            {{ video?.file_name || t('ai.hubTitle') }}
           </h2>
           <div class="drawer-meta font-mono" v-if="video">
             <span v-if="video.duration">⏱️ {{ formatTime((video.duration || 0) * 1000) }}</span>
@@ -324,12 +325,12 @@ onUnmounted(() => {
           <button
             v-if="video"
             class="hdr-play-btn"
-            title="播放该视频"
+            :title="t('ai.playVideo')"
             @click="emit('play', video, 0)"
           >
-            ▶ 播放视频
+            {{ t('ai.playVideo') }}
           </button>
-          <button class="hdr-close-btn" title="关闭 (Esc)" @click="emit('close')">✕</button>
+          <button class="hdr-close-btn" :title="t('common.close')" @click="emit('close')">✕</button>
         </div>
       </div>
 
@@ -340,7 +341,7 @@ onUnmounted(() => {
           :class="{ active: activeTab === 'insights' }"
           @click="activeTab = 'insights'"
         >
-          🧠 智能理解与看点
+          {{ t('ai.tabInsights') }}
           <span v-if="analysis" class="tab-indicator-dot"></span>
         </button>
         <button
@@ -348,14 +349,14 @@ onUnmounted(() => {
           :class="{ active: activeTab === 'transcript' }"
           @click="activeTab = 'transcript'"
         >
-          💬 对齐字幕台词 ({{ subtitles.length }})
+          {{ t('ai.tabTranscript') }} ({{ subtitles.length }})
         </button>
         <button
           class="tab-btn"
           :class="{ active: activeTab === 'settings' }"
           @click="activeTab = 'settings'"
         >
-          ⚙️ AI 模型配置
+          {{ t('ai.tabSettings') }}
         </button>
       </div>
 
@@ -371,7 +372,7 @@ onUnmounted(() => {
         <!-- Loading State -->
         <div v-if="isLoading" class="drawer-center-state">
           <span class="spinner-lg"></span>
-          <p>正在读取视频 AI 智能资产...</p>
+          <p>{{ t('ai.loadingAssets') }}</p>
         </div>
 
         <!-- 1. AI Insights & Summary Tab -->
@@ -380,16 +381,16 @@ onUnmounted(() => {
           <div v-if="isTranscribing" class="ai-running-banner transcribing">
             <span class="spinner-md"></span>
             <div class="running-info">
-              <h4>正在进行 Whisper 语音转写... (已耗时 {{ transcribeElapsed }} 秒)</h4>
-              <p>系统正提取高质量音频并执行声学模型识别，转写完成后将自动生成 AI 摘要。</p>
+              <h4>{{ t('ai.transcribingWhisper') }} {{ t('ai.transcribeElapsed', { sec: transcribeElapsed }) }}</h4>
+              <p>{{ t('ai.transcribeDesc') }}</p>
             </div>
           </div>
 
           <div v-else-if="isAnalyzing" class="ai-running-banner analyzing">
             <span class="spinner-md"></span>
             <div class="running-info">
-              <h4>AI 正在深度解析字幕内容并提炼核心看点...</h4>
-              <p>提取全文语义特征、高频关键词及带时间戳的阶段主题。</p>
+              <h4>{{ t('ai.analyzingLlm') }}</h4>
+              <p>{{ t('ai.analyzingDesc') }}</p>
             </div>
           </div>
 
@@ -400,17 +401,17 @@ onUnmounted(() => {
               <div class="card-sec-header">
                 <div class="sec-title-wrap">
                   <span class="sec-ic">📝</span>
-                  <span class="sec-title">视频全局智能概览</span>
+                  <span class="sec-title">{{ t('ai.summaryTitle') }}</span>
                 </div>
                 <div class="sec-actions">
                   <span class="model-badge font-mono">{{ analysis.model_name }}</span>
                   <button
                     class="act-pill-btn"
                     :disabled="isAnalyzing"
-                    title="重新调用模型生成摘要"
+                    :title="t('ai.reAnalyzeTitle')"
                     @click="handleGenerateAnalysis(true)"
                   >
-                    🔄 重新分析
+                    {{ t('ai.reAnalyze') }}
                   </button>
                 </div>
               </div>
@@ -424,8 +425,8 @@ onUnmounted(() => {
               <div class="card-sec-header">
                 <div class="sec-title-wrap">
                   <span class="sec-ic">✨</span>
-                  <span class="sec-title">核心看点与话题时间轴</span>
-                  <span class="sec-subtitle">点击时间戳即可直接跳播对应片段</span>
+                  <span class="sec-title">{{ t('ai.topicsTitle') }}</span>
+                  <span class="sec-subtitle">{{ t('ai.topicsSubtitle') }}</span>
                 </div>
               </div>
 
@@ -442,7 +443,7 @@ onUnmounted(() => {
                   </div>
                   <div class="topic-content-box">
                     <div class="topic-top-bar">
-                      <span class="topic-time-badge font-mono" title="点击跳转播放">
+                      <span class="topic-time-badge font-mono" :title="t('ai.playAt')">
                         ▶ {{ formatTime(item.timestamp_ms) }}
                       </span>
                       <span class="topic-node-title">{{ item.title }}</span>
@@ -458,34 +459,34 @@ onUnmounted(() => {
               <div class="card-sec-header">
                 <div class="sec-title-wrap">
                   <span class="sec-ic">🏷️</span>
-                  <span class="sec-title">AI 智能提取标签与主题词</span>
+                  <span class="sec-title">{{ t('ai.tagsTitle') }}</span>
                 </div>
                 <button
                   v-if="analysis.tags && analysis.tags.length"
                   class="apply-tags-btn"
-                  title="一键将推荐标签加入视频"
+                  :title="t('ai.tagsSubtitle')"
                   @click="handleApplyTags"
                 >
-                  + 一键应用到视频标签
+                  {{ t('ai.applyTagsBtn') }}
                 </button>
               </div>
 
               <div class="tags-clusters">
                 <div class="tag-group" v-if="analysis.tags && analysis.tags.length">
-                  <span class="group-label">推荐标签:</span>
+                  <span class="group-label">{{ t('ai.tagsTitle') }}:</span>
                   <div class="pill-list">
                     <span
-                      v-for="(t, idx) in analysis.tags"
+                      v-for="(tItem, idx) in analysis.tags"
                       :key="'tag-' + idx"
                       class="ai-tag-pill"
                     >
-                      #{{ t }}
+                      #{{ tItem }}
                     </span>
                   </div>
                 </div>
 
                 <div class="tag-group" v-if="analysis.keywords && analysis.keywords.length">
-                  <span class="group-label">高频关键词:</span>
+                  <span class="group-label">Keywords:</span>
                   <div class="pill-list">
                     <span
                       v-for="(k, idx) in analysis.keywords"
@@ -503,13 +504,9 @@ onUnmounted(() => {
           <!-- No Analysis Yet -->
           <div v-else-if="!isTranscribing && !isAnalyzing" class="ai-empty-prompt card-glass">
             <div class="empty-spark-icon">✨</div>
-            <h3 v-if="subtitles.length > 0">已具备 {{ subtitles.length }} 句台词，尚未生成 AI 智能摘要</h3>
-            <h3 v-else>该视频尚未提取台词与 AI 分析</h3>
-            <p v-if="subtitles.length > 0">
-              点击下方按钮，系统将调用内置智能引擎提炼核心观点、分段看点时间戳与推荐标签。
-            </p>
-            <p v-else>
-              VidNest 支持毫秒级声学转写与语义理解。一键启动后，将自动提取字幕台词并提炼结构化摘要。
+            <h3>{{ subtitles.length > 0 ? t('ai.noAnalysis') : t('ai.noTranscript') }}</h3>
+            <p>
+              {{ subtitles.length > 0 ? t('ai.noAnalysisDesc') : t('ai.noTranscriptDesc') }}
             </p>
 
             <div class="empty-prompt-actions">
@@ -518,14 +515,14 @@ onUnmounted(() => {
                 class="cta-primary-btn"
                 @click="handleGenerateAnalysis(false)"
               >
-                🧠 一键生成 AI 智能摘要
+                {{ t('ai.generateSummaryBtn') }}
               </button>
               <button
                 v-else
                 class="cta-primary-btn"
                 @click="handleTranscribeVideo"
               >
-                🎙️ 启动 AI 语音转写 (自动生成摘要)
+                {{ t('ai.startTranscribeBtn') }}
               </button>
             </div>
           </div>
@@ -540,7 +537,7 @@ onUnmounted(() => {
                 v-model="searchQuery"
                 type="text"
                 class="ts-search-input"
-                placeholder="在视频台词对白中搜索..."
+                :placeholder="t('ai.searchDialoguePlaceholder')"
               />
               <button
                 v-if="searchQuery"
@@ -554,27 +551,27 @@ onUnmounted(() => {
             <div class="tb-actions">
               <button
                 class="tb-act-btn"
-                title="导出为 SRT 字幕文件"
+                :title="t('ai.exportSrtTitle')"
                 :disabled="!subtitles.length"
                 @click="exportSubtitles('srt')"
               >
-                📥 导出 SRT
+                📥 {{ t('ai.exportSrt') }}
               </button>
               <button
                 class="tb-act-btn"
-                title="导出为 VTT 字幕文件"
+                :title="t('ai.exportVttTitle')"
                 :disabled="!subtitles.length"
                 @click="exportSubtitles('vtt')"
               >
-                📥 导出 VTT
+                📥 {{ t('ai.exportVtt') }}
               </button>
               <button
                 class="tb-act-btn btn-regen"
-                title="重新运行 Whisper 语音识别"
+                :title="t('ai.reTranscribeTitle')"
                 :disabled="isTranscribing"
                 @click="handleTranscribeVideo"
               >
-                🎙️ 重新转写
+                🎙️ {{ t('ai.reTranscribe') }}
               </button>
             </div>
           </div>
@@ -598,63 +595,63 @@ onUnmounted(() => {
 
           <div v-else-if="subtitles.length === 0" class="no-sub-notice">
             <span class="ic">🎙️</span>
-            <p>该视频暂无字幕台词</p>
+            <p>{{ t('ai.noSubNotice') }}</p>
             <button class="cta-primary-btn compact" @click="handleTranscribeVideo">
-              立即启动 AI 语音转写
+              {{ t('ai.startTranscribeNow') }}
             </button>
           </div>
 
           <div v-else class="no-sub-notice">
-            <p>未找到包含 "{{ searchQuery }}" 的台词</p>
+            <p>{{ t('ai.noSearchResults', { query: searchQuery }) }}</p>
           </div>
         </div>
 
         <!-- 3. AI Settings Tab -->
         <div v-else-if="activeTab === 'settings'" class="tab-content settings-container">
           <div class="card-glass config-card">
-            <h3 class="config-sec-title">🎯 一键应用模型预设</h3>
+            <h3 class="config-sec-title">{{ t('ai.presetTitle') }}</h3>
             <div class="preset-buttons-row">
               <button class="preset-btn" @click="applyPreset('local')">
-                💻 本地智能分析 (零配置/免网络)
+                {{ t('ai.presetLocal') }}
               </button>
               <button class="preset-btn" @click="applyPreset('ollama')">
-                🦙 本地 Ollama (qwen2.5 / llama3)
+                {{ t('ai.presetOllama') }}
               </button>
               <button class="preset-btn" @click="applyPreset('deepseek')">
-                🐋 DeepSeek API
+                {{ t('ai.presetDeepseek') }}
               </button>
               <button class="preset-btn" @click="applyPreset('openai')">
-                🌐 OpenAI (Whisper + GPT-4o-mini)
+                {{ t('ai.presetOpenai') }}
               </button>
               <button class="preset-btn" @click="applyPreset('groq')">
-                ⚡ Groq 高速 API
+                {{ t('ai.presetGroq') }}
               </button>
             </div>
 
             <div class="config-divider"></div>
 
-            <h3 class="config-sec-title">🎙️ Whisper 语音转写引擎</h3>
+            <h3 class="config-sec-title">{{ t('ai.whisperSectionTitle') }}</h3>
             <div class="form-grid">
               <div class="form-group">
-                <label>引擎类型</label>
+                <label>{{ t('ai.engineType') }}</label>
                 <select v-model="aiConfig.engine" class="form-select">
-                  <option value="api">API 兼容服务 (OpenAI / Groq / Ollama / 本地微服务)</option>
-                  <option value="local">本地独立 Whisper CLI 程序 (whisper-cpp)</option>
+                  <option value="api">{{ t('ai.engineApi') }}</option>
+                  <option value="local">{{ t('ai.engineLocal') }}</option>
                 </select>
               </div>
 
               <div class="form-group">
-                <label>语言识别模式</label>
+                <label>{{ t('ai.langMode') }}</label>
                 <select v-model="aiConfig.language" class="form-select">
-                  <option value="auto">自动识别语言 (Auto Detect)</option>
-                  <option value="zh">强制中文 (Chinese)</option>
-                  <option value="en">强制英文 (English)</option>
-                  <option value="ja">强制日文 (Japanese)</option>
+                  <option value="auto">{{ t('ai.langAuto') }}</option>
+                  <option value="zh">{{ t('ai.langZh') }}</option>
+                  <option value="en">{{ t('ai.langEn') }}</option>
+                  <option value="ja">{{ t('ai.langJa') }}</option>
                 </select>
               </div>
 
               <div class="form-group full-width" v-if="aiConfig.engine === 'api'">
-                <label>Whisper API 接口地址</label>
+                <label>{{ t('ai.apiUrl') }}</label>
                 <input
                   v-model="aiConfig.api_url"
                   type="text"
@@ -664,17 +661,17 @@ onUnmounted(() => {
               </div>
 
               <div class="form-group full-width" v-if="aiConfig.engine === 'api'">
-                <label>API 密钥 (Key / Token)</label>
+                <label>{{ t('ai.apiKey') }}</label>
                 <input
                   v-model="aiConfig.api_key"
                   type="password"
                   class="form-input font-mono"
-                  placeholder="sk-... (本地 Ollama 可留空)"
+                  placeholder="sk-... (Ollama / Local: optional)"
                 />
               </div>
 
               <div class="form-group" v-if="aiConfig.engine === 'api'">
-                <label>Whisper 语音模型</label>
+                <label>{{ t('ai.whisperModel') }}</label>
                 <input
                   v-model="aiConfig.model"
                   type="text"
@@ -686,33 +683,33 @@ onUnmounted(() => {
 
             <div class="config-divider"></div>
 
-            <h3 class="config-sec-title">🧠 大模型内容理解与智能摘要 (LLM)</h3>
+            <h3 class="config-sec-title">{{ t('ai.llmSectionTitle') }}</h3>
             <p class="config-hint">
-              未配置时自动采用本地内置 NLP 启发式高质提取算法，零报错保证可用。
+              {{ t('ai.llmHint') }}
             </p>
             <div class="form-grid">
               <div class="form-group full-width">
-                <label>LLM API 地址 (支持 OpenAI / DeepSeek / Ollama / OneAPI)</label>
+                <label>{{ t('ai.llmApiUrl') }}</label>
                 <input
                   v-model="aiConfig.llm_api_url"
                   type="text"
                   class="form-input font-mono"
-                  placeholder="https://api.openai.com/v1 或 http://localhost:11434/v1"
+                  placeholder="https://api.openai.com/v1, http://localhost:11434/v1"
                 />
               </div>
 
               <div class="form-group full-width">
-                <label>LLM API 密钥 (留空则复用上方 Whisper Key)</label>
+                <label>{{ t('ai.llmApiKey') }}</label>
                 <input
                   v-model="aiConfig.llm_api_key"
                   type="password"
                   class="form-input font-mono"
-                  placeholder="留空自动复用上方 API Key"
+                  placeholder="sk-..."
                 />
               </div>
 
               <div class="form-group">
-                <label>摘要大模型名称</label>
+                <label>{{ t('ai.llmModel') }}</label>
                 <input
                   v-model="aiConfig.llm_model"
                   type="text"
@@ -728,7 +725,7 @@ onUnmounted(() => {
                 :disabled="isSavingConfig"
                 @click="saveConfig"
               >
-                {{ isSavingConfig ? '正在保存...' : '💾 保存 AI 全局配置' }}
+                {{ isSavingConfig ? t('ai.saving') : t('ai.saveAiConfig') }}
               </button>
             </div>
           </div>

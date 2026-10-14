@@ -88,7 +88,7 @@ async function fetchAudios() {
     audios.value = list;
   } catch (err: unknown) {
     console.error('Failed to list extracted audios:', err);
-    showToast(`查询失败: ${err instanceof Error ? err.message : String(err)}`);
+    showToast(t('audioLibrary.queryFailed', { err: err instanceof Error ? err.message : String(err) }));
   } finally {
     isLoading.value = false;
   }
@@ -183,18 +183,18 @@ function closePlayer() {
 async function revealFile(filePath: string) {
   try {
     await invoke('reveal_in_explorer', { path: filePath });
-    showToast('📂 已在系统文件管理器中定位');
+    showToast(t('library.locatedInFileManager'));
   } catch (err: unknown) {
-    showToast(`定位失败: ${err instanceof Error ? err.message : String(err)}`);
+    showToast(t('audioExtract.locateFailed', { err: err instanceof Error ? err.message : String(err) }));
   }
 }
 
 async function copyPath(filePath: string) {
   try {
     await navigator.clipboard.writeText(filePath);
-    showToast('📋 文件路径已复制到剪贴板');
+    showToast(t('audioLibrary.copySuccess'));
   } catch (e) {
-    showToast('复制失败');
+    showToast(t('audioLibrary.copyFailed'));
   }
 }
 
@@ -221,7 +221,7 @@ async function confirmDelete() {
     showToast(t('audioLibrary.deleteSuccess'));
     fetchAudios();
   } catch (err: unknown) {
-    showToast(`删除失败: ${err instanceof Error ? err.message : String(err)}`);
+    showToast(t('audioLibrary.deleteFailed', { err: err instanceof Error ? err.message : String(err) }));
   } finally {
     isDeleting.value = false;
   }
@@ -255,7 +255,7 @@ onMounted(() => {
         </div>
         <div class="stat-content">
           <div class="stat-label">{{ t('audioLibrary.statsTotal') }}</div>
-          <div class="stat-value font-mono">{{ audios.length }} <span class="stat-unit">首</span></div>
+          <div class="stat-value font-mono">{{ audios.length }} <span class="stat-unit">{{ t('audioLibrary.unitTracks') }}</span></div>
         </div>
       </div>
 
@@ -302,7 +302,7 @@ onMounted(() => {
           :placeholder="t('audioLibrary.searchPlaceholder')"
           class="audio-search-input"
         />
-        <button v-if="searchText" class="clear-btn" @click="clearSearch" title="清空搜索">✕</button>
+        <button v-if="searchText" class="clear-btn" @click="clearSearch" :title="t('audioLibrary.clearSearch')">✕</button>
       </div>
 
       <!-- Format Filter Pills -->
@@ -347,12 +347,12 @@ onMounted(() => {
       <!-- Sorter -->
       <div class="sorter-wrap">
         <select v-model="selectedSort" @change="onSortChange" class="sort-select">
-          <option value="created_desc">最新提取</option>
-          <option value="duration_desc">时长最长</option>
-          <option value="size_desc">体积最大</option>
-          <option value="name_asc">名称排序 (A-Z)</option>
+          <option value="created_desc">{{ t('audioLibrary.sortRecent') }}</option>
+          <option value="duration_desc">{{ t('audioLibrary.sortDuration') }}</option>
+          <option value="size_desc">{{ t('audioLibrary.sortSize') }}</option>
+          <option value="name_asc">{{ t('audioLibrary.sortName') }}</option>
         </select>
-        <button class="btn-refresh" @click="fetchAudios" :disabled="isLoading" title="刷新列表">
+        <button class="btn-refresh" @click="fetchAudios" :disabled="isLoading" :title="t('audioLibrary.refresh')">
           <svg class="icon-refresh" :class="{ 'spin-anim': isLoading }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M23 4v6h-6"></path>
             <path d="M1 20v-6h6"></path>
@@ -407,7 +407,7 @@ onMounted(() => {
                   class="row-play-btn"
                   :class="{ active: currentPlayingAudio?.id === item.id && isAudioPlaying }"
                   @click="togglePlay(item)"
-                  :title="currentPlayingAudio?.id === item.id && isAudioPlaying ? '暂停' : '播放'"
+                  :title="currentPlayingAudio?.id === item.id && isAudioPlaying ? t('audioLibrary.pause') : t('audioLibrary.play')"
                 >
                   <span v-if="currentPlayingAudio?.id === item.id && isAudioPlaying">⏸</span>
                   <span v-else>▶</span>
@@ -456,13 +456,13 @@ onMounted(() => {
               <!-- Quick Action Buttons -->
               <td class="td-act">
                 <div class="row-act-btns">
-                  <button class="act-btn" @click.stop="revealFile(item.filePath)" title="在文件夹中定位">
+                  <button class="act-btn" @click.stop="revealFile(item.filePath)" :title="t('audioLibrary.openFolder')">
                     📁
                   </button>
-                  <button class="act-btn" @click.stop="copyPath(item.filePath)" title="复制文件路径">
+                  <button class="act-btn" @click.stop="copyPath(item.filePath)" :title="t('audioLibrary.copyPath')">
                     📋
                   </button>
-                  <button class="act-btn act-btn-del" @click.stop="promptDelete(item)" title="删除音频记录">
+                  <button class="act-btn act-btn-del" @click.stop="promptDelete(item)" :title="t('audioLibrary.deleteConfirmTitle')">
                     🗑️
                   </button>
                 </div>
@@ -514,9 +514,9 @@ onMounted(() => {
           :value="audioVolume"
           @input="onVolumeChange"
           class="dock-vol-slider"
-          title="音量"
+          :title="t('audioLibrary.volume')"
         />
-        <button class="dock-close-btn" @click="closePlayer" title="停止并关闭播放栏">✕</button>
+        <button class="dock-close-btn" @click="closePlayer" :title="t('audioLibrary.closePlayer')">✕</button>
       </div>
     </div>
 
@@ -549,7 +549,7 @@ onMounted(() => {
             {{ t('audioLibrary.cancel') }}
           </button>
           <button class="btn btn-danger" :disabled="isDeleting" @click="confirmDelete">
-            {{ isDeleting ? '正在删除...' : t('audioLibrary.confirmDelete') }}
+            {{ isDeleting ? t('audioLibrary.deleting') : t('audioLibrary.confirmDelete') }}
           </button>
         </div>
       </div>
