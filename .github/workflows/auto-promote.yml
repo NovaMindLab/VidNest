@@ -102,10 +102,11 @@ jobs:
       - name: ⚡ Instant SEO Push (IndexNow & Baidu Webmaster)
         id: seo_push
         env:
-          INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
+          INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY || '8f7d6a5c4e3b2a1098f7e6d5c4b3a201' }}
           BAIDU_TOKEN: ${{ secrets.BAIDU_TOKEN }}
-          SITE_HOST: ${{ vars.SITE_HOST || 'vidnest.app' }}
+          SITE_HOST: ${{ vars.SITE_HOST || 'novamindlab.github.io' }}
           SITE_URL: ${{ steps.deploy_pages.outputs.page_url || vars.SITE_URL || 'https://novamindlab.github.io/VidNest' }}
+          INDEXNOW_KEY_LOCATION: ${{ vars.INDEXNOW_KEY_LOCATION || 'https://novamindlab.github.io/8f7d6a5c4e3b2a1098f7e6d5c4b3a201.txt' }}
           RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag_name || github.ref_name }}
         run: |
           echo "::group::Pushing URLs to search engines..."

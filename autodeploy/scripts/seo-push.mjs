@@ -82,7 +82,7 @@ function resolveUrlList(siteUrl, siteHost) {
  * 1. Push to IndexNow API (Bing, Seznam, Yandex)
  */
 async function pushIndexNow({ siteHost, siteUrl, urls, dryRun }) {
-  const indexNowKey = process.env.INDEXNOW_KEY;
+  const indexNowKey = process.env.INDEXNOW_KEY || '8f7d6a5c4e3b2a1098f7e6d5c4b3a201';
 
   logger.divider();
   logger.info('⚡ [IndexNow] Preparing push to Microsoft Bing, Seznam & Yandex...');
@@ -93,7 +93,8 @@ async function pushIndexNow({ siteHost, siteUrl, urls, dryRun }) {
     return { skipped: true, reason: 'INDEXNOW_KEY missing' };
   }
 
-  const keyLocation = process.env.INDEXNOW_KEY_LOCATION || `${siteUrl}/${indexNowKey}.txt`;
+  const keyLocation = process.env.INDEXNOW_KEY_LOCATION || 
+    (siteHost.endsWith('github.io') ? `https://${siteHost}/${indexNowKey}.txt` : `${siteUrl}/${indexNowKey}.txt`);
   const endpoint = 'https://api.indexnow.org/IndexNow';
 
   const payload = {

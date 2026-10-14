@@ -135,7 +135,7 @@ export function getPackageMeta() {
   const version = process.env.RELEASE_VERSION || process.env.RELEASE_TAG || `v${pkg.version || '0.1.0'}`;
   const normalizedVersion = version.startsWith('v') ? version : `v${version}`;
   const repo = process.env.GITHUB_REPOSITORY || 'NovaMindLab/VidNest';
-  const siteUrl = (process.env.SITE_URL || 'https://vidnest.app').replace(/\/$/, '');
+  const siteUrl = (process.env.SITE_URL || 'https://novamindlab.github.io/VidNest').replace(/\/$/, '');
   const siteHost = (process.env.SITE_HOST || new URL(siteUrl).hostname);
 
   return {
