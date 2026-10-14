@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import type { HealthReport, YtDlpUpdateCheck, YtDlpUpdateResult, AppUpdateInfo } from './types';
 import VideoLibrary from './components/VideoLibrary.vue';
@@ -9,8 +9,13 @@ import DownloadCenter from './components/DownloadCenter.vue';
 import AppSettingsView from './components/AppSettingsView.vue';
 import AppUpdateModal from './components/AppUpdateModal.vue';
 import StandalonePlayerWindow from './components/StandalonePlayerWindow.vue';
-import { t, currentLocale, toggleLocale } from './i18n';
+import { t, currentLocale, toggleLocale, SUPPORTED_LOCALES } from './i18n';
 import { initTheme, activeTheme, toggleTheme } from './utils/theme';
+
+const activeLocaleInfo = computed(() => {
+  const found = SUPPORTED_LOCALES.find(l => l.code === currentLocale.value);
+  return found || { flag: '🌐', code: 'EN', name: 'English' };
+});
 
 const urlParams = new URLSearchParams(window.location.search);
 const isPlayerWindow = ref(urlParams.get('window') === 'player');
@@ -341,7 +346,7 @@ onMounted(() => {
             :title="t('header.switchLanguage')"
             @click="toggleLocale"
           >
-            <span class="lang-text">{{ currentLocale === 'zh-CN' ? '🇺🇸 EN' : '🇨🇳 中' }}</span>
+            <span class="lang-text">{{ activeLocaleInfo.flag }} {{ activeLocaleInfo.code.split('-')[0].toUpperCase() }}</span>
           </button>
 
           <button

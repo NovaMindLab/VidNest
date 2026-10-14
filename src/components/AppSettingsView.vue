@@ -1,9 +1,18 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
-import { currentLocale, setLocale, t } from '../i18n';
+import { currentLocale, currentLocaleMode, setLocaleMode, SUPPORTED_LOCALES, t, type LocaleMode } from '../i18n';
 import { themeMode, setTheme } from '../utils/theme';
 import type { AiTranscriptionConfig } from '../types';
+
+const activeLanguageName = computed(() => {
+  const found = SUPPORTED_LOCALES.find(l => l.code === currentLocale.value);
+  return found ? `${found.flag} ${found.nativeName}` : currentLocale.value;
+});
+
+function onLanguageSelectChange(val: string) {
+  setLocaleMode(val as LocaleMode);
+}
 
 const emit = defineEmits<{
   (e: 'checkUpdate'): void;
@@ -186,37 +195,65 @@ onMounted(() => {
           <div class="card-header-row">
             <div class="card-icon-badge">🌐</div>
             <div class="card-title-group">
-              <h3>{{ t('settings.language.title') }}</h3>
+              <div class="title-with-pill">
+                <h3>{{ t('settings.language.title') }}</h3>
+                <span class="active-lang-badge">
+                  <span class="pulse-dot"></span>
+                  {{ currentLocaleMode === 'auto' ? t('settings.language.auto') + ' · ' + activeLanguageName : activeLanguageName }}
+                </span>
+              </div>
               <p>{{ t('settings.language.desc') }}</p>
             </div>
           </div>
 
-          <div class="options-choice-grid">
-            <button
-              class="choice-btn"
-              :class="{ active: currentLocale === 'zh-CN' }"
-              @click="setLocale('zh-CN')"
-            >
-              <div class="choice-flag">🇨🇳</div>
-              <div class="choice-text">
-                <span class="choice-name">简体中文</span>
-                <span class="choice-sub">Chinese (Simplified)</span>
+          <div class="language-selector-wrapper">
+            <div class="language-select-row">
+              <div class="language-select-box">
+                <div class="select-label-icon">🌐</div>
+                <select
+                  class="language-native-select"
+                  :value="currentLocaleMode"
+                  @change="onLanguageSelectChange(($event.target as HTMLSelectElement).value)"
+                >
+                  <option value="auto">
+                    {{ t('settings.language.auto') }}
+                  </option>
+                  <option
+                    v-for="loc in SUPPORTED_LOCALES"
+                    :key="loc.code"
+                    :value="loc.code"
+                  >
+                    {{ loc.flag }} {{ loc.nativeName }} ({{ loc.englishName }})
+                  </option>
+                </select>
+                <div class="select-arrow">▼</div>
               </div>
-              <span v-if="currentLocale === 'zh-CN'" class="active-check">✓</span>
-            </button>
+            </div>
 
-            <button
-              class="choice-btn"
-              :class="{ active: currentLocale === 'en-US' }"
-              @click="setLocale('en-US')"
-            >
-              <div class="choice-flag">🇺🇸</div>
-              <div class="choice-text">
-                <span class="choice-name">English</span>
-                <span class="choice-sub">United States</span>
-              </div>
-              <span v-if="currentLocale === 'en-US'" class="active-check">✓</span>
-            </button>
+            <!-- Quick Language Switch Pills -->
+            <div class="quick-lang-pills">
+              <button
+                class="lang-pill-btn"
+                :class="{ active: currentLocaleMode === 'auto' }"
+                :title="t('settings.language.auto')"
+                @click="setLocaleMode('auto')"
+              >
+                <span class="pill-flag">🌐</span>
+                <span class="pill-text">{{ t('settings.theme.auto') }}</span>
+              </button>
+
+              <button
+                v-for="loc in SUPPORTED_LOCALES"
+                :key="loc.code"
+                class="lang-pill-btn"
+                :class="{ active: currentLocaleMode === loc.code }"
+                :title="`${loc.nativeName} (${loc.englishName})`"
+                @click="setLocaleMode(loc.code)"
+              >
+                <span class="pill-flag">{{ loc.flag }}</span>
+                <span class="pill-text">{{ loc.name }}</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -712,6 +749,137 @@ onMounted(() => {
   font-size: 13px;
   color: var(--text-muted, #8b949e);
   margin: 0;
+}
+
+.title-with-pill {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.title-with-pill h3 {
+  margin: 0 !important;
+}
+
+.active-lang-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-primary, #58a6ff);
+  background: var(--accent-subtle, rgba(88, 166, 255, 0.1));
+  border: 1px solid rgba(88, 166, 255, 0.25);
+}
+
+.pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3fb950;
+  box-shadow: 0 0 6px rgba(63, 185, 80, 0.6);
+}
+
+.language-selector-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.language-select-row {
+  max-width: 480px;
+}
+
+.language-select-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--bg-item, rgba(255, 255, 255, 0.04));
+  border: 1.5px solid var(--border-color, #30363d);
+  border-radius: 10px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.language-select-box:hover,
+.language-select-box:focus-within {
+  border-color: var(--accent-primary, #58a6ff);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.07));
+  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
+}
+
+.select-label-icon {
+  padding-left: 14px;
+  font-size: 18px;
+  pointer-events: none;
+}
+
+.language-native-select {
+  flex: 1;
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--text-primary, #ffffff);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 12px 36px 12px 10px;
+  outline: none;
+  cursor: pointer;
+  border-radius: 10px;
+}
+
+.language-native-select option {
+  background: #161b22;
+  color: #f0f6fc;
+}
+
+.select-arrow {
+  position: absolute;
+  right: 14px;
+  font-size: 10px;
+  color: var(--text-muted, #8b949e);
+  pointer-events: none;
+}
+
+.quick-lang-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.lang-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #30363d);
+  background: var(--bg-item, rgba(255, 255, 255, 0.03));
+  color: var(--text-secondary, #c9d1d9);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.lang-pill-btn:hover {
+  border-color: var(--accent-primary, #58a6ff);
+  color: var(--text-primary, #ffffff);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+}
+
+.lang-pill-btn.active {
+  border-color: var(--accent-primary, #58a6ff);
+  background: var(--accent-subtle, rgba(88, 166, 255, 0.15));
+  color: var(--accent-primary, #58a6ff);
+  font-weight: 700;
+}
+
+.pill-flag {
+  font-size: 14px;
 }
 
 /* Language Choice Grid */

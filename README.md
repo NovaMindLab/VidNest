@@ -17,9 +17,20 @@
   <a href="https://vuejs.org/"><img src="https://img.shields.io/badge/Vue-3.5-4FC08D?style=flat-square&logo=vue.js&logoColor=white" alt="Vue"></a>
 </p>
 
-<p align="center">
-  <a href="README.md"><strong>English</strong></a> • <a href="README.zh-CN.md">简体中文</a>
-</p>
+<div align="center">
+  <details>
+    <summary>🌐 <b>Language / 语言选择 / 言語 / 언어 / Sprache / Idioma (6 Languages)</b></summary>
+    <br/>
+    <p>
+      <a href="README.md">🇺🇸 <b>English</b></a> &nbsp;|&nbsp; 
+      <a href="README.zh-CN.md">🇨🇳 简体中文</a> &nbsp;|&nbsp; 
+      <a href="docs/i18n/README.ja.md">🇯🇵 日本語</a> &nbsp;|&nbsp; 
+      <a href="docs/i18n/README.ko.md">🇰🇷 한국어</a> &nbsp;|&nbsp; 
+      <a href="docs/i18n/README.de.md">🇩🇪 Deutsch</a> &nbsp;|&nbsp; 
+      <a href="docs/i18n/README.es.md">🇪🇸 Español</a>
+    </p>
+  </details>
+</div>
 
 <p align="center">
   <a href="https://novamindlab.github.io/VidNest/">🌐 Official Portal & Download Center</a> •
