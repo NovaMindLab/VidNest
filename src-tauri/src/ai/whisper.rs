@@ -18,6 +18,12 @@ pub struct AiTranscriptionConfig {
     pub language: String, // "auto", "zh", "en", "ja"
     pub prompt: Option<String>,
     pub local_model_path: Option<String>,
+    #[serde(default)]
+    pub llm_api_url: Option<String>,
+    #[serde(default)]
+    pub llm_api_key: Option<String>,
+    #[serde(default)]
+    pub llm_model: Option<String>,
 }
 
 impl Default for AiTranscriptionConfig {
@@ -30,6 +36,9 @@ impl Default for AiTranscriptionConfig {
             language: "auto".to_string(),
             prompt: None,
             local_model_path: None,
+            llm_api_url: None,
+            llm_api_key: None,
+            llm_model: Some("gpt-4o-mini".to_string()),
         }
     }
 }

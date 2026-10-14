@@ -4,9 +4,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import VideoPlayerModal from './VideoPlayerModal.vue';
+import VideoAiDrawer from './VideoAiDrawer.vue';
 import AudioExtractionModal from './AudioExtractionModal.vue';
 import CategorySidebar, { type CategorySelection } from './CategorySidebar.vue';
-import type { Video, VideoFilter, VideoListResponse, ScanSummary, ScanProgress, CategoryStats, Tag, SubtitleSnippetMatch } from '../types';
+import type { Video, VideoFilter, VideoListResponse, ScanSummary, ScanProgress, CategoryStats, Tag, SubtitleSnippetMatch, VideoAiStatus } from '../types';
 
 const emit = defineEmits<{
   (e: 'navigateDedup'): void;
@@ -15,6 +16,12 @@ const emit = defineEmits<{
 
 // Subtitle snippet dialogue search matches
 const subtitleSnippets = ref<Map<number, SubtitleSnippetMatch[]>>(new Map());
+
+// AI Intelligence drawer state & batch status
+const showAiDrawer = ref<boolean>(false);
+const aiDrawerVideo = ref<Video | null>(null);
+const aiStatusMap = ref<Map<number, VideoAiStatus>>(new Map());
+const playerInitialSeek = ref<number>(0);
 
 // Classification & Organization state
 const categoryStats = ref<CategoryStats | null>(null);
@@ -115,14 +122,46 @@ function clearSearch() {
   fetchVideos(true);
 }
 
-async function openVideo(video: Video) {
+async function openVideo(video: Video, startSec: number = 0) {
   try {
     showToast(`▶ 正在启动播放: ${video.file_name}`);
     await invoke('open_video_player_window', { video });
   } catch (err) {
     console.warn('Failed to open native player window, falling back to modal:', err);
     activePlayerVideo.value = video;
+    playerInitialSeek.value = startSec;
     isPlayerVisible.value = true;
+  }
+}
+
+function openAiDrawer(video: Video) {
+  aiDrawerVideo.value = video;
+  showAiDrawer.value = true;
+}
+
+function handleAiDrawerPlay(video: Video, startSec: number = 0) {
+  showAiDrawer.value = false;
+  openVideo(video, startSec);
+}
+
+async function handleAiTagsUpdated() {
+  await fetchCategoryStats();
+  await fetchVideos(false);
+}
+
+async function fetchAiStatusForVideos(videoList?: Video[]) {
+  const list = videoList || videos.value;
+  if (!list || list.length === 0) return;
+  const ids = list.map((v) => v.id);
+  try {
+    const res = await invoke<Record<string, VideoAiStatus>>('get_videos_ai_status', { videoIds: ids });
+    const newMap = new Map(aiStatusMap.value);
+    for (const [key, val] of Object.entries(res)) {
+      newMap.set(Number(key), val);
+    }
+    aiStatusMap.value = newMap;
+  } catch (err) {
+    console.warn('Failed to load videos AI status:', err);
   }
 }
 
@@ -604,6 +643,7 @@ async function fetchVideos(reset = true) {
     }
 
     hasMore.value = videos.value.length < res.total;
+    fetchAiStatusForVideos(videos.value);
   } catch (err: unknown) {
     console.error('Failed fetching videos:', err);
   } finally {
@@ -1334,6 +1374,22 @@ onUnmounted(() => {
                   <span v-if="getResolutionBadge(video.width, video.height)" class="pill-badge-corner pill-reso">
                     {{ getResolutionBadge(video.width, video.height) }}
                   </span>
+                  <span
+                    v-if="aiStatusMap.get(video.id)?.has_analysis"
+                    class="pill-badge-corner pill-ai-analysis font-mono"
+                    title="🧠 AI 智能摘要已就绪 (点击打开 AI 智能中枢)"
+                    @click.stop="openAiDrawer(video)"
+                  >
+                    🧠 AI 摘要
+                  </span>
+                  <span
+                    v-else-if="aiStatusMap.get(video.id)?.has_subtitles"
+                    class="pill-badge-corner pill-ai-subtitles font-mono"
+                    :title="`✨ 已提取 ${aiStatusMap.get(video.id)?.subtitle_count} 句台词 (点击打开 AI 智能中枢)`"
+                    @click.stop="openAiDrawer(video)"
+                  >
+                    ✨ {{ aiStatusMap.get(video.id)?.subtitle_count }}句
+                  </span>
                 </div>
 
                 <!-- Card Info -->
@@ -1363,10 +1419,13 @@ onUnmounted(() => {
                     v-if="subtitleSnippets.get(video.id)?.length"
                     class="sub-snippet-match-bar"
                     title="点击播放视频并定位到台词位置"
-                    @click.stop="openVideo(video)"
+                    @click.stop="openVideo(video, subtitleSnippets.get(video.id)![0].start_time_ms / 1000)"
                   >
-                    <span class="sub-match-ic">🗣️ 台词匹配</span>
+                    <span class="sub-match-ic">🗣️ 命中台词</span>
                     <span class="sub-match-text">"{{ subtitleSnippets.get(video.id)![0].snippet }}"</span>
+                    <span class="sub-match-time font-mono">
+                      ▶ {{ formatDuration(subtitleSnippets.get(video.id)![0].start_time_ms / 1000) }}
+                    </span>
                   </div>
 
                   <div class="grid-card-sub">
@@ -1380,8 +1439,15 @@ onUnmounted(() => {
                     <button class="card-act-btn" title="播放" @click.stop="openVideo(video)">
                       ▶ 播放
                     </button>
-                    <button class="card-act-btn btn-act-ai" title="AI 字幕台词" @click.stop="openVideo(video)">
-                      ✨ 字幕
+                    <button
+                      class="card-act-btn btn-act-ai"
+                      :class="{ 'has-ai-active': aiStatusMap.get(video.id)?.has_subtitles || aiStatusMap.get(video.id)?.has_analysis }"
+                      :title="aiStatusMap.get(video.id)?.has_analysis ? '查看 AI 智能摘要与核心看点' : '打开 AI 视频智能中枢'"
+                      @click.stop="openAiDrawer(video)"
+                    >
+                      <span v-if="aiStatusMap.get(video.id)?.has_analysis">🧠 摘要</span>
+                      <span v-else-if="aiStatusMap.get(video.id)?.has_subtitles">✨ 字幕</span>
+                      <span v-else>✨ AI</span>
                     </button>
                     <button class="card-act-btn btn-act-tag" title="管理标签" @click.stop="openTagModal(video)">
                       🏷️ 标签
@@ -1467,6 +1533,22 @@ onUnmounted(() => {
                 </div>
                 <div class="li-tags-sub">
                   <span
+                    v-if="aiStatusMap.get(item.row.video.id)?.has_analysis"
+                    class="li-ai-badge has-analysis font-mono"
+                    title="🧠 AI 智能摘要已就绪 (点击打开 AI 智能中枢)"
+                    @click.stop="openAiDrawer(item.row.video)"
+                  >
+                    🧠 AI 摘要
+                  </span>
+                  <span
+                    v-else-if="aiStatusMap.get(item.row.video.id)?.has_subtitles"
+                    class="li-ai-badge has-subtitles font-mono"
+                    :title="`✨ 已提取 ${aiStatusMap.get(item.row.video.id)?.subtitle_count} 句台词 (点击打开 AI 智能中枢)`"
+                    @click.stop="openAiDrawer(item.row.video)"
+                  >
+                    ✨ {{ aiStatusMap.get(item.row.video.id)?.subtitle_count }}句
+                  </span>
+                  <span
                     v-for="t in item.row.video.tags || []"
                     :key="t.id"
                     class="card-tag-pill compact"
@@ -1477,10 +1559,11 @@ onUnmounted(() => {
                   <span
                     v-if="subtitleSnippets.get(item.row.video.id)?.length"
                     class="li-sub-match-pill"
-                    title="点击播放视频"
-                    @click.stop="openVideo(item.row.video)"
+                    title="点击播放视频并定位到该秒"
+                    @click.stop="openVideo(item.row.video, subtitleSnippets.get(item.row.video.id)![0].start_time_ms / 1000)"
                   >
                     🗣️ 台词: "{{ subtitleSnippets.get(item.row.video.id)![0].snippet }}"
+                    <span class="li-time-chip font-mono">▶ {{ formatDuration(subtitleSnippets.get(item.row.video.id)![0].start_time_ms / 1000) }}</span>
                   </span>
                   <span class="li-path font-mono" :title="item.row.video.file_path">
                     {{ item.row.video.file_path }}
@@ -1493,7 +1576,14 @@ onUnmounted(() => {
               <div class="li-size font-mono">{{ formatFileSize(item.row.video.file_size) }}</div>
               <div class="li-actions">
                 <button class="li-btn" title="播放" @click.stop="openVideo(item.row.video)">▶</button>
-                <button class="li-btn btn-act-ai" title="AI 字幕台词" @click.stop="openVideo(item.row.video)">✨</button>
+                <button
+                  class="li-btn btn-act-ai"
+                  :class="{ 'has-ai-active': aiStatusMap.get(item.row.video.id)?.has_subtitles || aiStatusMap.get(item.row.video.id)?.has_analysis }"
+                  :title="aiStatusMap.get(item.row.video.id)?.has_analysis ? '查看 AI 智能摘要' : '打开 AI 视频智能中枢'"
+                  @click.stop="openAiDrawer(item.row.video)"
+                >
+                  ✨
+                </button>
                 <button class="li-btn btn-act-tag" title="管理标签" @click.stop="openTagModal(item.row.video)">🏷️</button>
                 <button class="li-btn btn-act-audio" title="提取音频" @click.stop="openAudioExtract(item.row.video)">🎵</button>
                 <button class="li-btn" title="定位文件" @click.stop="revealVideo(item.row.video.file_path)">📁</button>
@@ -1582,7 +1672,18 @@ onUnmounted(() => {
     <VideoPlayerModal
       :video="activePlayerVideo"
       :visible="isPlayerVisible"
+      :initial-seek-time="playerInitialSeek"
       @close="isPlayerVisible = false"
+    />
+
+    <!-- AI Video Intelligence Drawer Component -->
+    <VideoAiDrawer
+      :video="aiDrawerVideo"
+      :visible="showAiDrawer"
+      @close="showAiDrawer = false"
+      @play="handleAiDrawerPlay"
+      @tags-updated="handleAiTagsUpdated"
+      @analysis-updated="fetchAiStatusForVideos"
     />
 
     <!-- Audio Extraction Modal Component -->
@@ -2390,6 +2491,36 @@ onUnmounted(() => {
   background: rgba(37, 99, 235, 0.85);
 }
 
+.pill-ai-analysis {
+  bottom: 6px;
+  left: 6px;
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.95), rgba(99, 102, 241, 0.95));
+  box-shadow: 0 2px 8px rgba(168, 85, 247, 0.4);
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  transition: all 0.15s;
+}
+
+.pill-ai-analysis:hover {
+  filter: brightness(1.2);
+  transform: scale(1.05);
+}
+
+.pill-ai-subtitles {
+  bottom: 6px;
+  left: 6px;
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.95), rgba(124, 58, 237, 0.95));
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4);
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  transition: all 0.15s;
+}
+
+.pill-ai-subtitles:hover {
+  filter: brightness(1.2);
+  transform: scale(1.05);
+}
+
 .grid-card-info {
   padding: 0.65rem 0.75rem 0.75rem;
   display: flex;
@@ -2710,6 +2841,71 @@ onUnmounted(() => {
   max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.sub-match-time {
+  margin-left: auto;
+  font-size: 0.68rem;
+  color: #c4b5fd;
+  background: rgba(139, 92, 246, 0.25);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.li-time-chip {
+  margin-left: 0.35rem;
+  font-size: 0.68rem;
+  color: #a78bfa;
+  background: rgba(139, 92, 246, 0.25);
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+}
+
+.li-ai-badge {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.li-ai-badge.has-analysis {
+  background: rgba(168, 85, 247, 0.2);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.4);
+}
+
+.li-ai-badge.has-analysis:hover {
+  background: #a855f7;
+  color: #fff;
+}
+
+.li-ai-badge.has-subtitles {
+  background: rgba(99, 102, 241, 0.2);
+  color: #818cf8;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+}
+
+.li-ai-badge.has-subtitles:hover {
+  background: #6366f1;
+  color: #fff;
+}
+
+.card-act-btn.btn-act-ai.has-ai-active,
+.li-btn.btn-act-ai.has-ai-active {
+  background: rgba(168, 85, 247, 0.25);
+  color: #d8b4fe;
+  border-color: rgba(168, 85, 247, 0.5);
+  font-weight: 600;
+}
+
+.card-act-btn.btn-act-ai.has-ai-active:hover,
+.li-btn.btn-act-ai.has-ai-active:hover {
+  background: #a855f7;
+  color: #fff;
 }
 
 .li-btn.btn-act-ai {

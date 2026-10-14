@@ -1285,3 +1285,155 @@ pub async fn convert_video_to_compatible(
     .await
     .map_err(|e| format!("Task join error: {}", e))?
 }
+
+// ==========================================
+// AI Video Intelligence & Analysis Commands
+// ==========================================
+
+#[tauri::command]
+pub async fn get_video_ai_analysis(
+    db: State<'_, Database>,
+    video_id: i64,
+) -> Result<Option<crate::ai::summary::AiAnalysis>, String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::ai::summary::get_video_ai_analysis(&conn, video_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn generate_video_ai_analysis(
+    db: State<'_, Database>,
+    app_handle: AppHandle,
+    video_id: i64,
+    force: Option<bool>,
+) -> Result<crate::ai::summary::AiAnalysis, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data dir: {}", e))?;
+    let config = load_ai_config(&app_data_dir);
+
+    let force_regen = force.unwrap_or(false);
+
+    // 1. Check existing analysis if not forced
+    let db_clone = (*db).clone();
+    if !force_regen {
+        let existing = tokio::task::spawn_blocking(move || {
+            let conn_arc = db_clone.get_connection();
+            let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+            crate::ai::summary::get_video_ai_analysis(&conn, video_id)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+
+        if let Some(analysis) = existing {
+            return Ok(analysis);
+        }
+    }
+
+    // 2. Load subtitles and video title
+    let db_clone2 = (*db).clone();
+    let (video_title, segments) = tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone2.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        let video = crate::db::videos::get_video_by_id(&conn, video_id)?
+            .ok_or_else(|| format!("Video ID {} not found", video_id))?;
+        let segs = crate::db::subtitles::get_video_subtitles(&conn, video_id)?;
+        Ok::<(String, Vec<crate::db::subtitles::SubtitleSegment>), String>((video.file_name, segs))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    if segments.is_empty() {
+        return Err("该视频尚未提取字幕台词，请先在下方点击「AI 语音转写」后再生成内容分析。".to_string());
+    }
+
+    // 3. Generate analysis pipeline
+    let mut analysis = crate::ai::summary::generate_ai_analysis_pipeline(
+        video_id,
+        &video_title,
+        &segments,
+        &config,
+    )
+    .await?;
+
+    // 4. Save to database
+    let db_clone3 = (*db).clone();
+    let analysis_to_save = analysis.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone3.get_connection();
+        let mut conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::ai::summary::save_video_ai_analysis(&mut conn, &analysis_to_save)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    // Refresh id from db if needed
+    let db_clone4 = (*db).clone();
+    if let Ok(Ok(Some(saved))) = tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone4.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::ai::summary::get_video_ai_analysis(&conn, video_id)
+    })
+    .await
+    {
+        analysis = saved;
+    }
+
+    Ok(analysis)
+}
+
+#[tauri::command]
+pub async fn get_videos_ai_status(
+    db: State<'_, Database>,
+    video_ids: Vec<i64>,
+) -> Result<std::collections::HashMap<i64, crate::ai::summary::VideoAiStatus>, String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        crate::ai::summary::get_videos_ai_status(&conn, &video_ids)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn apply_ai_tags_to_video(
+    db: State<'_, Database>,
+    video_id: i64,
+    tags: Vec<String>,
+) -> Result<(), String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        for t in tags {
+            let t_clean = t.trim().trim_start_matches('#');
+            if t_clean.is_empty() {
+                continue;
+            }
+            let tag_id: i64 = match conn.query_row(
+                "SELECT id FROM tags WHERE name = ?1",
+                rusqlite::params![t_clean],
+                |row| row.get(0),
+            ) {
+                Ok(id) => id,
+                Err(_) => {
+                    let created = crate::db::classification::create_tag(&conn, t_clean, None)?;
+                    created.id
+                }
+            };
+            let _ = crate::db::classification::add_tag_to_video(&conn, video_id, tag_id);
+        }
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+

@@ -5,10 +5,16 @@ import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
 import SubtitleTranscriptPanel from './SubtitleTranscriptPanel.vue';
 import type { Video, SubtitleSegment, VideoCompatibilityStatus, TranscodeResult } from '../types';
 
-const props = defineProps<{
-  video: Video | null;
-  visible: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    video: Video | null;
+    visible: boolean;
+    initialSeekTime?: number;
+  }>(),
+  {
+    initialSeekTime: 0,
+  }
+);
 
 const emit = defineEmits<{
   (e: 'close'): void;
@@ -198,6 +204,10 @@ function handleTimeUpdate() {
 function handleLoadedMetadata() {
   if (!videoRef.value) return;
   duration.value = videoRef.value.duration || 0;
+  if (props.initialSeekTime && props.initialSeekTime > 0) {
+    videoRef.value.currentTime = props.initialSeekTime;
+    currentTime.value = props.initialSeekTime;
+  }
   isLoading.value = false;
   errorMessage.value = '';
 }
@@ -483,12 +493,15 @@ watch(
     if (val) {
       isLoading.value = true;
       errorMessage.value = '';
-      currentTime.value = 0;
+      currentTime.value = props.initialSeekTime || 0;
       resetModalPosition();
       fetchSubtitles();
       checkCompatibility();
       setTimeout(() => {
         if (videoRef.value && isCompatibleFormat.value) {
+          if (props.initialSeekTime && props.initialSeekTime > 0) {
+            videoRef.value.currentTime = props.initialSeekTime;
+          }
           videoRef.value.play().catch(() => {});
           isPlaying.value = true;
         }

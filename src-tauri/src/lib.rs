@@ -27,6 +27,7 @@ use commands::{
     search_subtitles_snippets, set_player_always_on_top, set_video_color_tag, start_download,
     start_full_disk_scan, system_health_check, toggle_video_star, transcribe_video,
     update_video_watch_progress, update_ytdlp, PlayerState,
+    apply_ai_tags_to_video, generate_video_ai_analysis, get_video_ai_analysis, get_videos_ai_status,
 };
 use db::Database;
 use std::path::PathBuf;
@@ -149,6 +150,10 @@ pub fn run() {
             search_subtitles_snippets,
             check_video_compatibility,
             convert_video_to_compatible,
+            get_video_ai_analysis,
+            generate_video_ai_analysis,
+            get_videos_ai_status,
+            apply_ai_tags_to_video,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

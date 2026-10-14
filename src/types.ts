@@ -323,7 +323,37 @@ export interface AiTranscriptionConfig {
   language: string;
   prompt: string;
   local_model_path: string;
+  llm_api_url?: string;
+  llm_api_key?: string;
+  llm_model?: string;
 }
+
+export interface AiTopicItem {
+  timestamp_ms: number;
+  title: string;
+  point: string;
+}
+
+export interface AiAnalysis {
+  id?: number | null;
+  video_id: number;
+  summary: string;
+  keywords: string[];
+  tags: string[];
+  topics: AiTopicItem[];
+  model_name: string;
+  created_at: number;
+}
+
+export interface VideoAiStatus {
+  video_id: number;
+  has_subtitles: boolean;
+  subtitle_count: number;
+  has_analysis: boolean;
+  summary_preview?: string | null;
+  tags: string[];
+}
+
 export interface VideoCompatibilityStatus {
   is_compatible: boolean;
   has_cached_transcode: boolean;
@@ -339,3 +369,4 @@ export interface TranscodeResult {
   remuxed: boolean;
   output_size_bytes: number;
 }
+
