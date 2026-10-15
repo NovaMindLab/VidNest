@@ -719,7 +719,14 @@ export default {
     "transcribeFailed": "Error en la transcripción de voz: {err}",
     "tagsBoundToast": "✓ ¡{count} etiquetas recomendadas vinculadas con éxito!",
     "bindTagsFailed": "Error al vincular etiquetas: {err}",
-    "noSubtitlesToExport": "No hay subtítulos disponibles para exportar"
+    "noSubtitlesToExport": "No hay subtítulos disponibles para exportar",
+    "analyzing": "Analizando...",
+    "transcribing": "Transcribiendo...",
+    "transcribeNoticeTitle": "Aviso de transcripción de voz",
+    "gotoSettings": "Configurar API / Modelo de IA",
+    "fallbackLocalSummary": "Generar resumen con motor heurístico local",
+    "metadataAnalysisTipTitle": "El análisis actual se basa en la heurística de metadatos locales",
+    "metadataAnalysisTipSub": "Para extraer subtítulos precisos frase por frase e información de diálogo más profunda, inicie la transcripción de voz en cualquier momento."
   },
   "subtitles": {
     "quickAiTranscribe": "Extraer audio de video y generar subtítulos",

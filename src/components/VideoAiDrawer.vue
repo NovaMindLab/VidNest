@@ -24,6 +24,8 @@ const isAnalyzing = ref<boolean>(false);
 const isTranscribing = ref<boolean>(false);
 const transcribeElapsed = ref<number>(0);
 let transcribeTimer: number | null = null;
+const transcribeError = ref<string>('');
+const analyzeError = ref<string>('');
 
 const searchQuery = ref<string>('');
 const toastMessage = ref<string>('');
@@ -157,16 +159,20 @@ function applyPreset(preset: 'openai' | 'deepseek' | 'groq' | 'ollama' | 'local'
 async function handleGenerateAnalysis(force: boolean = false) {
   if (!props.video?.id) return;
   isAnalyzing.value = true;
+  analyzeError.value = '';
   try {
     const res = await invoke<AiAnalysis>('generate_video_ai_analysis', {
       videoId: props.video.id,
       force,
     });
     analysis.value = res;
+    transcribeError.value = '';
     emit('analysisUpdated');
     showToast(t('ai.summaryGeneratedToast'));
   } catch (err) {
-    showToast(t('ai.summaryGenerateFailed', { err: String(err) }));
+    const msg = String(err);
+    analyzeError.value = msg;
+    showToast(t('ai.summaryGenerateFailed', { err: msg }));
   } finally {
     isAnalyzing.value = false;
   }
@@ -175,6 +181,7 @@ async function handleGenerateAnalysis(force: boolean = false) {
 async function handleTranscribeVideo() {
   if (!props.video?.id) return;
   isTranscribing.value = true;
+  transcribeError.value = '';
   transcribeElapsed.value = 0;
   if (transcribeTimer) clearInterval(transcribeTimer);
   transcribeTimer = window.setInterval(() => {
@@ -202,7 +209,9 @@ async function handleTranscribeVideo() {
       console.warn('Auto analysis error:', aErr);
     }
   } catch (err) {
-    showToast(t('ai.transcribeFailed', { err: String(err) }));
+    const msg = String(err);
+    transcribeError.value = msg;
+    showToast(t('ai.transcribeFailed', { err: msg }));
   } finally {
     isTranscribing.value = false;
     if (transcribeTimer) {
@@ -277,6 +286,9 @@ watch(
   () => [props.visible, props.video?.id],
   ([visible]) => {
     if (visible && props.video) {
+      activeTab.value = 'insights';
+      transcribeError.value = '';
+      analyzeError.value = '';
       loadData();
       loadAiConfig();
     }
@@ -301,7 +313,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div v-if="visible" class="ai-drawer-backdrop" @click="emit('close')">
+  <Teleport to="body">
+    <div v-if="visible" class="ai-drawer-backdrop" @click="emit('close')">
     <div class="ai-drawer-panel" @click.stop>
       <!-- Drawer Header -->
       <div class="drawer-header">
@@ -396,6 +409,25 @@ onUnmounted(() => {
 
           <!-- Analysis Exists -->
           <template v-if="analysis">
+            <!-- Tip Banner when analysis exists but speech not yet transcribed -->
+            <div v-if="subtitles.length === 0" class="subtitles-transcribe-tip-banner">
+              <div class="tip-left">
+                <span class="tip-spark">💡</span>
+                <div class="tip-texts">
+                  <span class="tip-title">{{ t('ai.metadataAnalysisTipTitle') }}</span>
+                  <span class="tip-sub">{{ t('ai.metadataAnalysisTipSub') }}</span>
+                </div>
+              </div>
+              <button
+                class="tip-cta-btn"
+                :disabled="isTranscribing"
+                @click="handleTranscribeVideo"
+              >
+                <span v-if="isTranscribing" class="btn-spinner mini"></span>
+                <span>{{ isTranscribing ? t('ai.transcribing') : t('ai.startTranscribeBtn') }}</span>
+              </button>
+            </div>
+
             <!-- Summary Card -->
             <div class="card-glass summary-card">
               <div class="card-sec-header">
@@ -509,20 +541,42 @@ onUnmounted(() => {
               {{ subtitles.length > 0 ? t('ai.noAnalysisDesc') : t('ai.noTranscriptDesc') }}
             </p>
 
+            <!-- Inline Error & Setup Guidance Banner if Transcribe or Analyze Failed -->
+            <div v-if="transcribeError" class="transcribe-err-banner">
+              <div class="err-header">
+                <span class="err-icon">⚠️</span>
+                <span class="err-title">{{ t('ai.transcribeNoticeTitle') }}</span>
+              </div>
+              <p class="err-desc">{{ transcribeError }}</p>
+              <div class="err-actions">
+                <button class="btn-config-ai" @click="activeTab = 'settings'">
+                  ⚙️ {{ t('ai.gotoSettings') }}
+                </button>
+                <button class="btn-local-fallback" @click="handleGenerateAnalysis(true)">
+                  ✨ {{ t('ai.fallbackLocalSummary') }}
+                </button>
+              </div>
+            </div>
+
             <div class="empty-prompt-actions">
+              <!-- Instant local analysis (100% works, zero setup) -->
               <button
-                v-if="subtitles.length > 0"
                 class="cta-primary-btn"
+                :disabled="isAnalyzing"
                 @click="handleGenerateAnalysis(false)"
               >
-                {{ t('ai.generateSummaryBtn') }}
+                <span v-if="isAnalyzing" class="btn-spinner mini"></span>
+                <span>{{ isAnalyzing ? t('ai.analyzing') : t('ai.generateSummaryBtn') }}</span>
               </button>
+
+              <!-- Speech transcription -->
               <button
-                v-else
-                class="cta-primary-btn"
+                class="cta-secondary-btn"
+                :disabled="isTranscribing"
                 @click="handleTranscribeVideo"
               >
-                {{ t('ai.startTranscribeBtn') }}
+                <span v-if="isTranscribing" class="btn-spinner mini"></span>
+                <span>{{ isTranscribing ? t('ai.transcribing') : t('ai.startTranscribeBtn') }}</span>
               </button>
             </div>
           </div>
@@ -596,9 +650,32 @@ onUnmounted(() => {
           <div v-else-if="subtitles.length === 0" class="no-sub-notice">
             <span class="ic">🎙️</span>
             <p>{{ t('ai.noSubNotice') }}</p>
-            <button class="cta-primary-btn compact" @click="handleTranscribeVideo">
-              {{ t('ai.startTranscribeNow') }}
-            </button>
+
+            <!-- Inline Error & Setup Guidance Banner if Transcribe Failed -->
+            <div v-if="transcribeError" class="transcribe-err-banner">
+              <div class="err-header">
+                <span class="err-icon">⚠️</span>
+                <span class="err-title">{{ t('ai.transcribeNoticeTitle') }}</span>
+              </div>
+              <p class="err-desc">{{ transcribeError }}</p>
+              <div class="err-actions">
+                <button class="btn-config-ai" @click="activeTab = 'settings'">
+                  ⚙️ {{ t('ai.gotoSettings') }}
+                </button>
+                <button class="btn-local-fallback" @click="handleGenerateAnalysis(true)">
+                  ✨ {{ t('ai.fallbackLocalSummary') }}
+                </button>
+              </div>
+            </div>
+
+            <div class="no-sub-actions">
+              <button class="cta-primary-btn compact" :disabled="isTranscribing" @click="handleTranscribeVideo">
+                {{ isTranscribing ? t('ai.transcribing') : t('ai.startTranscribeNow') }}
+              </button>
+              <button class="cta-secondary-btn compact" @click="activeTab = 'insights'">
+                ✨ {{ t('ai.generateSummaryBtn') }}
+              </button>
+            </div>
           </div>
 
           <div v-else class="no-sub-notice">
@@ -733,13 +810,14 @@ onUnmounted(() => {
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <style scoped>
 .ai-drawer-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 999;
+  z-index: 99999;
   background: rgba(0, 0, 0, 0.65);
   backdrop-filter: blur(8px);
   display: flex;
@@ -1235,6 +1313,193 @@ onUnmounted(() => {
 .cta-primary-btn.compact {
   padding: 0.4rem 0.8rem;
   font-size: 0.78rem;
+}
+
+.cta-secondary-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #cbd5e1;
+  border-radius: 8px;
+  padding: 0.65rem 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: all 0.18s ease;
+}
+
+.cta-secondary-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #ffffff;
+  transform: translateY(-2px);
+}
+
+.cta-secondary-btn:disabled,
+.cta-primary-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.cta-secondary-btn.compact {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.78rem;
+}
+
+.empty-prompt-actions,
+.no-sub-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+/* Transcribe Error Banner */
+.transcribe-err-banner {
+  margin: 1.25rem auto;
+  max-width: 500px;
+  padding: 0.85rem 1rem;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 8px;
+  text-align: left;
+}
+
+.transcribe-err-banner .err-header {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 600;
+  color: #fca5a5;
+  font-size: 0.82rem;
+  margin-bottom: 0.35rem;
+}
+
+.transcribe-err-banner .err-desc {
+  font-size: 0.76rem;
+  color: #cbd5e1;
+  line-height: 1.45;
+  margin: 0 0 0.75rem 0;
+  word-break: break-word;
+}
+
+.transcribe-err-banner .err-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.transcribe-err-banner .btn-config-ai {
+  background: rgba(99, 102, 241, 0.25);
+  border: 1px solid rgba(99, 102, 241, 0.5);
+  color: #c7d2fe;
+  border-radius: 6px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.transcribe-err-banner .btn-config-ai:hover {
+  background: rgba(99, 102, 241, 0.45);
+  color: #ffffff;
+}
+
+.transcribe-err-banner .btn-local-fallback {
+  background: rgba(168, 85, 247, 0.25);
+  border: 1px solid rgba(168, 85, 247, 0.5);
+  color: #e9d5ff;
+  border-radius: 6px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.transcribe-err-banner .btn-local-fallback:hover {
+  background: rgba(168, 85, 247, 0.45);
+  color: #ffffff;
+}
+
+/* Tip Banner when metadata analysis exists but subtitles absent */
+.subtitles-transcribe-tip-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  background: linear-gradient(90deg, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.1) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 8px;
+}
+
+.subtitles-transcribe-tip-banner .tip-left {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.subtitles-transcribe-tip-banner .tip-spark {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.subtitles-transcribe-tip-banner .tip-texts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.subtitles-transcribe-tip-banner .tip-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #e0e7ff;
+}
+
+.subtitles-transcribe-tip-banner .tip-sub {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  line-height: 1.35;
+}
+
+.subtitles-transcribe-tip-banner .tip-cta-btn {
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: all 0.18s ease;
+}
+
+.subtitles-transcribe-tip-banner .tip-cta-btn:hover:not(:disabled) {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+}
+
+.btn-spinner.mini {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
 }
 
 /* Transcript Tab */

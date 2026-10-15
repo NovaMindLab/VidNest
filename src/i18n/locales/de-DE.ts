@@ -719,7 +719,14 @@ export default {
     "transcribeFailed": "Sprachtranskription fehlgeschlagen: {err}",
     "tagsBoundToast": "✓ {count} empfohlene Tags erfolgreich an das Video gebunden!",
     "bindTagsFailed": "Tags konnten nicht gebunden werden: {err}",
-    "noSubtitlesToExport": "Keine Untertitel zum Exportieren verfügbar"
+    "noSubtitlesToExport": "Keine Untertitel zum Exportieren verfügbar",
+    "analyzing": "Wird analysiert...",
+    "transcribing": "Wird transkribiert...",
+    "transcribeNoticeTitle": "Hinweis zur Sprachverarbeitung",
+    "gotoSettings": "KI-API / Modell konfigurieren",
+    "fallbackLocalSummary": "Zusammenfassung mit lokaler Heuristik-Engine erstellen",
+    "metadataAnalysisTipTitle": "Aktuelle Zusammenfassung basiert auf lokaler Metadaten-Heuristik",
+    "metadataAnalysisTipSub": "Um satzgenaue Untertitel und tiefere Dialogeinblicke zu erhalten, können Sie jederzeit die Sprachtranskription starten."
   },
   "subtitles": {
     "quickAiTranscribe": "Audio extrahieren und Untertitel generieren",

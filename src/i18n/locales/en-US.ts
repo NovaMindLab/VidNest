@@ -719,7 +719,14 @@ export default {
     "transcribeFailed": "Speech transcription failed: {err}",
     "tagsBoundToast": "✓ Successfully bound {count} recommended tags to video!",
     "bindTagsFailed": "Failed to bind tags: {err}",
-    "noSubtitlesToExport": "No subtitle content available to export"
+    "noSubtitlesToExport": "No subtitle content available to export",
+    "analyzing": "Analyzing...",
+    "transcribing": "Transcribing...",
+    "transcribeNoticeTitle": "Speech Transcription Notice",
+    "gotoSettings": "Configure AI API / Engine",
+    "fallbackLocalSummary": "Generate Summary with Local Heuristic Engine",
+    "metadataAnalysisTipTitle": "Current summary is based on local metadata heuristic analysis",
+    "metadataAnalysisTipSub": "To extract sentence-level subtitles and deeper dialogue insights, start speech transcription at any time."
   },
   "subtitles": {
     "quickAiTranscribe": "Extract video audio and generate subtitles",

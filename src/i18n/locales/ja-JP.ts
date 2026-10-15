@@ -719,7 +719,14 @@ export default {
     "transcribeFailed": "音声文字起こし失敗: {err}",
     "tagsBoundToast": "✓ {count}個のおすすめタグを動画にバインドしました！",
     "bindTagsFailed": "タグのバインドに失敗しました: {err}",
-    "noSubtitlesToExport": "エクスポート可能な字幕がありません"
+    "noSubtitlesToExport": "エクスポート可能な字幕がありません",
+    "analyzing": "分析中...",
+    "transcribing": "文字起こし中...",
+    "transcribeNoticeTitle": "音声文字起こしのヒント",
+    "gotoSettings": "AIインターフェース/モデルを設定",
+    "fallbackLocalSummary": "内蔵スマートエンジンで要約を生成",
+    "metadataAnalysisTipTitle": "現在はメタデータに基づく高速ローカル分析です",
+    "metadataAnalysisTipSub": "ミリ秒単位の台詞字幕や詳細な対话インサイトを取得するには、いつでも音声文字起こしを開始できます。"
   },
   "subtitles": {
     "quickAiTranscribe": "音声を抽出して字幕を生成",

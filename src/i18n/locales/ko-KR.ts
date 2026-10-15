@@ -719,7 +719,14 @@ export default {
     "transcribeFailed": "음성 변환 실패: {err}",
     "tagsBoundToast": "✓ 추천 태그 {count}개가 동영상에 성공적으로 연결되었습니다!",
     "bindTagsFailed": "태그 연결 실패: {err}",
-    "noSubtitlesToExport": "내보낼 자막 콘텐츠가 없습니다"
+    "noSubtitlesToExport": "내보낼 자막 콘텐츠가 없습니다",
+    "analyzing": "분석 중...",
+    "transcribing": "텍스트 변환 중...",
+    "transcribeNoticeTitle": "음성 변환 알림",
+    "gotoSettings": "AI API / 모델 설정으로 이동",
+    "fallbackLocalSummary": "내장 로컬 엔진으로 요약 생성",
+    "metadataAnalysisTipTitle": "현재 메타데이터 기반 로컬 빠른 분석 결과입니다",
+    "metadataAnalysisTipSub": "정밀한 문장별 대사 자막과 심층 대화 통찰력을 얻으려면 언제든지 음성 변환을 시작할 수 있습니다。"
   },
   "subtitles": {
     "quickAiTranscribe": "비디오 오디오 추출 및 자막 생성",

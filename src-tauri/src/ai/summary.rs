@@ -335,13 +335,10 @@ pub fn get_videos_ai_status(
 pub async fn generate_ai_analysis_pipeline(
     video_id: i64,
     video_title: &str,
+    video_duration_ms: Option<i64>,
     segments: &[SubtitleSegment],
     config: &AiTranscriptionConfig,
 ) -> Result<AiAnalysis, String> {
-    if segments.is_empty() {
-        return Err("该视频尚未提取字幕台词，请先执行 AI 语音转写后再生成分析".to_string());
-    }
-
     // 1. Check if LLM API is available and try calling it
     let llm_url = config
         .llm_api_url
@@ -366,7 +363,7 @@ pub async fn generate_ai_analysis_pipeline(
             .filter(|s| !s.trim().is_empty())
             .unwrap_or("gpt-4o-mini");
 
-        match call_llm_summarize(api_base, api_key, model, video_title, segments).await {
+        match call_llm_summarize(api_base, api_key, model, video_title, video_duration_ms, segments).await {
             Ok(mut analysis) => {
                 analysis.video_id = video_id;
                 analysis.created_at = now_millis();
@@ -381,8 +378,13 @@ pub async fn generate_ai_analysis_pipeline(
         }
     }
 
-    // 2. Fallback: High-quality local extractive NLP summarizer
-    Ok(generate_local_extractive_analysis(video_id, video_title, segments))
+    // 2. Fallback: High-quality local extractive NLP summarizer (zero-config, 100% offline!)
+    Ok(generate_local_extractive_analysis(
+        video_id,
+        video_title,
+        video_duration_ms,
+        segments,
+    ))
 }
 
 /// Fallback local NLP heuristic summarizer:
@@ -392,6 +394,7 @@ pub async fn generate_ai_analysis_pipeline(
 pub fn generate_local_extractive_analysis(
     video_id: i64,
     video_title: &str,
+    video_duration_ms: Option<i64>,
     segments: &[SubtitleSegment],
 ) -> AiAnalysis {
     let stopwords: HashSet<&'static str> = [
@@ -405,31 +408,61 @@ pub fn generate_local_extractive_analysis(
         "say", "her", "she", "or", "will", "my", "one", "all", "would", "there", "their", "what",
         "so", "up", "out", "if", "about", "who", "get", "which", "go", "me", "when", "make", "can",
         "like", "time", "no", "just", "him", "know", "take", "people", "into", "year", "your", "good",
+        "1080p", "720p", "4k", "2k", "x264", "x265", "hevc", "aac", "mp3", "h264", "bluray", "web-dl",
+        "remux", "hdr", "10bit", "dvdrip", "hdrip", "bdrip", "mp4", "mkv", "avi", "mov", "flv", "wmv",
     ]
     .iter()
     .cloned()
     .collect();
 
-    // 1. Word frequency extraction
+    let clean_title = video_title
+        .rsplit_once('.')
+        .map(|(t, _)| t)
+        .unwrap_or(video_title);
+
     let mut word_counts: HashMap<String, usize> = HashMap::new();
-    let mut full_text = String::new();
+    let total_segs = segments.len();
 
-    for seg in segments {
-        let text = seg.content.trim();
-        if text.is_empty() {
-            continue;
-        }
-        if !full_text.is_empty() {
-            full_text.push(' ');
-        }
-        full_text.push_str(text);
+    if total_segs > 0 {
+        // 1. Word frequency extraction from subtitle dialogue
+        for seg in segments {
+            let text = seg.content.trim();
+            if text.is_empty() {
+                continue;
+            }
 
-        // Simple tokenization: Chinese 2-4 character combinations and English words
-        let chars: Vec<char> = text.chars().collect();
+            let chars: Vec<char> = text.chars().collect();
+            let len = chars.len();
+
+            // 2-gram to 3-gram for Chinese
+            for n in 2..=3 {
+                for i in 0..len {
+                    if i + n <= len {
+                        let gram: String = chars[i..i + n].iter().collect();
+                        let gram_lower = gram.to_lowercase();
+                        if !stopwords.contains(gram_lower.as_str())
+                            && !gram.chars().any(|c| c.is_ascii_punctuation() || c.is_whitespace() || is_zh_punct(c))
+                        {
+                            *word_counts.entry(gram).or_insert(0) += 1;
+                        }
+                    }
+                }
+            }
+
+            // English words
+            for word in text.split(|c: char| !c.is_alphanumeric()) {
+                let w = word.trim().to_lowercase();
+                if w.len() >= 3 && !stopwords.contains(w.as_str()) {
+                    *word_counts.entry(w).or_insert(0) += 1;
+                }
+            }
+        }
+    } else {
+        // Fallback: extract keywords and tokens from cleaned video title
+        let chars: Vec<char> = clean_title.chars().collect();
         let len = chars.len();
 
-        // 2-gram to 3-gram for Chinese
-        for n in 2..=3 {
+        for n in 2..=4 {
             for i in 0..len {
                 if i + n <= len {
                     let gram: String = chars[i..i + n].iter().collect();
@@ -443,27 +476,33 @@ pub fn generate_local_extractive_analysis(
             }
         }
 
-        // English words
-        for word in text.split(|c: char| !c.is_alphanumeric()) {
+        for word in clean_title.split(|c: char| !c.is_alphanumeric()) {
             let w = word.trim().to_lowercase();
-            if w.len() >= 3 && !stopwords.contains(w.as_str()) {
+            if w.len() >= 2 && !stopwords.contains(w.as_str()) {
                 *word_counts.entry(w).or_insert(0) += 1;
             }
         }
     }
 
-    // Rank top keywords (occurring >= 2 times or top sorted)
+    // Rank top keywords
     let mut sorted_words: Vec<(String, usize)> = word_counts.into_iter().collect();
-    sorted_words.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.len().cmp(&b.0.len())));
+    sorted_words.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| b.0.len().cmp(&a.0.len())));
 
-    let keywords: Vec<String> = sorted_words
+    let mut keywords: Vec<String> = sorted_words
         .iter()
         .map(|(w, _)| w.clone())
         .take(6)
         .collect();
 
+    if keywords.is_empty() {
+        if clean_title.chars().count() >= 2 {
+            keywords.push(clean_title.to_string());
+        } else {
+            keywords.push("视频内容".to_string());
+        }
+    }
+
     // 2. Timeline cluster & topic key takeaways
-    let total_segs = segments.len();
     let mut topics = Vec::new();
 
     if total_segs > 0 {
@@ -471,7 +510,6 @@ pub fn generate_local_extractive_analysis(
         let last_seg = &segments[total_segs - 1];
         let total_duration_ms = (last_seg.end_time_ms - first_seg.start_time_ms).max(1000);
 
-        // Determine number of topics (3 to 6)
         let num_topics = if total_duration_ms > 15 * 60 * 1000 {
             5
         } else if total_duration_ms > 5 * 60 * 1000 {
@@ -535,15 +573,55 @@ pub fn generate_local_extractive_analysis(
                 point: best_seg.content.trim().to_string(),
             });
         }
+    } else {
+        // Generate topics based on video duration milestone percentages
+        let dur_ms = video_duration_ms.unwrap_or(0);
+        let kw_sample = keywords.first().cloned().unwrap_or_else(|| clean_title.to_string());
+        let kw_sample2 = keywords.get(1).cloned().unwrap_or_else(|| kw_sample.clone());
+
+        if dur_ms >= 60_000 {
+            topics.push(AiTopicItem {
+                timestamp_ms: 0,
+                title: "开篇与内容导引".to_string(),
+                point: format!("视频起始位置，引入《{}》核心议题与场景背景", clean_title),
+            });
+            topics.push(AiTopicItem {
+                timestamp_ms: dur_ms / 4,
+                title: "核心主题展开".to_string(),
+                point: format!("重点推进，深入呈现「{}」相关内容", kw_sample),
+            });
+            topics.push(AiTopicItem {
+                timestamp_ms: dur_ms / 2,
+                title: "重点细节与演示".to_string(),
+                point: format!("关键展示，围绕「{}」核心细节展开演示与深入剖析", kw_sample2),
+            });
+            topics.push(AiTopicItem {
+                timestamp_ms: (dur_ms * 3) / 4,
+                title: "总结回顾与尾声".to_string(),
+                point: "全片重点回顾，核心要点总结与收尾片段".to_string(),
+            });
+        } else if dur_ms > 0 {
+            topics.push(AiTopicItem {
+                timestamp_ms: 0,
+                title: "视频精彩开场".to_string(),
+                point: format!("视频起始位置，快速引入《{}》", clean_title),
+            });
+            topics.push(AiTopicItem {
+                timestamp_ms: dur_ms / 2,
+                title: "核心亮点展现".to_string(),
+                point: format!("精彩高光推进，展示「{}」核心细节", kw_sample),
+            });
+        } else {
+            topics.push(AiTopicItem {
+                timestamp_ms: 0,
+                title: "视频主体全貌".to_string(),
+                point: format!("视频起始片段与《{}》核心画面呈现", clean_title),
+            });
+        }
     }
 
     // 3. Build summary
-    let clean_title = video_title
-        .rsplit_once('.')
-        .map(|(t, _)| t)
-        .unwrap_or(video_title);
-
-    let summary = if !topics.is_empty() {
+    let summary = if total_segs > 0 {
         let topic_summary = topics
             .iter()
             .take(3)
@@ -565,7 +643,21 @@ pub fn generate_local_extractive_analysis(
             )
         }
     } else {
-        format!("本视频《{}》共包含 {} 句对话台词。", clean_title, total_segs)
+        let dur_ms = video_duration_ms.unwrap_or(0);
+        let kw_text = keywords.iter().take(3).cloned().collect::<Vec<_>>().join("、");
+        if dur_ms > 0 {
+            let dur_sec = dur_ms / 1000;
+            let dur_str = format!("{:02}:{:02}", dur_sec / 60, dur_sec % 60);
+            format!(
+                "本视频《{}》（时长 {}）聚焦于「{}」等核心要点。VidNest 本地智能分析引擎已根据文件特征与元数据生成全局概览与时间轴节点。若需提取精确到毫秒的逐句对白台词，可点击下方「🎙️ 语音转写台词」进行全文声学识别。",
+                clean_title, dur_str, kw_text
+            )
+        } else {
+            format!(
+                "本视频《{}》聚焦于「{}」等核心要点。VidNest 本地智能分析引擎已根据文件特征与元数据完成快速分析。若需提取精确到毫秒的逐句对白台词，可点击下方「🎙️ 语音转写台词」进行全文声学识别。",
+                clean_title, kw_text
+            )
+        }
     };
 
     // 4. Generate recommended tags
@@ -582,6 +674,12 @@ pub fn generate_local_extractive_analysis(
         tags.push("精选视频".to_string());
     }
 
+    let model_name = if total_segs > 0 {
+        "内置智能分析引擎".to_string()
+    } else {
+        "内置智能分析引擎 (本地元数据)".to_string()
+    };
+
     AiAnalysis {
         id: None,
         video_id,
@@ -589,7 +687,7 @@ pub fn generate_local_extractive_analysis(
         keywords,
         tags,
         topics,
-        model_name: "内置智能分析引擎".to_string(),
+        model_name,
         created_at: now_millis(),
     }
 }
@@ -656,33 +754,57 @@ async fn call_llm_summarize(
     api_key: &str,
     model: &str,
     video_title: &str,
+    video_duration_ms: Option<i64>,
     segments: &[SubtitleSegment],
 ) -> Result<AiAnalysis, String> {
-    // Format transcript with timestamps
-    let mut transcript_lines = Vec::new();
-    for seg in segments.iter().take(300) {
-        let sec = seg.start_time_ms / 1000;
-        let mm = sec / 60;
-        let ss = sec % 60;
-        transcript_lines.push(format!("[{:02}:{:02}] {}", mm, ss, seg.content.trim()));
-    }
-    let transcript_text = transcript_lines.join("\n");
+    let prompt = if segments.is_empty() {
+        let dur_hint = if let Some(d) = video_duration_ms {
+            let sec = d / 1000;
+            format!("，时长约 {} 分 {} 秒", sec / 60, sec % 60)
+        } else {
+            String::new()
+        };
+        format!(
+            "你是一个专业的本地视频内容智能分析助手。根据以下视频的文件名和基本信息{}，推测并生成该视频的内容概述、阶段性核心看点时间轴（使用合理的相对时间戳毫秒数）与分类标签。\n\n\
+            【视频标题】: {}\n\n\
+            请务必仅返回符合以下 JSON 结构的纯 JSON 文本（不要包含多余文字）：\n\
+            {{\n  \
+              \"summary\": \"1至2句视频全局核心概述与可能内容介绍\",\n  \
+              \"keywords\": [\"关键词1\", \"关键词2\", \"关键词3\"],\n  \
+              \"tags\": [\"分类标签1\", \"分类标签2\"],\n  \
+              \"topics\": [\n    \
+                {{\"timestamp_ms\": 0, \"title\": \"阶段小标题\", \"point\": \"该段落核心内容点\"}}\n  \
+              ]\n\
+            }}",
+            dur_hint, video_title
+        )
+    } else {
+        // Format transcript with timestamps
+        let mut transcript_lines = Vec::new();
+        for seg in segments.iter().take(300) {
+            let sec = seg.start_time_ms / 1000;
+            let mm = sec / 60;
+            let ss = sec % 60;
+            transcript_lines.push(format!("[{:02}:{:02}] {}", mm, ss, seg.content.trim()));
+        }
+        let transcript_text = transcript_lines.join("\n");
 
-    let prompt = format!(
-        "你是一个专业的本地视频内容智能分析助手。根据以下视频的标题与字幕时间轴，生成视频的内容概述、核心看点时间轴与分类标签。\n\n\
-        【视频标题】: {}\n\n\
-        【字幕时间轴台词】:\n{}\n\n\
-        请务必仅返回符合以下 JSON 结构的纯 JSON 文本（不要包含多余文字）：\n\
-        {{\n  \
-          \"summary\": \"1至2句视频全局核心概述\",\n  \
-          \"keywords\": [\"关键词1\", \"关键词2\", \"关键词3\"],\n  \
-          \"tags\": [\"分类标签1\", \"分类标签2\"],\n  \
-          \"topics\": [\n    \
-            {{\"timestamp_ms\": 0, \"title\": \"阶段小标题\", \"point\": \"该段落核心内容点\"}}\n  \
-          ]\n\
-        }}",
-        video_title, transcript_text
-    );
+        format!(
+            "你是一个专业的本地视频内容智能分析助手。根据以下视频的标题与字幕时间轴，生成视频的内容概述、核心看点时间轴与分类标签。\n\n\
+            【视频标题】: {}\n\n\
+            【字幕时间轴台词】:\n{}\n\n\
+            请务必仅返回符合以下 JSON 结构的纯 JSON 文本（不要包含多余文字）：\n\
+            {{\n  \
+              \"summary\": \"1至2句视频全局核心概述\",\n  \
+              \"keywords\": [\"关键词1\", \"关键词2\", \"关键词3\"],\n  \
+              \"tags\": [\"分类标签1\", \"分类标签2\"],\n  \
+              \"topics\": [\n    \
+                {{\"timestamp_ms\": 0, \"title\": \"阶段小标题\", \"point\": \"该段落核心内容点\"}}\n  \
+              ]\n\
+            }}",
+            video_title, transcript_text
+        )
+    };
 
     let endpoint = if api_base.ends_with('/') {
         format!("{}chat/completions", api_base)
@@ -851,11 +973,32 @@ mod tests {
             },
         ];
 
-        let analysis = generate_local_extractive_analysis(1, "VidNest_Intro.mp4", &segs);
+        let analysis = generate_local_extractive_analysis(1, "VidNest_Intro.mp4", Some(15000), &segs);
         assert!(!analysis.summary.is_empty());
         assert!(!analysis.topics.is_empty());
         assert!(!analysis.tags.is_empty());
         assert_eq!(analysis.video_id, 1);
+        assert_eq!(analysis.model_name, "内置智能分析引擎");
+    }
+
+    #[test]
+    fn test_local_extractive_analysis_without_subtitles() {
+        let segs: Vec<SubtitleSegment> = Vec::new();
+        let analysis = generate_local_extractive_analysis(
+            2,
+            "2024_VidNest_AI产品发布会与架构演进_1080p.mp4",
+            Some(120_000),
+            &segs,
+        );
+        assert!(!analysis.summary.is_empty());
+        assert!(!analysis.topics.is_empty());
+        assert!(!analysis.tags.is_empty());
+        assert_eq!(analysis.video_id, 2);
+        assert_eq!(analysis.model_name, "内置智能分析引擎 (本地元数据)");
+        // Topics should have 4 milestone sections for 120s video
+        assert_eq!(analysis.topics.len(), 4);
+        assert_eq!(analysis.topics[0].timestamp_ms, 0);
+        assert_eq!(analysis.topics[1].timestamp_ms, 30_000);
     }
 
     #[test]

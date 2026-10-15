@@ -719,7 +719,14 @@ export default {
     "transcribeFailed": "语音转写失败: {err}",
     "tagsBoundToast": "✓ 已将 {count} 个推荐标签成功绑定至该视频！",
     "bindTagsFailed": "绑定标签失败: {err}",
-    "noSubtitlesToExport": "暂无字幕内容可导出"
+    "noSubtitlesToExport": "暂无字幕内容可导出",
+    "analyzing": "分析中...",
+    "transcribing": "转写中...",
+    "transcribeNoticeTitle": "语音转写提示",
+    "gotoSettings": "前往配置 AI 接口/模型",
+    "fallbackLocalSummary": "改用内置智能引擎生成摘要",
+    "metadataAnalysisTipTitle": "当前为基于元数据的快速智能分析",
+    "metadataAnalysisTipSub": "如需提取逐句台词与更高精度对话看点，可随时启动语音转写。"
   },
   "subtitles": {
     "quickAiTranscribe": "提取视频音频并生成台词",

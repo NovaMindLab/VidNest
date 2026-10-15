@@ -1336,27 +1336,25 @@ pub async fn generate_video_ai_analysis(
         }
     }
 
-    // 2. Load subtitles and video title
+    // 2. Load subtitles, video title and duration
     let db_clone2 = (*db).clone();
-    let (video_title, segments) = tokio::task::spawn_blocking(move || {
+    let (video_title, video_duration_ms, segments) = tokio::task::spawn_blocking(move || {
         let conn_arc = db_clone2.get_connection();
         let conn = conn_arc.lock().map_err(|e| e.to_string())?;
         let video = crate::db::videos::get_video_by_id(&conn, video_id)?
             .ok_or_else(|| format!("Video ID {} not found", video_id))?;
         let segs = crate::db::subtitles::get_video_subtitles(&conn, video_id)?;
-        Ok::<(String, Vec<crate::db::subtitles::SubtitleSegment>), String>((video.file_name, segs))
+        let dur_ms = video.duration.map(|d| (d * 1000.0) as i64);
+        Ok::<(String, Option<i64>, Vec<crate::db::subtitles::SubtitleSegment>), String>((video.file_name, dur_ms, segs))
     })
     .await
     .map_err(|e| e.to_string())??;
 
-    if segments.is_empty() {
-        return Err("该视频尚未提取字幕台词，请先在下方点击「AI 语音转写」后再生成内容分析。".to_string());
-    }
-
-    // 3. Generate analysis pipeline
+    // 3. Generate analysis pipeline (works smoothly with or without subtitles)
     let mut analysis = crate::ai::summary::generate_ai_analysis_pipeline(
         video_id,
         &video_title,
+        video_duration_ms,
         &segments,
         &config,
     )
