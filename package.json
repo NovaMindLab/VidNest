@@ -1,7 +1,7 @@
 {
   "name": "local-video-intelligence",
   "private": true,
-  "version": "2.9.1",
+  "version": "2.9.2",
   "type": "module",
   "scripts": {
     "dev": "node scripts/run-node.cjs vite",

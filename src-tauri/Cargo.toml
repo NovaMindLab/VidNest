@@ -1,6 +1,6 @@
 [package]
 name = "local-video-intelligence"
-version = "2.9.1"
+version = "2.9.2"
 description = "Local Video Intelligence - Open-source local AI video management tool"
 authors = ["Local Video Intelligence Team"]
 edition = "2021"
