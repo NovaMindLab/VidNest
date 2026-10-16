@@ -1088,16 +1088,39 @@ onUnmounted(() => {
 <style scoped>
 .ytd-container {
   width: 100%;
-  min-height: 100vh;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
   background-color: #f9fafb;
   color: #111827;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   padding: 30px 24px 60px;
   box-sizing: border-box;
+  scroll-behavior: smooth;
+}
+
+.ytd-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.ytd-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ytd-container::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+.ytd-container::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
 }
 
 .ytd-container.standalone-mode {
-  padding: 20px 24px;
+  height: 100vh;
+  padding: 20px 24px 60px;
 }
 
 /* Topbar */

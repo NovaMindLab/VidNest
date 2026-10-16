@@ -147,7 +147,13 @@ pub fn extract_audio_for_whisper(
 
     let output = cmd
         .output()
-        .map_err(|e| format!("Failed to execute ffmpeg for audio extraction: {}", e))?;
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                "未找到 FFmpeg 组件（系统 PATH 或 bin 目录未找到 ffmpeg 可执行文件）。请确保已安装 FFmpeg，无法从视频抽取音频。".to_string()
+            } else {
+                format!("Failed to execute ffmpeg for audio extraction: {}", e)
+            }
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -435,6 +441,12 @@ pub async fn transcribe_video_pipeline(
 
     // 3. Dispatch to selected engine
     let segments_res = if config.engine == "api" {
+        let is_local_api = config.api_url.contains("localhost")
+            || config.api_url.contains("127.0.0.1")
+            || config.api_url.contains("0.0.0.0");
+        if config.api_key.trim().is_empty() && !is_local_api {
+            return Err("未配置 API Key。如果您使用的是云端 AI 接口（如 OpenAI / DeepSeek / Groq），请在配置弹窗中填入 API Key；或者如果是本地免鉴权服务（如 Ollama），请填入本地服务地址。".to_string());
+        }
         transcribe_via_api(&temp_wav, video_id, config).await
     } else {
         // Local engine
@@ -446,7 +458,7 @@ pub async fn transcribe_video_pipeline(
                 if !config.api_key.trim().is_empty() {
                     transcribe_via_api(&temp_wav, video_id, config).await
                 } else {
-                    Err("未检测到本地 whisper-cli 内核。您可以在设置中配置 API 转录模式（如本地 Ollama/Faster-Whisper 或云端 API），或在 app_data/bin 目录下放置 whisper-cli 可执行文件。".to_string())
+                    Err("未检测到本地 whisper-cli 内核。您可以在设置中配置兼容的 API 转写模式（如 OpenAI / DeepSeek / Groq 或本地 Ollama），或在应用 bin 目录下放置 whisper-cli 可执行文件。".to_string())
                 }
             }
         }

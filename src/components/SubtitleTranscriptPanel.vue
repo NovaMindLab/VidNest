@@ -38,6 +38,9 @@ const toastMessage = ref<string>('');
 let toastTimeout: number | null = null;
 
 const showConfigModal = ref<boolean>(false);
+const transcribeError = ref<string>('');
+const modalError = ref<string>('');
+
 const aiConfig = ref<AiTranscriptionConfig>({
   engine: 'api',
   api_url: 'https://api.openai.com/v1',
@@ -53,7 +56,37 @@ function showToast(msg: string) {
   if (toastTimeout) clearTimeout(toastTimeout);
   toastTimeout = window.setTimeout(() => {
     toastMessage.value = '';
-  }, 2500);
+  }, 3500);
+}
+
+function openConfigModal() {
+  loadAiConfig();
+  modalError.value = '';
+  showConfigModal.value = true;
+}
+
+function applyPreset(provider: 'openai' | 'deepseek' | 'groq' | 'ollama' | 'local') {
+  modalError.value = '';
+  if (provider === 'openai') {
+    aiConfig.value.engine = 'api';
+    aiConfig.value.api_url = 'https://api.openai.com/v1';
+    aiConfig.value.model = 'whisper-1';
+  } else if (provider === 'deepseek') {
+    aiConfig.value.engine = 'api';
+    aiConfig.value.api_url = 'https://api.deepseek.com/v1';
+    aiConfig.value.model = 'whisper-1';
+  } else if (provider === 'groq') {
+    aiConfig.value.engine = 'api';
+    aiConfig.value.api_url = 'https://api.groq.com/openai/v1';
+    aiConfig.value.model = 'whisper-large-v3';
+  } else if (provider === 'ollama') {
+    aiConfig.value.engine = 'api';
+    aiConfig.value.api_url = 'http://localhost:11434/v1';
+    aiConfig.value.model = 'whisper';
+  } else if (provider === 'local') {
+    aiConfig.value.engine = 'local';
+    aiConfig.value.model = 'base';
+  }
 }
 
 function formatTime(ms: number): string {
@@ -122,7 +155,10 @@ watch(
 watch(
   () => props.videoId,
   () => {
+    transcribeError.value = '';
+    modalError.value = '';
     loadSubtitles();
+    loadAiConfig();
   }
 );
 
@@ -132,7 +168,32 @@ function handleSeek(seg: SubtitleSegment) {
 }
 
 async function triggerTranscription() {
-  if (!props.videoId) return;
+  if (isTranscribing.value) return;
+
+  if (!props.videoId) {
+    modalError.value = '未检测到有效视频 ID，无法执行语音识别。';
+    showToast('未检测到有效视频 ID');
+    return;
+  }
+
+  // Pre-validate cloud API key
+  if (aiConfig.value.engine === 'api') {
+    const url = (aiConfig.value.api_url || '').trim();
+    if (!url) {
+      modalError.value = '请填写 API 基础地址 (Base URL)。';
+      return;
+    }
+    const isLocal = url.includes('localhost') || url.includes('127.0.0.1') || url.includes('0.0.0.0');
+    if (!isLocal && !aiConfig.value.api_key.trim()) {
+      modalError.value = '云端 API 需要填写 API Key。如果是本地免鉴权服务（如 Ollama），请填入本地服务地址或点击上方「Ollama」预设。';
+      return;
+    }
+  }
+
+  // Close modal immediately so user sees active progress on transcript panel
+  showConfigModal.value = false;
+  modalError.value = '';
+  transcribeError.value = '';
   isTranscribing.value = true;
   transcribeMessage.value = t('ai.transcribingWhisper');
   transcribeElapsed.value = 0;
@@ -149,10 +210,12 @@ async function triggerTranscription() {
     subtitles.value = segs || [];
     emit('subtitlesUpdated', subtitles.value);
     showToast(t('subtitles.transcribeSuccess', { count: subtitles.value.length }));
-    showConfigModal.value = false;
   } catch (err) {
     console.error('Transcription error:', err);
-    showToast(t('subtitles.transcribeFailed', { err: err instanceof Error ? err.message : String(err) }));
+    const msg = err instanceof Error ? err.message : String(err);
+    transcribeError.value = msg;
+    modalError.value = msg;
+    showToast(t('subtitles.transcribeFailed', { err: msg }));
   } finally {
     isTranscribing.value = false;
     if (transcribeTimer) {
@@ -256,7 +319,7 @@ onMounted(() => {
           v-if="!isTranscribing"
           class="btn-act-sub ai-glow"
           :title="subtitles.length > 0 ? t('subtitles.reExtract') : t('subtitles.quickAiTranscribe')"
-          @click="showConfigModal = true"
+          @click="openConfigModal"
         >
           <span class="btn-ic">✨</span>
           <span>{{ subtitles.length > 0 ? t('subtitles.reExtract') : t('subtitles.aiTranscribe') }}</span>
@@ -329,6 +392,23 @@ onMounted(() => {
       </div>
     </div>
 
+    <!-- Inline Transcribe Error Banner -->
+    <div v-if="transcribeError && !isTranscribing" class="transcribe-err-card">
+      <div class="err-header">
+        <span class="err-icon">⚠️</span>
+        <span class="err-title">{{ t('ai.transcribeNoticeTitle') }}</span>
+      </div>
+      <p class="err-desc">{{ transcribeError }}</p>
+      <div class="err-actions">
+        <button class="btn-err-config" @click="openConfigModal">
+          ⚙️ {{ t('ai.gotoSettings') }}
+        </button>
+        <button class="btn-err-dismiss" @click="transcribeError = ''">
+          ✕ {{ t('common.cancel') }}
+        </button>
+      </div>
+    </div>
+
     <!-- Subtitle Segments List -->
     <div class="segments-container" :class="{ 'is-loading': isLoading }">
       <div v-if="isLoading" class="loading-state">
@@ -343,7 +423,7 @@ onMounted(() => {
         <div class="empty-ai-icon">🎙️</div>
         <h4>{{ t('subtitles.emptyPrompt') }}</h4>
         <p>{{ t('subtitles.emptyPromptDesc') }}</p>
-        <button class="btn-primary-ai" @click="showConfigModal = true">
+        <button class="btn-primary-ai" @click="openConfigModal">
           <span class="ic">✨</span> {{ t('subtitles.startExtractBtn') }}
         </button>
       </div>
@@ -397,6 +477,58 @@ onMounted(() => {
           <p class="ai-tip">
             {{ t('subtitles.modalDesc') }}
           </p>
+
+          <!-- Modal Error Banner -->
+          <div v-if="modalError" class="modal-err-banner">
+            <span>⚠️ {{ modalError }}</span>
+          </div>
+
+          <!-- Quick Provider Presets -->
+          <div class="form-group">
+            <label class="form-label">快速配置预设</label>
+            <div class="preset-pills-row">
+              <button
+                type="button"
+                class="preset-pill-btn"
+                :class="{ active: aiConfig.engine === 'api' && aiConfig.api_url.includes('openai.com') }"
+                @click="applyPreset('openai')"
+              >
+                ☁️ OpenAI
+              </button>
+              <button
+                type="button"
+                class="preset-pill-btn"
+                :class="{ active: aiConfig.engine === 'api' && aiConfig.api_url.includes('deepseek.com') }"
+                @click="applyPreset('deepseek')"
+              >
+                🐋 DeepSeek
+              </button>
+              <button
+                type="button"
+                class="preset-pill-btn"
+                :class="{ active: aiConfig.engine === 'api' && aiConfig.api_url.includes('groq.com') }"
+                @click="applyPreset('groq')"
+              >
+                ⚡ Groq (极速)
+              </button>
+              <button
+                type="button"
+                class="preset-pill-btn"
+                :class="{ active: aiConfig.engine === 'api' && aiConfig.api_url.includes('11434') }"
+                @click="applyPreset('ollama')"
+              >
+                🐳 Ollama (本地)
+              </button>
+              <button
+                type="button"
+                class="preset-pill-btn"
+                :class="{ active: aiConfig.engine === 'local' }"
+                @click="applyPreset('local')"
+              >
+                💻 本地 CLI
+              </button>
+            </div>
+          </div>
 
           <div class="form-group">
             <label class="form-label">{{ t('subtitles.enginePlan') }}</label>
@@ -491,8 +623,13 @@ onMounted(() => {
 
         <div class="ai-modal-footer">
           <button class="btn-cancel" @click="showConfigModal = false">{{ t('common.cancel') }}</button>
-          <button class="btn-confirm-ai" @click="triggerTranscription">
-            <span>{{ t('subtitles.launchBtn') }}</span>
+          <button
+            class="btn-confirm-ai"
+            :disabled="isTranscribing"
+            @click="triggerTranscription"
+          >
+            <span v-if="isTranscribing" class="spinner-small"></span>
+            <span>{{ isTranscribing ? t('ai.transcribing') + ' (' + transcribeElapsed + 's)...' : t('subtitles.launchBtn') }}</span>
           </button>
         </div>
       </div>
@@ -713,7 +850,7 @@ onMounted(() => {
   padding: 0.4rem 0.85rem;
   border-radius: 20px;
   font-size: 0.75rem;
-  z-index: 20;
+  z-index: 2000;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   white-space: nowrap;
 }
@@ -766,6 +903,73 @@ onMounted(() => {
   font-size: 0.68rem;
   color: #a78bfa;
   margin-top: 0.2rem;
+}
+
+/* Inline Transcribe Error Banner */
+.transcribe-err-card {
+  padding: 0.75rem 0.9rem;
+  margin: 0.6rem;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.transcribe-err-card .err-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #f87171;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.transcribe-err-card .err-desc {
+  margin: 0;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: #fca5a5;
+  word-break: break-all;
+}
+
+.transcribe-err-card .err-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.2rem;
+}
+
+.btn-err-config {
+  padding: 0.3rem 0.65rem;
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: #fecaca;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-err-config:hover {
+  background: rgba(239, 68, 68, 0.35);
+}
+
+.btn-err-dismiss {
+  padding: 0.3rem 0.6rem;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #9ca3af;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.btn-err-dismiss:hover {
+  color: #f3f4f6;
+  border-color: rgba(255, 255, 255, 0.25);
 }
 
 /* Segments Container */
@@ -1097,6 +1301,9 @@ onMounted(() => {
 }
 
 .btn-confirm-ai {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   padding: 0.5rem 1.1rem;
   background: linear-gradient(135deg, #6366f1, #a855f7);
   border: none;
@@ -1106,9 +1313,68 @@ onMounted(() => {
   font-weight: 500;
   cursor: pointer;
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  transition: all 0.2s ease;
 }
 
-.btn-confirm-ai:hover {
+.btn-confirm-ai:hover:not(:disabled) {
   filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.btn-confirm-ai:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  filter: none;
+  transform: none;
+}
+
+.modal-err-banner {
+  padding: 0.6rem 0.85rem;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 6px;
+  color: #fca5a5;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.preset-pills-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.preset-pill-btn {
+  padding: 0.35rem 0.65rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.preset-pill-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.preset-pill-btn.active {
+  background: rgba(99, 102, 241, 0.25);
+  border-color: #6366f1;
+  color: #e0e7ff;
+  font-weight: 600;
+}
+
+.spinner-small {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
 }
 </style>

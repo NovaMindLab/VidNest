@@ -639,9 +639,14 @@ onMounted(() => {
 <style scoped>
 .settings-view-container {
   width: 100%;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   max-width: 960px;
   margin: 0 auto;
   padding: 10px 0 60px;
+  box-sizing: border-box;
 }
 
 .settings-header {
