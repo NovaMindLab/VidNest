@@ -1110,6 +1110,34 @@ pub async fn save_ai_config(
 }
 
 #[tauri::command]
+pub async fn open_app_bin_dir(app_handle: AppHandle) -> Result<String, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data dir: {}", e))?;
+    let bin_dir = app_data_dir.join("bin");
+    let _ = std::fs::create_dir_all(&bin_dir);
+    use tauri_plugin_opener::OpenerExt;
+    let path_str = bin_dir.to_string_lossy().to_string();
+    let _ = app_handle.opener().open_path(&path_str, None::<&str>);
+    Ok(path_str)
+}
+
+#[tauri::command]
+pub async fn open_app_models_dir(app_handle: AppHandle) -> Result<String, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data dir: {}", e))?;
+    let models_dir = app_data_dir.join("models");
+    let _ = std::fs::create_dir_all(&models_dir);
+    use tauri_plugin_opener::OpenerExt;
+    let path_str = models_dir.to_string_lossy().to_string();
+    let _ = app_handle.opener().open_path(&path_str, None::<&str>);
+    Ok(path_str)
+}
+
+#[tauri::command]
 pub async fn transcribe_video(
     db: State<'_, Database>,
     app_handle: AppHandle,

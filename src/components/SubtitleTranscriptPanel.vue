@@ -89,6 +89,27 @@ function applyPreset(provider: 'openai' | 'deepseek' | 'groq' | 'ollama' | 'loca
   }
 }
 
+async function openBinFolder() {
+  try {
+    await invoke('open_app_bin_dir');
+  } catch (err) {
+    showToast('无法打开 bin 目录: ' + String(err));
+  }
+}
+
+async function openModelsFolder() {
+  try {
+    await invoke('open_app_models_dir');
+  } catch (err) {
+    showToast('无法打开 models 目录: ' + String(err));
+  }
+}
+
+function switchToApiMode() {
+  applyPreset('groq');
+  openConfigModal();
+}
+
 function formatTime(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const m = Math.floor(totalSeconds / 60);
@@ -400,6 +421,20 @@ onMounted(() => {
       </div>
       <p class="err-desc">{{ transcribeError }}</p>
       <div class="err-actions">
+        <button
+          v-if="transcribeError.includes('whisper-cli')"
+          class="btn-err-config highlight"
+          @click="switchToApiMode"
+        >
+          ⚡ 切换为 API 模式 (免安装)
+        </button>
+        <button
+          v-if="transcribeError.includes('bin') || transcribeError.includes('whisper-cli')"
+          class="btn-err-folder"
+          @click="openBinFolder"
+        >
+          📁 打开 bin 目录
+        </button>
         <button class="btn-err-config" @click="openConfigModal">
           ⚙️ {{ t('ai.gotoSettings') }}
         </button>
@@ -583,13 +618,27 @@ onMounted(() => {
           </div>
 
           <div v-else class="local-fields">
+            <div class="local-guidance-box">
+              <div class="guidance-text">
+                💡 本地离线识别需将 <code>whisper-cli</code> 可执行文件放入应用 <code>bin</code> 目录，并将权重模型放入 <code>models</code> 目录。
+              </div>
+              <div class="guidance-actions">
+                <button type="button" class="btn-guidance-dir" @click="openBinFolder">
+                  📁 打开 bin 核心目录
+                </button>
+                <button type="button" class="btn-guidance-dir" @click="openModelsFolder">
+                  📁 打开 models 模型目录
+                </button>
+              </div>
+            </div>
+
             <div class="form-group">
               <label class="form-label">{{ t('subtitles.localModelPath') }}</label>
               <input
                 v-model="aiConfig.local_model_path"
                 type="text"
                 class="ai-input"
-                placeholder="ggml-base.bin"
+                placeholder="例如: ggml-base.bin (选填，留空默认使用 base)"
               />
             </div>
           </div>
@@ -955,6 +1004,79 @@ onMounted(() => {
 
 .btn-err-config:hover {
   background: rgba(239, 68, 68, 0.35);
+}
+
+.btn-err-config.highlight {
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  border-color: #6366f1;
+  color: #fff;
+  font-weight: 600;
+}
+
+.btn-err-config.highlight:hover {
+  filter: brightness(1.15);
+}
+
+.btn-err-folder {
+  padding: 0.3rem 0.65rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #e2e8f0;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-err-folder:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.local-guidance-box {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  padding: 0.65rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.guidance-text {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: #94a3b8;
+}
+
+.guidance-text code {
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.1);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.guidance-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.btn-guidance-dir {
+  padding: 0.3rem 0.65rem;
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: #c7d2fe;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-guidance-dir:hover {
+  background: rgba(99, 102, 241, 0.25);
+  color: #fff;
 }
 
 .btn-err-dismiss {
