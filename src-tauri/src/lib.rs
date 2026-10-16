@@ -28,7 +28,8 @@ use commands::{
     start_full_disk_scan, system_health_check, toggle_video_star, transcribe_video,
     update_video_watch_progress, update_ytdlp, PlayerState,
     apply_ai_tags_to_video, generate_video_ai_analysis, get_video_ai_analysis, get_videos_ai_status,
-    open_app_bin_dir, open_app_models_dir,
+    open_app_bin_dir, open_app_models_dir, check_local_whisper_status,
+    clip_video_segments, recommend_video_segments,
 };
 use db::Database;
 use std::path::PathBuf;
@@ -146,6 +147,7 @@ pub fn run() {
             save_ai_config,
             open_app_bin_dir,
             open_app_models_dir,
+            check_local_whisper_status,
             transcribe_video,
             get_video_subtitles,
             delete_video_subtitles,
@@ -157,6 +159,8 @@ pub fn run() {
             generate_video_ai_analysis,
             get_videos_ai_status,
             apply_ai_tags_to_video,
+            clip_video_segments,
+            recommend_video_segments,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

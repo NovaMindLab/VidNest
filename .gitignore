@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Whisper engine and model bundles (downloaded for build / local dev)
+src-tauri/resources/bin/*
+!src-tauri/resources/bin/.gitkeep
+src-tauri/resources/models/*
+!src-tauri/resources/models/.gitkeep

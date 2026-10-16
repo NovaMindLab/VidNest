@@ -2,7 +2,7 @@
 import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { t } from '../i18n';
-import type { SubtitleSegment, AiTranscriptionConfig } from '../types';
+import type { SubtitleSegment, AiTranscriptionConfig, LocalWhisperStatus } from '../types';
 
 const props = withDefaults(
   defineProps<{
@@ -40,16 +40,28 @@ let toastTimeout: number | null = null;
 const showConfigModal = ref<boolean>(false);
 const transcribeError = ref<string>('');
 const modalError = ref<string>('');
+const localWhisperStatus = ref<LocalWhisperStatus | null>(null);
 
 const aiConfig = ref<AiTranscriptionConfig>({
-  engine: 'api',
+  engine: 'local',
   api_url: 'https://api.openai.com/v1',
   api_key: '',
-  model: 'whisper-1',
+  model: 'base',
   language: 'auto',
   prompt: '',
   local_model_path: '',
 });
+
+async function checkWhisperEngine() {
+  try {
+    const status = await invoke<LocalWhisperStatus>('check_local_whisper_status', {
+      modelName: aiConfig.value.local_model_path || 'base',
+    });
+    localWhisperStatus.value = status;
+  } catch (err) {
+    console.warn('Failed to check whisper status:', err);
+  }
+}
 
 function showToast(msg: string) {
   toastMessage.value = msg;
@@ -61,6 +73,7 @@ function showToast(msg: string) {
 
 function openConfigModal() {
   loadAiConfig();
+  checkWhisperEngine();
   modalError.value = '';
   showConfigModal.value = true;
 }
@@ -86,6 +99,7 @@ function applyPreset(provider: 'openai' | 'deepseek' | 'groq' | 'ollama' | 'loca
   } else if (provider === 'local') {
     aiConfig.value.engine = 'local';
     aiConfig.value.model = 'base';
+    checkWhisperEngine();
   }
 }
 
@@ -317,6 +331,7 @@ function formatVttTimestamp(ms: number): string {
 onMounted(() => {
   loadSubtitles();
   loadAiConfig();
+  checkWhisperEngine();
 });
 </script>
 
@@ -618,9 +633,21 @@ onMounted(() => {
           </div>
 
           <div v-else class="local-fields">
-            <div class="local-guidance-box">
+            <div v-if="localWhisperStatus?.ready" class="local-ready-banner">
+              <div class="ready-title">
+                <span class="badge-dot pulse"></span>
+                <span>✅ 内置本地离线 Whisper 引擎已就绪 (开箱即用)</span>
+              </div>
+              <div class="ready-details">
+                <span class="detail-tag">内核: whisper-cli 已挂载</span>
+                <span class="detail-tag">模型: ggml-base.bin (已就绪)</span>
+                <span class="detail-tag">免 Key / 100% 离线隐私</span>
+              </div>
+            </div>
+
+            <div v-else class="local-guidance-box">
               <div class="guidance-text">
-                💡 本地离线识别需将 <code>whisper-cli</code> 可执行文件放入应用 <code>bin</code> 目录，并将权重模型放入 <code>models</code> 目录。
+                💡 未检测到本地内置模型。如需离线识别，请将 <code>whisper-cli</code> 可执行文件放入应用 <code>bin</code> 目录，并将 <code>ggml-base.bin</code> 模型放入 <code>models</code> 目录。
               </div>
               <div class="guidance-actions">
                 <button type="button" class="btn-guidance-dir" @click="openBinFolder">
@@ -628,6 +655,9 @@ onMounted(() => {
                 </button>
                 <button type="button" class="btn-guidance-dir" @click="openModelsFolder">
                   📁 打开 models 模型目录
+                </button>
+                <button type="button" class="btn-guidance-dir refresh-btn" @click="checkWhisperEngine">
+                  🔄 重新检测状态
                 </button>
               </div>
             </div>
@@ -1032,6 +1062,40 @@ onMounted(() => {
 .btn-err-folder:hover {
   background: rgba(255, 255, 255, 0.15);
   color: #fff;
+}
+
+.local-ready-banner {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(6, 95, 70, 0.08));
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: 8px;
+  padding: 0.8rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ready-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #34d399;
+}
+
+.ready-details {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.detail-tag {
+  font-size: 0.7rem;
+  color: #a7f3d0;
+  background: rgba(16, 185, 129, 0.15);
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid rgba(16, 185, 129, 0.25);
 }
 
 .local-guidance-box {

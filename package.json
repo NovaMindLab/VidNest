@@ -1,7 +1,7 @@
 {
   "name": "local-video-intelligence",
   "private": true,
-  "version": "2.9.2",
+  "version": "2.9.3",
   "type": "module",
   "scripts": {
     "dev": "node scripts/run-node.cjs vite",
@@ -10,7 +10,8 @@
     "tauri": "node scripts/run-node.cjs tauri",
     "seo:generate": "node autodeploy/scripts/generate-pseo-pages.mjs",
     "seo:push": "node autodeploy/scripts/seo-push.mjs",
-    "broadcast:release": "node autodeploy/scripts/broadcast-release.mjs"
+    "broadcast:release": "node autodeploy/scripts/broadcast-release.mjs",
+    "setup:whisper": "node scripts/setup-whisper-resources.mjs"
   },
   "dependencies": {
     "vue": "^3.5.13",

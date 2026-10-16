@@ -32,10 +32,10 @@ const toastMessage = ref<string>('');
 let toastTimeout: number | null = null;
 
 const aiConfig = ref<AiTranscriptionConfig>({
-  engine: 'api',
+  engine: 'local',
   api_url: 'https://api.openai.com/v1',
   api_key: '',
-  model: 'whisper-1',
+  model: 'base',
   language: 'auto',
   prompt: '',
   local_model_path: '',

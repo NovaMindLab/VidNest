@@ -1,6 +1,6 @@
 use crate::ai::whisper::{
-    load_ai_config, save_ai_config as persist_ai_config, transcribe_video_pipeline,
-    AiTranscriptionConfig,
+    check_whisper_engine_status, load_ai_config, save_ai_config as persist_ai_config,
+    transcribe_video_pipeline, AiTranscriptionConfig, LocalWhisperStatus,
 };
 use crate::db::subtitles::{
     delete_video_subtitles as db_delete_subtitles, export_to_srt, export_to_vtt,
@@ -12,10 +12,11 @@ use crate::db::Database;
 use crate::health::run_health_check;
 use crate::media::read_thumbnail_base64;
 use crate::models::{
-    AudioExtractionOptions, AudioExtractionResult, CategoryStats, Collection, DownloadTask,
-    DuplicateGroup, DuplicateResolutionAction, ExtractedAudio, ExtractedAudioFilter, HealthReport,
-    ResolutionSummary, ScanSummary, SourceFolderStat, Tag, UrlInspectResult, Video, VideoFilter,
-    VideoListResponse, YtDlpUpdateCheck, YtDlpUpdateResult,
+    AudioExtractionOptions, AudioExtractionResult, CategoryStats, ClipVideoRequest,
+    ClipVideoResponse, Collection, DownloadTask, DuplicateGroup, DuplicateResolutionAction,
+    ExtractedAudio, ExtractedAudioFilter, HealthReport, RecommendSegmentsResponse, ResolutionSummary,
+    ScanSummary, SourceFolderStat, Tag, UrlInspectResult, Video,
+    VideoFilter, VideoListResponse, YtDlpUpdateCheck, YtDlpUpdateResult,
 };
 use crate::scanner::scan_directory;
 use crate::ytdlp;
@@ -1138,6 +1139,20 @@ pub async fn open_app_models_dir(app_handle: AppHandle) -> Result<String, String
 }
 
 #[tauri::command]
+pub async fn check_local_whisper_status(
+    app_handle: AppHandle,
+    model_name: Option<String>,
+) -> Result<LocalWhisperStatus, String> {
+    let app_data_dir = app_handle.path().app_data_dir().ok();
+    let resource_dir = app_handle.path().resource_dir().ok();
+    Ok(check_whisper_engine_status(
+        model_name.as_deref(),
+        app_data_dir.as_deref(),
+        resource_dir.as_deref(),
+    ))
+}
+
+#[tauri::command]
 pub async fn transcribe_video(
     db: State<'_, Database>,
     app_handle: AppHandle,
@@ -1170,11 +1185,13 @@ pub async fn transcribe_video(
     .map_err(|e| e.to_string())??;
 
     // 2. Perform speech transcription
+    let resource_dir = app_handle.path().resource_dir().ok();
     let segments = transcribe_video_pipeline(
         &video_path,
         video_id,
         &active_config,
         &app_data_dir,
+        resource_dir.as_deref(),
     )
     .await?;
 
@@ -1462,4 +1479,66 @@ pub async fn apply_ai_tags_to_video(
     .await
     .map_err(|e| e.to_string())?
 }
+
+#[tauri::command]
+pub async fn clip_video_segments(
+    app_handle: AppHandle,
+    request: ClipVideoRequest,
+) -> Result<ClipVideoResponse, String> {
+    let app_data_dir = app_handle.path().app_data_dir().ok();
+    tokio::task::spawn_blocking(move || {
+        crate::media::clip_video_segments(request, app_data_dir.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn recommend_video_segments(
+    db: State<'_, Database>,
+    app_handle: AppHandle,
+    video_id: Option<i64>,
+    video_path: Option<String>,
+) -> Result<RecommendSegmentsResponse, String> {
+    let app_data_dir = app_handle.path().app_data_dir().ok();
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn_guard = conn_arc.lock().ok();
+        let conn_ref = conn_guard.as_deref();
+
+        let resolved_path = if let Some(vp) = video_path {
+            PathBuf::from(vp)
+        } else if let (Some(v_id), Some(conn)) = (video_id, conn_ref) {
+            if let Ok(Some(video)) = crate::db::videos::get_video_by_id(conn, v_id) {
+                PathBuf::from(video.file_path)
+            } else {
+                PathBuf::new()
+            }
+        } else {
+            PathBuf::new()
+        };
+
+        let duration_ms = if let (Some(v_id), Some(conn)) = (video_id, conn_ref) {
+            if let Ok(Some(video)) = crate::db::videos::get_video_by_id(conn, v_id) {
+                video.duration.map(|d| (d * 1000.0) as i64)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        crate::media::recommend_video_segments(
+            video_id,
+            &resolved_path,
+            duration_ms,
+            conn_ref,
+            app_data_dir.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 

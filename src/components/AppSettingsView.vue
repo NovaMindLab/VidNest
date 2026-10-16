@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { currentLocale, currentLocaleMode, setLocaleMode, SUPPORTED_LOCALES, t, type LocaleMode } from '../i18n';
 import { themeMode, setTheme } from '../utils/theme';
-import type { AiTranscriptionConfig } from '../types';
+import type { AiTranscriptionConfig, LocalWhisperStatus } from '../types';
 
 const activeLanguageName = computed(() => {
   const found = SUPPORTED_LOCALES.find(l => l.code === currentLocale.value);
@@ -33,16 +33,48 @@ const maxConcurrent = ref<number>(
 
 // AI & Whisper settings state
 const aiConfig = ref<AiTranscriptionConfig>({
-  engine: 'api',
+  engine: 'local',
   api_url: 'https://api.openai.com/v1',
   api_key: '',
-  model: 'whisper-1',
+  model: 'base',
   language: 'auto',
   prompt: '',
   local_model_path: '',
 });
 const isSavingAi = ref<boolean>(false);
 const aiSaveToast = ref<string>('');
+const localWhisperStatus = ref<LocalWhisperStatus | null>(null);
+const isCheckingLocalWhisper = ref<boolean>(false);
+
+async function checkLocalWhisperEngine() {
+  isCheckingLocalWhisper.value = true;
+  try {
+    const status = await invoke<LocalWhisperStatus>('check_local_whisper_status', {
+      modelName: aiConfig.value.local_model_path || 'base',
+    });
+    localWhisperStatus.value = status;
+  } catch (err) {
+    console.warn('Failed to check whisper status:', err);
+  } finally {
+    isCheckingLocalWhisper.value = false;
+  }
+}
+
+async function openBinFolder() {
+  try {
+    await invoke('open_app_bin_dir');
+  } catch (err) {
+    console.error('Failed to open bin folder:', err);
+  }
+}
+
+async function openModelsFolder() {
+  try {
+    await invoke('open_app_models_dir');
+  } catch (err) {
+    console.error('Failed to open models folder:', err);
+  }
+}
 
 async function loadAiSettings() {
   try {
@@ -52,6 +84,8 @@ async function loadAiSettings() {
     }
   } catch (err) {
     console.warn('Failed to load ai config in settings:', err);
+  } finally {
+    checkLocalWhisperEngine();
   }
 }
 
@@ -522,7 +556,49 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- Local Model Path -->
+          <!-- Local Engine Status & Directory Buttons -->
+          <div v-if="aiConfig.engine === 'local'" class="setting-row-item">
+            <div class="row-info">
+              <span class="row-label">本地引擎状态</span>
+              <span class="row-sub">检测应用内置 whisper-cli 内核与离线模型</span>
+            </div>
+            <div class="row-control wide">
+              <div v-if="localWhisperStatus?.ready" class="settings-engine-status ready">
+                <div class="status-badge-row">
+                  <span class="status-indicator-dot online"></span>
+                  <span class="status-text-bold">✅ 内置离线 Whisper 引擎已就绪 (开箱即用)</span>
+                </div>
+                <div class="status-tags-row">
+                  <span class="status-tag">内核: whisper-cli 已就绪</span>
+                  <span class="status-tag">模型: ggml-base.bin (内置)</span>
+                  <span class="status-tag">100% 离线隐私 / 免 Key</span>
+                </div>
+              </div>
+
+              <div v-else class="settings-engine-status warning">
+                <div class="status-badge-row">
+                  <span class="status-indicator-dot offline"></span>
+                  <span class="status-text-bold">💡 未检测到本地内置模型</span>
+                </div>
+                <p class="status-hint">
+                  应用支持零配置打包内置模型；若需自定义，可将 <code>whisper-cli</code> 与 <code>ggml-base.bin</code> 放入下方目录：
+                </p>
+                <div class="status-btns-row">
+                  <button type="button" class="btn-sub-action" @click="openBinFolder">
+                    📁 打开 bin 目录
+                  </button>
+                  <button type="button" class="btn-sub-action" @click="openModelsFolder">
+                    📁 打开 models 目录
+                  </button>
+                  <button type="button" class="btn-sub-action" :disabled="isCheckingLocalWhisper" @click="checkLocalWhisperEngine">
+                    🔄 重新检测
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Local Model Path Override -->
           <div v-if="aiConfig.engine === 'local'" class="setting-row-item">
             <div class="row-info">
               <span class="row-label">{{ t('settings.ai.localWeightLabel') }}</span>
@@ -534,6 +610,7 @@ onMounted(() => {
                 type="text"
                 class="settings-text-input"
                 :placeholder="t('settings.ai.localWeightPlaceholder')"
+                @change="checkLocalWhisperEngine"
               />
             </div>
           </div>
@@ -1392,6 +1469,113 @@ input:checked + .toggle-slider:before {
 
 .btn-save-ai-settings:disabled {
   opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.settings-engine-status {
+  width: 100%;
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-engine-status.ready {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(6, 95, 70, 0.08));
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.settings-engine-status.warning {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px dashed rgba(245, 158, 11, 0.3);
+}
+
+.status-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-indicator-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-indicator-dot.online {
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+}
+
+.status-indicator-dot.offline {
+  background: #f59e0b;
+}
+
+.status-text-bold {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-color, #f1f5f9);
+}
+
+.settings-engine-status.ready .status-text-bold {
+  color: #34d399;
+}
+
+.status-tags-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.status-tag {
+  font-size: 11px;
+  color: #a7f3d0;
+  background: rgba(16, 185, 129, 0.15);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.status-hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #94a3b8;
+  margin: 0;
+}
+
+.status-hint code {
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.12);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.status-btns-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.btn-sub-action {
+  padding: 4px 10px;
+  border-radius: 5px;
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: #c7d2fe;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-sub-action:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.25);
+  color: #ffffff;
+}
+
+.btn-sub-action:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 </style>

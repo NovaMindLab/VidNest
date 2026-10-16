@@ -13,6 +13,7 @@ import { t } from '../i18n';
 const emit = defineEmits<{
   (e: 'navigateDedup'): void;
   (e: 'navigateAudios'): void;
+  (e: 'navigateClipper', video?: Video): void;
 }>();
 
 // Subtitle snippet dialogue search matches
@@ -1456,6 +1457,9 @@ onUnmounted(() => {
                     <button class="card-act-btn btn-act-audio" :title="t('library.extractAudio')" @click.stop="openAudioExtract(video)">
                       {{ t('library.audioExtractBtn') }}
                     </button>
+                    <button class="card-act-btn btn-act-clip" :title="'视频阶段与智能裁剪'" @click.stop="emit('navigateClipper', video)">
+                      ✂️ 裁剪
+                    </button>
                     <button class="card-act-btn" :title="t('library.locateFolderTooltip')" @click.stop="revealVideo(video.file_path)">
                       {{ t('library.locateBtn') }}
                     </button>
@@ -1588,6 +1592,7 @@ onUnmounted(() => {
                 </button>
                 <button class="li-btn btn-act-tag" :title="t('library.manageTagsTooltip')" @click.stop="openTagModal(item.row.video)">🏷️</button>
                 <button class="li-btn btn-act-audio" :title="t('library.extractAudio')" @click.stop="openAudioExtract(item.row.video)">🎵</button>
+                <button class="li-btn btn-act-clip" :title="'视频阶段与智能裁剪'" @click.stop="emit('navigateClipper', item.row.video)">✂️</button>
                 <button class="li-btn" :title="t('library.locateFolderTooltip')" @click.stop="revealVideo(item.row.video.file_path)">📁</button>
                 <button class="li-btn" :title="t('library.copyPathTooltip')" @click.stop="copyToClipboard(item.row.video.file_path)">📋</button>
                 <button class="li-btn btn-act-del" :title="t('library.removeTooltip')" @click.stop="promptRemoveVideo(item.row.video)">✕</button>
@@ -2787,6 +2792,12 @@ onUnmounted(() => {
   background: rgba(6, 182, 212, 0.08);
 }
 
+.card-act-btn.btn-act-clip:hover {
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.08);
+}
+
 .card-act-btn.btn-act-ai {
   color: #a78bfa;
 }
@@ -2954,6 +2965,12 @@ onUnmounted(() => {
   color: #06b6d4;
   border-color: rgba(6, 182, 212, 0.4);
   background: rgba(6, 182, 212, 0.08);
+}
+
+.li-btn.btn-act-clip:hover {
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.08);
 }
 
 .li-btn.btn-act-del:hover {

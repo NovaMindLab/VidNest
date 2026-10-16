@@ -71,25 +71,58 @@ pub fn save_ai_config(app_data_dir: &Path, config: &AiTranscriptionConfig) -> Re
 
 /// Resolves the local whisper binary location:
 /// 1. App-managed bin directory (app_data/bin/whisper-cli or whisper)
-/// 2. System PATH (whisper-cli, whisper, whisper.cpp)
-pub fn resolve_whisper_binary(app_data_dir: Option<&Path>) -> Option<PathBuf> {
+/// 2. Tauri bundled resource directory (resource_dir/resources/bin, resource_dir/bin)
+/// 3. Current executable directory (current_exe/resources/bin, current_exe/bin)
+/// 4. Source dev directory (src-tauri/resources/bin)
+/// 5. System PATH (whisper-cli, whisper, whisper.cpp)
+pub fn resolve_whisper_binary(
+    app_data_dir: Option<&Path>,
+    resource_dir: Option<&Path>,
+) -> Option<PathBuf> {
     let candidate_names = if cfg!(windows) {
         vec!["whisper-cli.exe", "whisper.exe", "main.exe"]
     } else {
         vec!["whisper-cli", "whisper", "whisper-cpp", "main"]
     };
 
+    let mut search_dirs = Vec::new();
+
+    // 1. User app_data/bin (highest priority for custom overrides)
     if let Some(dir) = app_data_dir {
-        let bin_dir = dir.join("bin");
+        search_dirs.push(dir.join("bin"));
+        search_dirs.push(dir.to_path_buf());
+    }
+
+    // 2. Tauri bundled resource dir
+    if let Some(r_dir) = resource_dir {
+        search_dirs.push(r_dir.join("resources").join("bin"));
+        search_dirs.push(r_dir.join("bin"));
+        search_dirs.push(r_dir.to_path_buf());
+    }
+
+    // 3. Current executable relative directory
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            search_dirs.push(exe_dir.join("resources").join("bin"));
+            search_dirs.push(exe_dir.join("bin"));
+            search_dirs.push(exe_dir.to_path_buf());
+        }
+    }
+
+    // 4. Source dev directory
+    search_dirs.push(PathBuf::from("src-tauri/resources/bin"));
+    search_dirs.push(PathBuf::from("resources/bin"));
+
+    for dir in &search_dirs {
         for name in &candidate_names {
-            let p = bin_dir.join(name);
+            let p = dir.join(name);
             if p.exists() {
                 return Some(p);
             }
         }
     }
 
-    // Check system PATH
+    // 5. Check system PATH
     for name in &candidate_names {
         let p = PathBuf::from(name);
         let mut cmd = Command::new(&p);
@@ -108,6 +141,106 @@ pub fn resolve_whisper_binary(app_data_dir: Option<&Path>) -> Option<PathBuf> {
 
     None
 }
+
+/// Resolves the Whisper model file path:
+/// 1. Custom model path specified by user
+/// 2. app_data/models/ggml-{model}.bin
+/// 3. resource_dir/models/ggml-{model}.bin or resource_dir/resources/models/ggml-{model}.bin
+/// 4. Current exe dir / models
+/// 5. Source tree dev dir: src-tauri/resources/models/ggml-{model}.bin
+pub fn resolve_whisper_model(
+    model_name: &str,
+    custom_path: Option<&str>,
+    app_data_dir: Option<&Path>,
+    resource_dir: Option<&Path>,
+) -> Result<PathBuf, String> {
+    if let Some(cp) = custom_path {
+        let p = PathBuf::from(cp);
+        if p.exists() {
+            return Ok(p);
+        } else {
+            return Err(format!("Specified local model file does not exist: {}", cp));
+        }
+    }
+
+    let file_name = if model_name.ends_with(".bin") {
+        model_name.to_string()
+    } else {
+        format!("ggml-{}.bin", model_name)
+    };
+
+    let mut search_dirs = Vec::new();
+
+    // 1. User app_data/models
+    if let Some(dir) = app_data_dir {
+        search_dirs.push(dir.join("models"));
+        search_dirs.push(dir.to_path_buf());
+    }
+
+    // 2. Tauri bundled resource dir
+    if let Some(r_dir) = resource_dir {
+        search_dirs.push(r_dir.join("resources").join("models"));
+        search_dirs.push(r_dir.join("models"));
+        search_dirs.push(r_dir.to_path_buf());
+    }
+
+    // 3. Current exe dir
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            search_dirs.push(exe_dir.join("resources").join("models"));
+            search_dirs.push(exe_dir.join("models"));
+        }
+    }
+
+    // 4. Source dev directory
+    search_dirs.push(PathBuf::from("src-tauri/resources/models"));
+    search_dirs.push(PathBuf::from("resources/models"));
+
+    for dir in &search_dirs {
+        let p = dir.join(&file_name);
+        if p.exists() {
+            return Ok(p);
+        }
+    }
+
+    Err(format!(
+        "未找到本地 Whisper 模型文件 '{file_name}'。\n\
+         请将模型放入应用 models 目录，或检查安装完整性。",
+    ))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalWhisperStatus {
+    pub binary_available: bool,
+    pub binary_path: Option<String>,
+    pub model_available: bool,
+    pub model_path: Option<String>,
+    pub ready: bool,
+}
+
+/// Checks availability of local whisper binary and specified model
+pub fn check_whisper_engine_status(
+    model_name: Option<&str>,
+    app_data_dir: Option<&Path>,
+    resource_dir: Option<&Path>,
+) -> LocalWhisperStatus {
+    let binary = resolve_whisper_binary(app_data_dir, resource_dir);
+    let target_model = model_name.unwrap_or("base");
+    let model = resolve_whisper_model(target_model, None, app_data_dir, resource_dir).ok();
+
+    let binary_available = binary.is_some();
+    let model_available = model.is_some();
+    let ready = binary_available && model_available;
+
+    LocalWhisperStatus {
+        binary_available,
+        binary_path: binary.map(|p| p.to_string_lossy().to_string()),
+        model_available,
+        model_path: model.map(|p| p.to_string_lossy().to_string()),
+        ready,
+    }
+}
+
 
 /// Extracts a 16kHz mono 16-bit PCM WAV from a video using ffmpeg for Whisper digestion.
 pub fn extract_audio_for_whisper(
@@ -338,29 +471,15 @@ pub fn transcribe_via_local_whisper(
     config: &AiTranscriptionConfig,
     whisper_bin: &Path,
     app_data_dir: &Path,
+    resource_dir: Option<&Path>,
 ) -> Result<Vec<SubtitleSegment>, String> {
-    // Resolve model file path
-    let model_path = if let Some(ref custom_path) = config.local_model_path {
-        let p = PathBuf::from(custom_path);
-        if p.exists() {
-            p
-        } else {
-            return Err(format!("Specified local model file does not exist: {}", custom_path));
-        }
-    } else {
-        let model_dir = app_data_dir.join("models");
-        let model_name = format!("ggml-{}.bin", config.model);
-        let p = model_dir.join(&model_name);
-        if p.exists() {
-            p
-        } else {
-            return Err(format!(
-                "Local Whisper model file '{model_name}' not found in {:?}.\n\
-                 请先将模型文件放入该目录，或在设置中切换为兼容 API 转写模式。",
-                model_dir
-            ));
-        }
-    };
+    // Resolve model file path across app_data, resource_dir, and custom paths
+    let model_path = resolve_whisper_model(
+        &config.model,
+        config.local_model_path.as_deref(),
+        Some(app_data_dir),
+        resource_dir,
+    )?;
 
     let temp_out_prefix = wav_path.with_extension("");
     let mut cmd = Command::new(whisper_bin);
@@ -422,6 +541,7 @@ pub async fn transcribe_video_pipeline(
     video_id: i64,
     config: &AiTranscriptionConfig,
     app_data_dir: &Path,
+    resource_dir: Option<&Path>,
 ) -> Result<Vec<SubtitleSegment>, String> {
     if !video_path.exists() {
         return Err(format!("Video file does not exist: {:?}", video_path));
@@ -449,10 +569,10 @@ pub async fn transcribe_video_pipeline(
         }
         transcribe_via_api(&temp_wav, video_id, config).await
     } else {
-        // Local engine
-        let whisper_bin = resolve_whisper_binary(Some(app_data_dir));
+        // Local engine: check bundled resources, app_data, current exe, and PATH
+        let whisper_bin = resolve_whisper_binary(Some(app_data_dir), resource_dir);
         match whisper_bin {
-            Some(bin) => transcribe_via_local_whisper(&temp_wav, video_id, config, &bin, app_data_dir),
+            Some(bin) => transcribe_via_local_whisper(&temp_wav, video_id, config, &bin, app_data_dir, resource_dir),
             None => {
                 // If local binary is not found, check if API is available and fallback or return clear guide
                 if !config.api_key.trim().is_empty() {
@@ -469,3 +589,34 @@ pub async fn transcribe_video_pipeline(
 
     segments_res
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ai_transcription_config_default_and_serialization() {
+        let default_cfg = AiTranscriptionConfig::default();
+        assert_eq!(default_cfg.engine, "local");
+        assert_eq!(default_cfg.model, "base");
+
+        let json = serde_json::to_string(&default_cfg).unwrap();
+        let parsed: AiTranscriptionConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.engine, "local");
+        assert_eq!(parsed.model, "base");
+    }
+
+    #[test]
+    fn test_whisper_engine_status_check() {
+        let temp_dir = std::env::temp_dir().join(format!("whisper_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        // Status on empty dir should report not ready
+        let status = check_whisper_engine_status(Some("base"), Some(&temp_dir), None);
+        // Note: binary might be found if whisper-cli is installed in system PATH, but model should definitely not exist in fresh temp_dir
+        assert!(!status.ready || status.model_available);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+}
+

@@ -315,6 +315,14 @@ export interface SubtitleSnippetMatch {
   full_content: string;
 }
 
+export interface LocalWhisperStatus {
+  binary_available: boolean;
+  binary_path?: string | null;
+  model_available: boolean;
+  model_path?: string | null;
+  ready: boolean;
+}
+
 export interface AiTranscriptionConfig {
   engine: 'local' | 'api' | string;
   api_url: string;
@@ -369,4 +377,51 @@ export interface TranscodeResult {
   remuxed: boolean;
   output_size_bytes: number;
 }
+
+export interface VideoClipSegment {
+  id: string;
+  title: string;
+  startMs: number;
+  endMs: number;
+}
+
+export interface ClipVideoRequest {
+  videoId?: number | null;
+  videoPath: string;
+  segments: VideoClipSegment[];
+  outputDir?: string | null;
+  exportMode: 'separate' | 'merge' | 'both';
+  fastCopy: boolean;
+}
+
+export interface ClipResultItem {
+  id: string;
+  title: string;
+  outputPath: string;
+  durationSec: number;
+  fileSize: number;
+}
+
+export interface ClipVideoResponse {
+  success: boolean;
+  clips: ClipResultItem[];
+  mergedPath?: string | null;
+  message: string;
+}
+
+export interface SegmentRecommendation {
+  id: string;
+  title: string;
+  startMs: number;
+  endMs: number;
+  reason: string;
+  confidence: number;
+}
+
+export interface RecommendSegmentsResponse {
+  segments: SegmentRecommendation[];
+  source: 'ai_topics' | 'subtitles' | 'silence_detect' | 'pacing' | string;
+  message: string;
+}
+
 

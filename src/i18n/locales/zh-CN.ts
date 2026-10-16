@@ -7,6 +7,7 @@ export default {
   "nav": {
     "core": "核心功能",
     "library": "本地媒体库",
+    "clipper": "视频阶段与裁剪",
     "dedup": "视频查重去重",
     "audios": "已提取音频",
     "downloads": "视频下载中心",
@@ -16,6 +17,7 @@ export default {
   },
   "header": {
     "libraryTitle": "本地媒体资产库",
+    "clipperTitle": "视频阶段与智能裁剪工坊",
     "dedupTitle": "视频比对分析与合并清理中枢",
     "audiosTitle": "已提取音频资产中枢",
     "downloadsTitle": "yt-dlp 在线下载中心",

@@ -75,6 +75,9 @@ jobs:
       - name: 📦 Install npm dependencies
         run: npm install
 
+      - name: 🤖 Setup Whisper AI Resources (Engine & Offline Model)
+        run: node scripts/setup-whisper-resources.mjs --target ${{ matrix.target }}
+
       - name: 🔨 Build Tauri application
         run: npm run tauri build -- --target ${{ matrix.target }}
         env:

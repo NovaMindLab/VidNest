@@ -338,6 +338,65 @@ pub struct ExtractedAudioFilter {
     pub sort_by: Option<String>, // "created_desc", "duration_desc", "size_desc", "name_asc"
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoClipSegment {
+    pub id: String,
+    pub title: String,
+    pub start_ms: i64,
+    pub end_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipVideoRequest {
+    pub video_id: Option<i64>,
+    pub video_path: String,
+    pub segments: Vec<VideoClipSegment>,
+    pub output_dir: Option<String>,
+    pub export_mode: String, // "separate" | "merge" | "both"
+    pub fast_copy: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipResultItem {
+    pub id: String,
+    pub title: String,
+    pub output_path: String,
+    pub duration_sec: f64,
+    pub file_size: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipVideoResponse {
+    pub success: bool,
+    pub clips: Vec<ClipResultItem>,
+    pub merged_path: Option<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SegmentRecommendation {
+    pub id: String,
+    pub title: String,
+    pub start_ms: i64,
+    pub end_ms: i64,
+    pub reason: String,
+    pub confidence: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecommendSegmentsResponse {
+    pub segments: Vec<SegmentRecommendation>,
+    pub source: String, // "ai_topics" | "subtitles" | "silence_detect" | "pacing"
+    pub message: String,
+}
+
+
 
 
 

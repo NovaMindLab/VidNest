@@ -12,6 +12,9 @@ pub use transcode::{
     VideoCompatibilityStatus,
 };
 
+pub mod clipper;
+pub use clipper::{clip_video_segments, recommend_video_segments};
+
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
