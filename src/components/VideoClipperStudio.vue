@@ -599,58 +599,65 @@ onUnmounted(() => {
   <div class="clipper-studio-container">
     <!-- Studio Header & Video Selector -->
     <header class="studio-header-card">
-      <div class="video-info-group">
-        <button
-          class="btn-back-to-library"
-          title="返回媒体库列表"
-          @click="emit('navigateLibrary')"
-        >
-          <span class="back-arrow">←</span>
-          <span>返回媒体库</span>
-        </button>
-
-        <button
-          class="btn-back-to-library"
-          title="查看已裁剪的视频与分段管理列表"
-          @click="emit('navigateClips')"
-        >
-          <span>📁 裁剪管理</span>
-        </button>
-
-        <div class="video-thumb-preview" @click="openVideoPicker">
-          <img
-            v-if="activeVideo?.thumbnail_data"
-            :src="activeVideo.thumbnail_data"
-            class="thumb-img"
-            alt="thumbnail"
-          />
-          <div v-else class="thumb-placeholder">🎬</div>
-          <span class="change-overlay-badge">更换</span>
+      <div class="studio-header-left">
+        <!-- Navigation Pill Group -->
+        <div class="nav-pill-group">
+          <button
+            class="btn-nav-pill"
+            title="返回媒体库列表"
+            @click="emit('navigateLibrary')"
+          >
+            <span class="back-arrow">←</span>
+            <span>返回媒体库</span>
+          </button>
+          <button
+            class="btn-nav-pill secondary"
+            title="查看已裁剪的视频与分段管理列表"
+            @click="emit('navigateClips')"
+          >
+            <span>📁 裁剪管理</span>
+          </button>
         </div>
 
-        <div class="video-meta-texts">
-          <div class="title-row">
-            <h3 class="video-title" :title="activeVideo?.file_name">
-              {{ activeVideo?.file_name || '未选择视频，请点击选择' }}
-            </h3>
-            <button class="btn-switch-video" @click="openVideoPicker">
-              🔄 更换视频
-            </button>
+        <div class="header-v-divider"></div>
+
+        <!-- Video Identity & Metadata -->
+        <div class="active-video-identity">
+          <div class="video-thumb-preview" title="点击从媒体库更换视频" @click="openVideoPicker">
+            <img
+              v-if="activeVideo?.thumbnail_data"
+              :src="activeVideo.thumbnail_data"
+              class="thumb-img"
+              alt="thumbnail"
+            />
+            <div v-else class="thumb-placeholder">🎬</div>
+            <span class="change-overlay-badge">换片</span>
           </div>
 
-          <div v-if="activeVideo" class="meta-pills-row">
-            <span class="meta-pill" :title="'视频时长'">
-              ⏱️ {{ formatTime(duration || activeVideo.duration || 0) }}
-            </span>
-            <span v-if="activeVideo.width && activeVideo.height" class="meta-pill">
-              📐 {{ activeVideo.width }}x{{ activeVideo.height }}
-            </span>
-            <span v-if="activeVideo.codec" class="meta-pill">
-              🎞️ {{ activeVideo.codec.toUpperCase() }}
-            </span>
-            <span class="meta-pill">
-              💾 {{ formatBytes(activeVideo.file_size) }}
-            </span>
+          <div class="video-meta-texts">
+            <div class="title-row">
+              <span class="video-title" :title="activeVideo?.file_name">
+                {{ activeVideo?.file_name || '未选择视频，请点击选择' }}
+              </span>
+              <button class="btn-switch-video" title="更换当前裁剪视频" @click="openVideoPicker">
+                🔄 更换
+              </button>
+            </div>
+
+            <div v-if="activeVideo" class="meta-pills-row">
+              <span class="meta-pill" title="视频总时长">
+                ⏱️ {{ formatTime(duration || activeVideo.duration || 0) }}
+              </span>
+              <span v-if="activeVideo.width && activeVideo.height" class="meta-pill" title="分辨率">
+                📐 {{ activeVideo.width }}×{{ activeVideo.height }}
+              </span>
+              <span v-if="activeVideo.codec" class="meta-pill" title="编码格式">
+                🎞️ {{ activeVideo.codec.toUpperCase() }}
+              </span>
+              <span class="meta-pill" title="文件大小">
+                💾 {{ formatBytes(activeVideo.file_size) }}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -658,31 +665,33 @@ onUnmounted(() => {
       <!-- Top Action Bar -->
       <div class="studio-top-actions">
         <button
-          class="btn-act climax-gradient-btn"
+          class="btn-act climax-btn"
           :disabled="!activeVideo || isAnalyzingAi"
-          :title="'结合声学能量爆发与 Whisper 情绪语义台词，精准截取全片高潮与高能精彩亮点'"
+          :title="'结合声学能量爆发与 Whisper 语义台词，精准截取全片高潮与高能精彩亮点'"
           @click="requestAiRecommendation('highlights')"
         >
           <span class="climax-fire-icon">🔥</span>
-          <span>{{ isAnalyzingAi ? '正在提取高潮...' : '🔥 提取高潮亮点' }}</span>
+          <span>{{ isAnalyzingAi ? '正在提取...' : '提取高潮亮点' }}</span>
         </button>
 
         <button
-          class="btn-act ai-gradient-btn"
+          class="btn-act ai-btn"
           :disabled="!activeVideo || isAnalyzingAi"
           :title="'根据 AI 深度语义要点、语音停顿或静音检测自动推荐全片结构化阶段'"
           @click="requestAiRecommendation('chapters')"
         >
           <span class="ai-sparkle-icon">✨</span>
-          <span>{{ isAnalyzingAi ? 'AI 正在分析阶段...' : 'AI 智能推荐分段' }}</span>
+          <span>{{ isAnalyzingAi ? 'AI 分析中...' : 'AI 智能分段' }}</span>
         </button>
 
+        <div class="header-v-divider"></div>
+
         <button
-          class="btn-act primary-btn"
+          class="btn-act export-cta-btn"
           :disabled="!activeVideo || segments.length === 0 || isClipping"
           @click="startClipping"
         >
-          <span>🚀 开始截断导出 ({{ segments.length }})</span>
+          <span>🚀 截断导出 ({{ segments.length }})</span>
         </button>
       </div>
     </header>
@@ -705,27 +714,27 @@ onUnmounted(() => {
 
           <!-- Floating Time Badge -->
           <div class="floating-time-hud">
-            <span class="time-current">{{ formatTime(currentTime, true) }}</span>
+            <span class="time-current font-mono">{{ formatTime(currentTime, true) }}</span>
             <span class="time-divider">/</span>
-            <span class="time-total">{{ formatTime(duration, true) }}</span>
+            <span class="time-total font-mono">{{ formatTime(duration, true) }}</span>
           </div>
         </div>
 
         <!-- Video Player Controls Toolbar -->
         <div class="player-controls-strip">
           <div class="left-transport-buttons">
-            <button class="transport-btn" :title="'后退 5 秒 (←)'" @click="seekRelative(-5)">
+            <button class="transport-btn" title="后退 5 秒 (←)" @click="seekRelative(-5)">
               ⏪ -5s
             </button>
             <button
               class="transport-btn play-btn"
               :class="{ playing: isPlaying }"
-              :title="'播放 / 暂停 (空格键)'"
+              title="播放 / 暂停 (空格键)"
               @click="togglePlay"
             >
               {{ isPlaying ? '⏸️ 暂停' : '▶️ 播放' }}
             </button>
-            <button class="transport-btn" :title="'前进 5 秒 (→)'" @click="seekRelative(5)">
+            <button class="transport-btn" title="前进 5 秒 (→)" @click="seekRelative(5)">
               +5s ⏩
             </button>
           </div>
@@ -733,24 +742,24 @@ onUnmounted(() => {
           <div class="right-quick-markers">
             <button
               class="marker-shortcut-btn in-btn"
-              :title="'将当前播放点设为阶段起点 (I)'"
+              title="将当前播放点设为阶段起点 (快捷键: I)"
               @click="setInPoint"
             >
-              [ 设为起点 (I)
+              [ 设起点 (I)
             </button>
             <button
               class="marker-shortcut-btn split-btn"
-              :title="'在当前播放进度处将片段一分为二 (S)'"
+              title="在当前播放进度处将片段一分为二 (快捷键: S)"
               @click="splitAtPlayhead"
             >
               ✂️ 在此截断 (S)
             </button>
             <button
               class="marker-shortcut-btn out-btn"
-              :title="'将当前播放点设为阶段终点 (O)'"
+              title="将当前播放点设为阶段终点 (快捷键: O)"
               @click="setOutPoint"
             >
-              设为终点 (O) ]
+              设终点 (O) ]
             </button>
           </div>
         </div>
@@ -758,10 +767,14 @@ onUnmounted(() => {
         <!-- Visual Multi-Segment Timeline Scrubber -->
         <div class="visual-timeline-section">
           <div class="timeline-labels-row">
-            <span class="timeline-hint">💡 点击轨道任意位置跳转进度；彩条对应截断的视频阶段</span>
-            <span class="timeline-counter">
-              当前规划阶段: <strong>{{ segments.length }}</strong> 段
-            </span>
+            <div class="timeline-title-left">
+              <span class="timeline-icon">🎬</span>
+              <span class="timeline-title-text">时间轴分段轨道</span>
+              <span class="timeline-hint">（点击轨道跳转播放；彩条为截断阶段）</span>
+            </div>
+            <div class="timeline-counter">
+              当前规划阶段: <span class="badge-seg-count">{{ segments.length }}</span> 段
+            </div>
           </div>
 
           <div class="timeline-track-container" @click="handleTimelineClick">
@@ -795,6 +808,11 @@ onUnmounted(() => {
               <div class="playhead-thumb"></div>
             </div>
           </div>
+
+          <div class="timeline-ticks-row font-mono">
+            <span>00:00.000</span>
+            <span>{{ formatTime(duration, true) }}</span>
+          </div>
         </div>
       </section>
 
@@ -808,7 +826,7 @@ onUnmounted(() => {
           </div>
 
           <div class="card-header-actions">
-            <button class="btn-xs-ghost" title="新建一段截取范围" @click="addNewSegment()">
+            <button class="btn-xs-primary" title="新建一段截取范围" @click="addNewSegment()">
               ➕ 添加片段
             </button>
             <button
@@ -827,17 +845,16 @@ onUnmounted(() => {
           <div v-if="segments.length === 0" class="empty-segments-state">
             <span class="empty-icon">✂️</span>
             <h5>暂无划分的视频阶段</h5>
-            <p>可点击下方按钮手动添加，或点击右上角「AI 智能推荐分段」一键自动划分</p>
+            <p>可点击右上角“添加片段”手动划定，或点击“提取高潮”/“AI 智能分段”一键自动划分</p>
             <div class="empty-action-btns">
-              <button class="btn-act climax-gradient-btn" @click="requestAiRecommendation('highlights')">
-                <span class="climax-fire-icon">🔥</span>
-                <span>提取高潮亮点</span>
+              <button class="btn-empty-act climax" @click="requestAiRecommendation('highlights')">
+                🔥 提取高潮亮点
               </button>
-              <button class="btn-act ai-gradient-btn" @click="requestAiRecommendation('chapters')">
-                <span>✨ AI 智能推荐分段</span>
+              <button class="btn-empty-act ai" @click="requestAiRecommendation('chapters')">
+                ✨ AI 智能分段
               </button>
-              <button class="btn-act ghost-btn" @click="addNewSegment()">
-                <span>➕ 手动添加切片</span>
+              <button class="btn-empty-act manual" @click="addNewSegment()">
+                ➕ 手动添加
               </button>
             </div>
           </div>
@@ -847,131 +864,120 @@ onUnmounted(() => {
             :key="seg.id"
             class="segment-item-card"
             :class="{ active: selectedSegmentId === seg.id }"
+            :style="{ '--seg-accent': getSegmentColor(idx) }"
             @click="selectedSegmentId = seg.id"
           >
-            <div class="item-index-badge" :style="{ backgroundColor: getSegmentColor(idx) }">
-              #{{ idx + 1 }}
-            </div>
+            <div class="card-accent-bar" :style="{ backgroundColor: getSegmentColor(idx) }"></div>
 
             <div class="item-content-body">
               <div class="item-title-row">
-                <input
-                  v-model="seg.title"
-                  type="text"
-                  class="segment-title-input"
-                  placeholder="片段名称 (如: 精彩亮点)"
-                />
-                <span class="duration-tag">
-                  {{ formatTime((seg.endMs - seg.startMs) / 1000.0) }}
-                </span>
+                <div class="title-left">
+                  <span class="item-index-pill" :style="{ backgroundColor: getSegmentColor(idx) }">
+                    #{{ idx + 1 }}
+                  </span>
+                  <input
+                    v-model="seg.title"
+                    type="text"
+                    class="segment-title-input"
+                    placeholder="片段名称 (如: 精彩亮点)"
+                  />
+                </div>
+                <div class="title-right">
+                  <span class="duration-tag font-mono">
+                    {{ formatTime((seg.endMs - seg.startMs) / 1000.0) }}
+                  </span>
+                  <button
+                    class="btn-item-act play"
+                    title="在左侧试看预览该片段"
+                    @click.stop="playSegment(seg)"
+                  >
+                    ▶
+                  </button>
+                  <button
+                    class="btn-item-act delete"
+                    title="删除该片段"
+                    @click.stop="removeSegment(seg.id)"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
 
               <div class="item-timecode-grid">
                 <!-- Start Time Picker -->
                 <div class="time-picker-box">
-                  <span class="lbl">起:</span>
+                  <span class="lbl">起点</span>
                   <input
                     :value="msToTimeStr(seg.startMs)"
                     type="text"
-                    class="time-input"
+                    class="time-input font-mono"
                     @change="updateSegmentStart(seg, ($event.target as HTMLInputElement).value)"
                   />
                   <button
                     class="btn-stamp-now"
-                    :title="'将当前播放点作为起点'"
+                    title="将当前播放进度设为起点"
                     @click.stop="seg.startMs = Math.round(currentTime * 1000)"
                   >
-                    取当前
+                    🎯 当前
                   </button>
                 </div>
 
+                <span class="time-arrow">→</span>
+
                 <!-- End Time Picker -->
                 <div class="time-picker-box">
-                  <span class="lbl">止:</span>
+                  <span class="lbl">终点</span>
                   <input
                     :value="msToTimeStr(seg.endMs)"
                     type="text"
-                    class="time-input"
+                    class="time-input font-mono"
                     @change="updateSegmentEnd(seg, ($event.target as HTMLInputElement).value)"
                   />
                   <button
                     class="btn-stamp-now"
-                    :title="'将当前播放点作为终点'"
+                    title="将当前播放进度设为终点"
                     @click.stop="seg.endMs = Math.round(currentTime * 1000)"
                   >
-                    取当前
+                    🎯 当前
                   </button>
                 </div>
               </div>
             </div>
-
-            <!-- Item Action Buttons -->
-            <div class="item-actions-col">
-              <button
-                class="btn-item-act play"
-                :title="'试看该片段范围'"
-                @click.stop="playSegment(seg)"
-              >
-                ▶️
-              </button>
-              <button
-                class="btn-item-act delete"
-                :title="'删除该片段'"
-                @click.stop="removeSegment(seg.id)"
-              >
-                🗑️
-              </button>
-            </div>
           </div>
         </div>
 
-        <!-- Export Configuration Accordion -->
+        <!-- Compact Export Configuration Dock -->
         <div class="export-settings-card">
-          <h5 class="export-title">⚙️ 截取与导出模式配置</h5>
+          <div class="export-header-row">
+            <span class="export-title">⚙️ 截取与导出模式</span>
+            <label class="toggle-control-label">
+              <input v-model="fastCopy" type="checkbox" />
+              <span>⚡ 极速流拷贝 (无损秒出)</span>
+            </label>
+          </div>
 
-          <div class="export-mode-selector">
+          <div class="export-mode-segmented">
             <button
-              class="mode-pill"
+              class="segmented-btn"
               :class="{ active: exportMode === 'separate' }"
               @click="exportMode = 'separate'"
             >
-              <span class="mode-icon">📂</span>
-              <div class="mode-texts">
-                <strong>独立切片</strong>
-                <small>各片段保存为单独视频</small>
-              </div>
+              <span>📂 独立切片</span>
             </button>
-
             <button
-              class="mode-pill"
+              class="segmented-btn"
               :class="{ active: exportMode === 'merge' }"
               @click="exportMode = 'merge'"
             >
-              <span class="mode-icon">🔗</span>
-              <div class="mode-texts">
-                <strong>拼接成片</strong>
-                <small>顺次合并为一个完整精简版</small>
-              </div>
+              <span>🔗 顺序合并</span>
             </button>
-
             <button
-              class="mode-pill"
+              class="segmented-btn"
               :class="{ active: exportMode === 'both' }"
               @click="exportMode = 'both'"
             >
-              <span class="mode-icon">📦</span>
-              <div class="mode-texts">
-                <strong>全部产出</strong>
-                <small>同时保留切片与合并版</small>
-              </div>
+              <span>📦 全部产出</span>
             </button>
-          </div>
-
-          <div class="export-options-row">
-            <label class="toggle-control-label">
-              <input v-model="fastCopy" type="checkbox" />
-              <span>⚡ 极速无损流拷贝 (-c copy，秒级完成，画质零损耗)</span>
-            </label>
           </div>
         </div>
       </section>
@@ -1235,12 +1241,12 @@ onUnmounted(() => {
 .clipper-studio-container {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
-  padding: 1.25rem;
+  gap: 0.85rem;
+  padding: 0.85rem 1.1rem;
   height: 100%;
   box-sizing: border-box;
-  background: var(--bg-base, #0d1117);
-  color: var(--text-color, #e6edf3);
+  background: #090d16;
+  color: #f1f5f9;
   overflow-y: auto;
 }
 
@@ -1249,66 +1255,102 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1.5rem;
-  padding: 1rem 1.25rem;
-  background: var(--bg-card, rgba(22, 27, 34, 0.8));
-  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
-  border-radius: 12px;
-  backdrop-filter: blur(16px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  gap: 1rem;
+  padding: 0.6rem 0.95rem;
+  background: #111827;
+  border: 1px solid #1f293d;
+  border-radius: 10px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+  flex-shrink: 0;
 }
 
-.video-info-group {
+.studio-header-left {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.85rem;
   min-width: 0;
   flex: 1;
 }
 
-.btn-back-to-library {
-  display: inline-flex;
+.nav-pill-group {
+  display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.45rem 0.85rem;
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--text-color, #e6edf3);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  gap: 0.35rem;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 3px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
 }
 
-.btn-back-to-library:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.3);
-  transform: translateX(-2px);
-  color: #60a5fa;
+.btn-nav-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
-.btn-back-to-library .back-arrow {
-  font-size: 1rem;
+.btn-nav-pill:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.btn-nav-pill.secondary {
+  color: #fb923c;
+  background: rgba(251, 146, 60, 0.1);
+}
+
+.btn-nav-pill.secondary:hover {
+  background: rgba(251, 146, 60, 0.2);
+  color: #fff;
+}
+
+.btn-nav-pill .back-arrow {
+  font-size: 0.95rem;
   line-height: 1;
+}
+
+.header-v-divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.12);
+  flex-shrink: 0;
+}
+
+.active-video-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
 }
 
 .video-thumb-preview {
   position: relative;
-  width: 72px;
-  height: 48px;
-  border-radius: 6px;
+  width: 48px;
+  height: 32px;
+  border-radius: 5px;
   overflow: hidden;
-  background: rgba(0, 0, 0, 0.4);
+  background: #000;
   cursor: pointer;
   flex-shrink: 0;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  transition: transform 0.15s ease;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: transform 0.15s ease, border-color 0.15s ease;
 }
 
 .video-thumb-preview:hover {
-  transform: scale(1.04);
+  transform: scale(1.05);
+  border-color: #3b82f6;
 }
 
 .thumb-img {
@@ -1323,7 +1365,7 @@ onUnmounted(() => {
   justify-content: center;
   width: 100%;
   height: 100%;
-  font-size: 1.5rem;
+  font-size: 1rem;
 }
 
 .change-overlay-badge {
@@ -1331,146 +1373,158 @@ onUnmounted(() => {
   bottom: 0;
   left: 0;
   right: 0;
-  background: rgba(0, 0, 0, 0.7);
-  color: #fff;
-  font-size: 0.65rem;
+  background: rgba(0, 0, 0, 0.75);
+  color: #cbd5e1;
+  font-size: 0.6rem;
   text-align: center;
-  padding: 2px 0;
+  line-height: 1.2;
+  padding: 1px 0;
 }
 
 .video-meta-texts {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.2rem;
   min-width: 0;
+  flex: 1;
 }
 
 .title-row {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
+  min-width: 0;
 }
 
 .video-title {
-  margin: 0;
-  font-size: 1.1rem;
+  font-size: 0.88rem;
   font-weight: 700;
   color: #fff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 480px;
+  max-width: 280px;
 }
 
 .btn-switch-video {
-  padding: 3px 8px;
+  padding: 1px 6px;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #cbd5e1;
-  font-size: 0.75rem;
+  color: #94a3b8;
+  font-size: 0.7rem;
   cursor: pointer;
-  transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
 }
 
 .btn-switch-video:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.18);
   color: #fff;
 }
 
 .meta-pills-row {
   display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 
 .meta-pill {
-  font-size: 0.75rem;
+  font-size: 0.68rem;
   color: #94a3b8;
   background: rgba(255, 255, 255, 0.05);
-  padding: 2px 8px;
+  padding: 1px 6px;
   border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .studio-top-actions {
   display: flex;
-  gap: 0.75rem;
+  align-items: center;
+  gap: 0.5rem;
   flex-shrink: 0;
 }
 
 .btn-act {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.55rem 1.1rem;
-  border-radius: 8px;
-  font-size: 0.85rem;
+  gap: 0.35rem;
+  padding: 0.42rem 0.8rem;
+  border-radius: 7px;
+  font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
-  border: none;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+  white-space: nowrap;
 }
 
 .btn-act:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
   transform: none !important;
 }
 
-.climax-gradient-btn {
-  background: linear-gradient(135deg, #ef4444, #f97316, #eab308);
-  color: #fff;
-  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);
+.climax-btn {
+  background: rgba(249, 115, 22, 0.14);
+  border-color: rgba(249, 115, 22, 0.35);
+  color: #fdba74;
 }
 
-.climax-gradient-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.6);
+.climax-btn:hover:not(:disabled) {
+  background: rgba(249, 115, 22, 0.25);
+  color: #fff;
+  border-color: #f97316;
+  box-shadow: 0 0 12px rgba(249, 115, 22, 0.35);
 }
 
 .climax-fire-icon {
   display: inline-block;
-  font-size: 1rem;
-  animation: pulse-fire 1.8s infinite ease-in-out;
+  font-size: 0.95rem;
 }
 
-@keyframes pulse-fire {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.22);
-  }
+.ai-btn {
+  background: rgba(139, 92, 246, 0.14);
+  border-color: rgba(139, 92, 246, 0.35);
+  color: #c4b5fd;
 }
 
-.ai-gradient-btn {
-  background: linear-gradient(135deg, #ec4899, #8b5cf6, #3b82f6);
+.ai-btn:hover:not(:disabled) {
+  background: rgba(139, 92, 246, 0.25);
   color: #fff;
-  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.35);
+  border-color: #8b5cf6;
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.35);
 }
 
-.ai-gradient-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(139, 92, 246, 0.5);
+.ai-sparkle-icon {
+  display: inline-block;
+  font-size: 0.95rem;
 }
 
-.primary-btn {
+.export-cta-btn {
   background: linear-gradient(135deg, #10b981, #059669);
+  border: none;
   color: #fff;
-  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+  padding: 0.42rem 0.95rem;
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.35);
 }
 
-.primary-btn:hover:not(:disabled) {
+.export-cta-btn:hover:not(:disabled) {
+  opacity: 0.95;
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(16, 185, 129, 0.5);
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.5);
 }
 
 /* Workspace Grid */
 .studio-workspace-grid {
   display: grid;
   grid-template-columns: 1.35fr 1fr;
-  gap: 1.25rem;
+  gap: 0.85rem;
   flex: 1;
   min-height: 0;
 }
@@ -1479,11 +1533,12 @@ onUnmounted(() => {
 .player-panel-card {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  background: var(--bg-card, rgba(22, 27, 34, 0.8));
-  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
-  border-radius: 12px;
-  padding: 1rem;
+  gap: 0.6rem;
+  background: #111827;
+  border: 1px solid #1f293d;
+  border-radius: 10px;
+  padding: 0.75rem;
+  min-height: 0;
 }
 
 .video-viewport {
@@ -1491,11 +1546,13 @@ onUnmounted(() => {
   width: 100%;
   aspect-ratio: 16 / 9;
   background: #000;
-  border-radius: 8px;
+  border-radius: 7px;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: inset 0 0 16px rgba(0, 0, 0, 0.85);
+  cursor: pointer;
 }
 
 .native-video-el {
@@ -1506,15 +1563,15 @@ onUnmounted(() => {
 
 .floating-time-hud {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  background: rgba(0, 0, 0, 0.7);
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 0.78rem;
-  backdrop-filter: blur(4px);
+  top: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.75);
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-size: 0.75rem;
   color: #38bdf8;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(6px);
 }
 
 .time-divider {
@@ -1527,86 +1584,134 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  background: rgba(0, 0, 0, 0.3);
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  gap: 0.5rem;
+  background: #0c121e;
+  padding: 0.4rem 0.6rem;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .left-transport-buttons,
 .right-quick-markers {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.35rem;
 }
 
 .transport-btn,
 .marker-shortcut-btn {
-  padding: 0.4rem 0.65rem;
+  padding: 0.35rem 0.6rem;
   border-radius: 5px;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 500;
   cursor: pointer;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #f1f5f9;
-  transition: all 0.15s;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .transport-btn:hover,
 .marker-shortcut-btn:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
 }
 
 .transport-btn.play-btn {
-  background: rgba(99, 102, 241, 0.25);
-  border-color: rgba(99, 102, 241, 0.5);
-  color: #c7d2fe;
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #93c5fd;
+  font-weight: 600;
+}
+
+.transport-btn.play-btn:hover {
+  background: rgba(59, 130, 246, 0.35);
+  color: #fff;
 }
 
 .marker-shortcut-btn.in-btn {
-  background: rgba(16, 185, 129, 0.18);
-  border-color: rgba(16, 185, 129, 0.4);
-  color: #a7f3d0;
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.25);
+}
+
+.marker-shortcut-btn.in-btn:hover {
+  background: rgba(16, 185, 129, 0.24);
+  color: #fff;
 }
 
 .marker-shortcut-btn.split-btn {
-  background: rgba(245, 158, 11, 0.18);
-  border-color: rgba(245, 158, 11, 0.4);
-  color: #fde68a;
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.35);
+  font-weight: 600;
+}
+
+.marker-shortcut-btn.split-btn:hover {
+  background: rgba(245, 158, 11, 0.3);
+  color: #fff;
 }
 
 .marker-shortcut-btn.out-btn {
-  background: rgba(236, 72, 153, 0.18);
-  border-color: rgba(236, 72, 153, 0.4);
-  color: #fbcfe8;
+  color: #f472b6;
+  background: rgba(236, 72, 153, 0.12);
+  border-color: rgba(236, 72, 153, 0.25);
+}
+
+.marker-shortcut-btn.out-btn:hover {
+  background: rgba(236, 72, 153, 0.24);
+  color: #fff;
 }
 
 /* Visual Timeline */
 .visual-timeline-section {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  margin-top: 0.25rem;
+  gap: 0.3rem;
+  margin-top: 0.15rem;
 }
 
 .timeline-labels-row {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   font-size: 0.72rem;
+}
+
+.timeline-title-left {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #cbd5e1;
+  font-weight: 600;
+}
+
+.timeline-icon {
+  font-size: 0.85rem;
+}
+
+.timeline-hint {
+  font-weight: normal;
+  color: #64748b;
+  font-size: 0.68rem;
+}
+
+.timeline-counter {
+  font-size: 0.7rem;
   color: #94a3b8;
 }
 
-.timeline-counter strong {
+.badge-seg-count {
   color: #38bdf8;
+  font-weight: 700;
 }
 
 .timeline-track-container {
   position: relative;
-  height: 44px;
-  background: #111827;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  height: 38px;
+  background: #080c14;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
   cursor: pointer;
   overflow: hidden;
@@ -1619,40 +1724,41 @@ onUnmounted(() => {
     90deg,
     transparent,
     transparent 19px,
-    rgba(255, 255, 255, 0.05) 20px
+    rgba(255, 255, 255, 0.04) 20px
   );
 }
 
 .timeline-segment-block {
   position: absolute;
-  top: 4px;
-  bottom: 4px;
+  top: 3px;
+  bottom: 3px;
   border-radius: 4px;
   opacity: 0.85;
-  transition: opacity 0.15s, transform 0.15s;
+  transition: all 0.15s ease;
   display: flex;
   align-items: center;
   padding: 0 6px;
   overflow: hidden;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
 }
 
 .timeline-segment-block:hover {
   opacity: 1;
+  filter: brightness(1.15);
 }
 
 .timeline-segment-block.active {
   opacity: 1;
-  box-shadow: 0 0 0 2px #fff, inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 0 2px #fff, inset 0 0 0 1px rgba(0, 0, 0, 0.6);
   z-index: 2;
 }
 
 .block-title-text {
   font-size: 0.68rem;
-  font-weight: 600;
+  font-weight: 700;
   color: #fff;
   white-space: nowrap;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
 
 .timeline-playhead-line {
@@ -1675,15 +1781,24 @@ onUnmounted(() => {
   clip-path: polygon(0% 0%, 100% 0%, 50% 100%);
 }
 
+.timeline-ticks-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.68rem;
+  color: #64748b;
+  padding: 0 2px;
+}
+
 /* Right Column: Segments Editor Panel */
 .segments-editor-panel {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  background: var(--bg-card, rgba(22, 27, 34, 0.8));
-  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
-  border-radius: 12px;
-  padding: 1rem;
+  gap: 0.65rem;
+  background: #111827;
+  border: 1px solid #1f293d;
+  border-radius: 10px;
+  padding: 0.85rem;
   min-height: 0;
 }
 
@@ -1696,60 +1811,72 @@ onUnmounted(() => {
 .card-title-group {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.45rem;
 }
 
 .card-title-group h4 {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: 0.92rem;
+  font-weight: 700;
   color: #fff;
 }
 
 .badge-count {
   font-size: 0.7rem;
-  background: rgba(99, 102, 241, 0.2);
-  color: #c7d2fe;
-  padding: 2px 6px;
+  font-weight: 700;
+  background: rgba(59, 130, 246, 0.18);
+  color: #60a5fa;
+  padding: 1px 6px;
   border-radius: 10px;
 }
 
 .card-header-actions {
   display: flex;
-  gap: 0.4rem;
+  align-items: center;
+  gap: 0.35rem;
 }
 
-.btn-xs-ghost,
-.btn-xs-danger {
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-size: 0.72rem;
-  cursor: pointer;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
-  color: #cbd5e1;
-  transition: all 0.15s;
-}
-
-.btn-xs-ghost:hover {
-  background: rgba(255, 255, 255, 0.12);
+.btn-xs-primary {
+  padding: 0.25rem 0.65rem;
+  border-radius: 5px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  background: #2563eb;
+  border: none;
   color: #fff;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-xs-primary:hover {
+  background: #3b82f6;
+}
+
+.btn-xs-danger {
+  padding: 0.25rem 0.55rem;
+  border-radius: 5px;
+  font-size: 0.72rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #fca5a5;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .btn-xs-danger:hover {
   background: rgba(239, 68, 68, 0.2);
-  border-color: rgba(239, 68, 68, 0.4);
-  color: #fca5a5;
+  color: #fff;
 }
 
 /* Segments List Scroll */
 .segments-list-scroll {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.45rem;
   flex: 1;
   overflow-y: auto;
-  min-height: 200px;
-  padding-right: 4px;
+  min-height: 160px;
+  padding-right: 2px;
 }
 
 .empty-segments-state {
@@ -1757,72 +1884,90 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.6rem;
-  padding: 2.5rem 1rem;
+  gap: 0.5rem;
+  padding: 2.2rem 1rem;
   text-align: center;
   color: #64748b;
 }
 
 .empty-icon {
-  font-size: 2.2rem;
+  font-size: 2rem;
 }
 
 .empty-segments-state h5 {
   margin: 0;
   color: #cbd5e1;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
 }
 
 .empty-segments-state p {
   margin: 0;
-  font-size: 0.78rem;
-  max-width: 280px;
+  font-size: 0.74rem;
+  color: #64748b;
+  max-width: 260px;
+  line-height: 1.4;
 }
 
 .empty-action-btns {
   display: flex;
-  gap: 0.6rem;
-  margin-top: 0.5rem;
+  gap: 0.45rem;
+  margin-top: 0.4rem;
 }
 
-.ghost-btn {
+.btn-empty-act {
+  padding: 0.35rem 0.65rem;
+  border-radius: 5px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.btn-empty-act.climax {
+  background: rgba(249, 115, 22, 0.15);
+  color: #fdba74;
+  border-color: rgba(249, 115, 22, 0.3);
+}
+
+.btn-empty-act.ai {
+  background: rgba(139, 92, 246, 0.15);
+  color: #c4b5fd;
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+.btn-empty-act.manual {
   background: rgba(255, 255, 255, 0.08);
   color: #e2e8f0;
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 /* Segment Card Item */
 .segment-item-card {
+  position: relative;
   display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  background: rgba(255, 255, 255, 0.03);
+  align-items: stretch;
+  background: #0d131f;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  padding: 0.55rem 0.75rem;
+  border-radius: 7px;
+  overflow: hidden;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .segment-item-card:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.15);
+  background: #121a2b;
+  border-color: rgba(255, 255, 255, 0.16);
 }
 
 .segment-item-card.active {
-  background: rgba(99, 102, 241, 0.12);
-  border-color: rgba(99, 102, 241, 0.4);
+  background: #141e33;
+  border-color: var(--seg-accent, #3b82f6);
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.2);
 }
 
-.item-index-badge {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: #fff;
+.card-accent-bar {
+  width: 4px;
   flex-shrink: 0;
 }
 
@@ -1830,6 +1975,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  padding: 0.5rem 0.65rem;
   flex: 1;
   min-width: 0;
 }
@@ -1841,20 +1987,47 @@ onUnmounted(() => {
   gap: 0.5rem;
 }
 
+.title-left {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.item-index-pill {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #fff;
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
 .segment-title-input {
   background: transparent;
-  border: none;
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.2);
+  border: 1px solid transparent;
+  border-radius: 4px;
   color: #fff;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   font-weight: 600;
-  padding: 1px 0;
+  padding: 1px 4px;
   outline: none;
   flex: 1;
+  min-width: 0;
+  transition: border-color 0.15s ease;
 }
 
 .segment-title-input:focus {
-  border-bottom-color: #6366f1;
+  background: rgba(0, 0, 0, 0.3);
+  border-color: #3b82f6;
+}
+
+.title-right {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
 }
 
 .duration-tag {
@@ -1863,35 +2036,70 @@ onUnmounted(() => {
   background: rgba(56, 189, 248, 0.1);
   padding: 1px 5px;
   border-radius: 3px;
+  font-weight: 600;
+}
+
+.btn-item-act {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+  font-size: 0.7rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.btn-item-act:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.btn-item-act.delete:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #fca5a5;
 }
 
 .item-timecode-grid {
   display: flex;
-  gap: 0.6rem;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.time-arrow {
+  font-size: 0.75rem;
+  color: #64748b;
 }
 
 .time-picker-box {
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  background: rgba(0, 0, 0, 0.3);
+  background: #080c14;
   padding: 2px 5px;
   border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.08);
+  flex: 1;
 }
 
 .time-picker-box .lbl {
-  font-size: 0.7rem;
-  color: #94a3b8;
+  font-size: 0.68rem;
+  color: #64748b;
+  white-space: nowrap;
 }
 
 .time-input {
-  width: 82px;
+  flex: 1;
+  width: 72px;
   background: transparent;
   border: none;
-  color: #cbd5e1;
+  color: #e2e8f0;
   font-size: 0.75rem;
-  font-family: monospace;
   outline: none;
 }
 
@@ -1903,111 +2111,83 @@ onUnmounted(() => {
   color: #94a3b8;
   padding: 1px 4px;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .btn-stamp-now:hover {
-  background: rgba(99, 102, 241, 0.3);
-  color: #c7d2fe;
+  background: rgba(59, 130, 246, 0.3);
+  color: #93c5fd;
 }
 
-.item-actions-col {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.btn-item-act {
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.05);
-  font-size: 0.72rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s;
-}
-
-.btn-item-act:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-
-.btn-item-act.delete:hover {
-  background: rgba(239, 68, 68, 0.25);
-}
-
-/* Export Settings Section */
+/* Compact Export Settings Dock */
 .export-settings-card {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
-  padding: 0.75rem;
-  background: rgba(0, 0, 0, 0.25);
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.export-title {
-  margin: 0;
-  font-size: 0.8rem;
-  color: #cbd5e1;
-}
-
-.export-mode-selector {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.4rem;
-}
-
-.mode-pill {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.4rem 0.5rem;
-  background: rgba(255, 255, 255, 0.03);
+  gap: 0.45rem;
+  padding: 0.6rem 0.75rem;
+  background: #0c121e;
+  border-radius: 7px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.15s;
+  flex-shrink: 0;
 }
 
-.mode-pill.active {
-  background: rgba(99, 102, 241, 0.18);
-  border-color: rgba(99, 102, 241, 0.45);
-}
-
-.mode-icon {
-  font-size: 1rem;
-}
-
-.mode-texts strong {
-  display: block;
-  font-size: 0.75rem;
-  color: #fff;
-}
-
-.mode-texts small {
-  font-size: 0.65rem;
-  color: #94a3b8;
-}
-
-.export-options-row {
+.export-header-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
+.export-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #cbd5e1;
+}
+
 .toggle-control-label {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.35rem;
   font-size: 0.72rem;
-  color: #a7f3d0;
+  color: #34d399;
   cursor: pointer;
 }
+
+.export-mode-segmented {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  background: rgba(0, 0, 0, 0.35);
+  padding: 2px;
+  border-radius: 6px;
+  gap: 2px;
+}
+
+.segmented-btn {
+  padding: 0.35rem 0.5rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+}
+
+.segmented-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.segmented-btn.active {
+  background: rgba(59, 130, 246, 0.25);
+  color: #60a5fa;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
 
 /* Modal Backdrop */
 .modal-backdrop-layer {
