@@ -1343,29 +1343,7 @@ onUnmounted(() => {
                   </div>
 
                   <div class="grid-thumb-hover-overlay">
-                    <div class="hover-overlay-actions">
-                      <button
-                        class="hover-act-btn play-icon-badge"
-                        :title="t('library.playTooltip')"
-                        @click.stop="openVideo(video)"
-                      >
-                        <span class="act-icon">▶</span>
-                      </button>
-                      <button
-                        class="hover-act-btn clip-icon-badge"
-                        :title="'视频阶段与智能裁剪'"
-                        @click.stop="emit('navigateClipper', video)"
-                      >
-                        <svg viewBox="0 0 24 24" class="act-svg" fill="none" stroke="currentColor" stroke-width="2">
-                          <circle cx="6" cy="6" r="3"></circle>
-                          <circle cx="6" cy="18" r="3"></circle>
-                          <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
-                          <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
-                          <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
-                        </svg>
-                        <span class="act-text">裁剪</span>
-                      </button>
-                    </div>
+                    <span class="play-icon-badge">▶</span>
                   </div>
 
                   <!-- Hover Scrub Visual Cursor & Timestamp -->
@@ -1460,9 +1438,6 @@ onUnmounted(() => {
 
                   <!-- Quick Actions Row -->
                   <div class="card-quick-actions">
-                    <button class="card-act-btn" :title="t('library.playTooltip')" @click.stop="openVideo(video)">
-                      {{ t('library.playBtn') }}
-                    </button>
                     <button
                       class="card-act-btn btn-act-ai"
                       :class="{ 'has-ai-active': aiStatusMap.get(video.id)?.has_subtitles || aiStatusMap.get(video.id)?.has_analysis }"
@@ -1603,7 +1578,6 @@ onUnmounted(() => {
               <div class="li-codec font-mono">{{ item.row.video.codec || '-' }}</div>
               <div class="li-size font-mono">{{ formatFileSize(item.row.video.file_size) }}</div>
               <div class="li-actions">
-                <button class="li-btn" :title="t('library.playTooltip')" @click.stop="openVideo(item.row.video)">▶</button>
                 <button
                   class="li-btn btn-act-ai"
                   :class="{ 'has-ai-active': aiStatusMap.get(item.row.video.id)?.has_subtitles || aiStatusMap.get(item.row.video.id)?.has_analysis }"
@@ -2729,7 +2703,7 @@ onUnmounted(() => {
   max-width: 420px;
 }
 
-/* Thumbnail Hover Overlay & Action Badges */
+/* Thumbnail Hover Overlay & Play Badge */
 .grid-thumb-box:hover .grid-thumb-hover-overlay {
   opacity: 1;
 }
@@ -2740,75 +2714,33 @@ onUnmounted(() => {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
   opacity: 0;
   transition: opacity 0.2s ease;
-  backdrop-filter: blur(3px);
+  backdrop-filter: blur(2px);
   z-index: 2;
-}
-
-.hover-overlay-actions {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-}
-
-.hover-act-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
-  transform: scale(0.92);
-  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.grid-thumb-box:hover .hover-act-btn {
-  transform: scale(1);
 }
 
 .play-icon-badge {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  background: rgba(59, 130, 246, 0.9);
   color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 1.15rem;
-  padding: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transform: scale(0.9);
+  transition: transform 0.15s ease;
 }
 
-.play-icon-badge:hover {
-  background: linear-gradient(135deg, #60a5fa, #1d4ed8);
-  transform: scale(1.12) !important;
-  box-shadow: 0 6px 18px rgba(59, 130, 246, 0.6);
-}
-
-.clip-icon-badge {
-  height: 44px;
-  padding: 0 1rem;
-  border-radius: 22px;
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.95), rgba(217, 119, 6, 0.95));
-  color: #ffffff;
-  font-size: 0.85rem;
-  font-weight: 600;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-}
-
-.clip-icon-badge .act-svg {
-  width: 17px;
-  height: 17px;
-}
-
-.clip-icon-badge:hover {
-  background: linear-gradient(135deg, #fbbf24, #b45309);
-  transform: scale(1.08) !important;
-  box-shadow: 0 6px 18px rgba(245, 158, 11, 0.6);
+.grid-thumb-box:hover .play-icon-badge {
+  transform: scale(1.08);
 }
 
 /* Card Quick Action Bar */
