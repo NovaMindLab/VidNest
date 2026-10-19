@@ -7,6 +7,8 @@ export default {
   "nav": {
     "core": "핵심 기능",
     "library": "미디어 라이브러리",
+    "clipper": "동영상 구간 분할 및 자르기",
+    "clips": "클립 관리",
     "dedup": "중복 비디오 정리",
     "audios": "추출된 오디오",
     "downloads": "다운로드 센터",
@@ -16,6 +18,8 @@ export default {
   },
   "header": {
     "libraryTitle": "로컬 비디오 자산 라이브러리",
+    "clipperTitle": "동영상 구간 분할 및 스마트 자르기 스튜디오",
+    "clipsTitle": "동영상 클립 및 구간 분할 관리 허브",
     "dedupTitle": "비디오 중복 분석 및 병합 정리 허브",
     "audiosTitle": "추출된 오디오 자산 센터",
     "downloadsTitle": "yt-dlp 온라인 다운로드",

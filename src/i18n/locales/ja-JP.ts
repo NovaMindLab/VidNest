@@ -7,6 +7,8 @@ export default {
   "nav": {
     "core": "主要機能",
     "library": "メディアライブラリ",
+    "clipper": "動画分割・切り抜き",
+    "clips": "クリップ管理",
     "dedup": "重複動画の検出・整理",
     "audios": "抽出済み音声",
     "downloads": "ダウンロードセンター",
@@ -16,6 +18,8 @@ export default {
   },
   "header": {
     "libraryTitle": "ローカル動画アセットライブラリ",
+    "clipperTitle": "動画分割・AIスマート切り抜き工房",
+    "clipsTitle": "動画クリップ・分割管理センター",
     "dedupTitle": "動画重複比較・統合整理ハブ",
     "audiosTitle": "抽出済み音声アセットセンター",
     "downloadsTitle": "yt-dlp オンラインダウンロード",

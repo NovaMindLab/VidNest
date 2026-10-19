@@ -7,6 +7,8 @@ export default {
   "nav": {
     "core": "Funciones Principales",
     "library": "Biblioteca Multimedia",
+    "clipper": "Cortador de Videos",
+    "clips": "Gestión de Clips",
     "dedup": "Limpieza de Duplicados",
     "audios": "Audios Extraídos",
     "downloads": "Centro de Descargas",
@@ -16,6 +18,8 @@ export default {
   },
   "header": {
     "libraryTitle": "Biblioteca Local de Videos",
+    "clipperTitle": "Estudio de Segmentación y Corte Inteligente",
+    "clipsTitle": "Centro de Gestión de Clips y Segmentos",
     "dedupTitle": "Centro de Deduplicación y Organización",
     "audiosTitle": "Centro de Archivos de Audio Extraídos",
     "downloadsTitle": "Descargas en Línea yt-dlp",

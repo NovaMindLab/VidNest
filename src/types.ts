@@ -400,6 +400,8 @@ export interface ClipResultItem {
   outputPath: string;
   durationSec: number;
   fileSize: number;
+  startMs?: number;
+  endMs?: number;
 }
 
 export interface ClipVideoResponse {
@@ -425,6 +427,40 @@ export interface RecommendSegmentsResponse {
   source: 'ai_climax' | 'ai_topics' | 'subtitles' | 'audio_peaks' | 'silence_detect' | 'pacing' | string;
   message: string;
   highlights?: SegmentRecommendation[];
+}
+
+export interface ClippedVideo {
+  id: number;
+  videoId?: number | null;
+  sourceVideoTitle?: string | null;
+  sourceVideoPath: string;
+  filePath: string;
+  fileName: string;
+  title: string;
+  startMs: number;
+  endMs: number;
+  duration?: number | null;
+  fileSize: number;
+  isMerged: boolean;
+  createdAt: number;
+}
+
+export interface MasterVideoClipsGroup {
+  sourceVideoPath: string;
+  sourceVideoTitle: string;
+  videoId?: number | null;
+  totalClips: number;
+  totalDuration: number;
+  totalSize: number;
+  latestCreatedAt: number;
+  clips: ClippedVideo[];
+}
+
+export interface ClippedVideoFilter {
+  search?: string;
+  sourceVideoPath?: string;
+  isMergedOnly?: boolean;
+  sortBy?: 'created_desc' | 'created_asc' | 'duration_desc' | 'title_asc' | string;
 }
 
 

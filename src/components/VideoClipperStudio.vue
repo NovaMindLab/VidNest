@@ -18,6 +18,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'navigateLibrary'): void;
+  (e: 'navigateClips'): void;
   (e: 'playVideo', video: Video): void;
 }>();
 
@@ -606,6 +607,14 @@ onUnmounted(() => {
         >
           <span class="back-arrow">←</span>
           <span>返回媒体库</span>
+        </button>
+
+        <button
+          class="btn-back-to-library"
+          title="查看已裁剪的视频与分段管理列表"
+          @click="emit('navigateClips')"
+        >
+          <span>📁 裁剪管理</span>
         </button>
 
         <div class="video-thumb-preview" @click="openVideoPicker">
@@ -1203,6 +1212,9 @@ onUnmounted(() => {
         </div>
 
         <div class="modal-dialog-footer">
+          <button class="btn-cancel" @click="showResultModal = false; emit('navigateClips')">
+            📁 查看切片管理
+          </button>
           <button class="btn-apply-all" @click="showResultModal = false">
             完成
           </button>

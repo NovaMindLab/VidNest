@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { HealthReport, YtDlpUpdateCheck, YtDlpUpdateResult, AppUpdateInfo, Video } from './types';
 import VideoLibrary from './components/VideoLibrary.vue';
 import VideoClipperStudio from './components/VideoClipperStudio.vue';
+import ClippedVideosManager from './components/ClippedVideosManager.vue';
 import VideoDeduplication from './components/VideoDeduplication.vue';
 import ExtractedAudiosView from './components/ExtractedAudiosView.vue';
 import DownloadCenter from './components/DownloadCenter.vue';
@@ -22,7 +23,7 @@ const urlParams = new URLSearchParams(window.location.search);
 const isPlayerWindow = ref(urlParams.get('window') === 'player');
 const isYtdWindow = ref(urlParams.get('window') === 'ytd');
 
-const currentTab = ref<'library' | 'clipper' | 'dedup' | 'audios' | 'downloads' | 'system' | 'settings'>('library');
+const currentTab = ref<'library' | 'clipper' | 'clips' | 'dedup' | 'audios' | 'downloads' | 'system' | 'settings'>('library');
 const clipperActiveVideo = ref<Video | null>(null);
 const activeDownloadsCount = ref<number>(0);
 const showUpdateModal = ref<boolean>(false);
@@ -211,6 +212,22 @@ onMounted(() => {
           <span class="nav-item-label">{{ t('nav.library') }}</span>
         </button>
 
+        <button
+          class="nav-item"
+          :class="{ active: currentTab === 'clips' }"
+          @click="currentTab = 'clips'"
+        >
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="6" cy="6" r="3"></circle>
+              <circle cx="6" cy="18" r="3"></circle>
+              <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
+              <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
+              <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
+            </svg>
+          </div>
+          <span class="nav-item-label">{{ t('nav.clips') }}</span>
+        </button>
 
         <button
           class="nav-item"
@@ -329,6 +346,8 @@ onMounted(() => {
                 ? t('header.libraryTitle')
                 : currentTab === 'clipper'
                 ? t('header.clipperTitle')
+                : currentTab === 'clips'
+                ? t('header.clipsTitle')
                 : currentTab === 'dedup'
                 ? t('header.dedupTitle')
                 : currentTab === 'audios'
@@ -408,6 +427,15 @@ onMounted(() => {
           <VideoClipperStudio
             :initial-video="clipperActiveVideo"
             @navigate-library="currentTab = 'library'"
+            @navigate-clips="currentTab = 'clips'"
+          />
+        </div>
+
+        <!-- VIEW 1.3: CLIPPED VIDEOS MANAGER -->
+        <div v-else-if="currentTab === 'clips'" class="view-panel">
+          <ClippedVideosManager
+            @navigate-library="currentTab = 'library'"
+            @navigate-clipper="handleNavigateClipper"
           />
         </div>
 

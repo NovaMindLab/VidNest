@@ -218,6 +218,8 @@ pub fn clip_video_segments(
             output_path: output_file.to_string_lossy().to_string(),
             duration_sec,
             file_size,
+            start_ms,
+            end_ms,
         });
     }
 

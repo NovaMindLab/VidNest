@@ -7,6 +7,8 @@ export default {
   "nav": {
     "core": "Hauptfunktionen",
     "library": "Medienbibliothek",
+    "clipper": "Videoschneider",
+    "clips": "Clips-Verwaltung",
     "dedup": "Duplikate bereinigen",
     "audios": "Extrahierte Audios",
     "downloads": "Download-Center",
@@ -16,6 +18,8 @@ export default {
   },
   "header": {
     "libraryTitle": "Lokale Video-Asset-Bibliothek",
+    "clipperTitle": "Videosegmentierung & Schnittstudio",
+    "clipsTitle": "Zentrum für Videoclips & Segmente",
     "dedupTitle": "Video-Deduplizierung & Bereinigung",
     "audiosTitle": "Extrahierte Audio-Assets",
     "downloadsTitle": "yt-dlp Video-Downloader",

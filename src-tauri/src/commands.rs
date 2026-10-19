@@ -13,10 +13,11 @@ use crate::health::run_health_check;
 use crate::media::read_thumbnail_base64;
 use crate::models::{
     AudioExtractionOptions, AudioExtractionResult, CategoryStats, ClipVideoRequest,
-    ClipVideoResponse, Collection, DownloadTask, DuplicateGroup, DuplicateResolutionAction,
-    ExtractedAudio, ExtractedAudioFilter, HealthReport, RecommendSegmentsResponse, ResolutionSummary,
-    ScanSummary, SourceFolderStat, Tag, UrlInspectResult, Video,
-    VideoFilter, VideoListResponse, YtDlpUpdateCheck, YtDlpUpdateResult,
+    ClipVideoResponse, ClippedVideo, ClippedVideoFilter, Collection, DownloadTask, DuplicateGroup,
+    DuplicateResolutionAction, ExtractedAudio, ExtractedAudioFilter, HealthReport,
+    MasterVideoClipsGroup, RecommendSegmentsResponse, ResolutionSummary, ScanSummary,
+    SourceFolderStat, Tag, UrlInspectResult, Video, VideoFilter, VideoListResponse,
+    YtDlpUpdateCheck, YtDlpUpdateResult,
 };
 use crate::scanner::scan_directory;
 use crate::ytdlp;
@@ -1482,12 +1483,150 @@ pub async fn apply_ai_tags_to_video(
 
 #[tauri::command]
 pub async fn clip_video_segments(
+    db: State<'_, Database>,
     app_handle: AppHandle,
     request: ClipVideoRequest,
 ) -> Result<ClipVideoResponse, String> {
     let app_data_dir = app_handle.path().app_data_dir().ok();
+    let db_clone = (*db).clone();
+    let req_clone = request.clone();
+
     tokio::task::spawn_blocking(move || {
-        crate::media::clip_video_segments(request, app_data_dir.as_deref())
+        let resp = crate::media::clip_video_segments(request, app_data_dir.as_deref())?;
+
+        // If clips succeeded, persist them into the clipped_videos database
+        if resp.success {
+            let conn_arc = db_clone.get_connection();
+            let conn_guard = conn_arc.lock();
+            if let Ok(conn) = conn_guard.as_deref() {
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64;
+
+                let src_path = &req_clone.video_path;
+                let src_title = Path::new(src_path)
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("未知源视频");
+
+                // 1. Record individual clips
+                for clip in &resp.clips {
+                    let file_name = Path::new(&clip.output_path)
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or(&clip.title);
+
+                    let _ = crate::db::clips::insert_or_update_clipped_video(
+                        conn,
+                        req_clone.video_id,
+                        Some(src_title),
+                        src_path,
+                        &clip.output_path,
+                        file_name,
+                        &clip.title,
+                        clip.start_ms,
+                        clip.end_ms,
+                        Some(clip.duration_sec),
+                        clip.file_size,
+                        false,
+                        now_ms,
+                    );
+                }
+
+                // 2. Record merged compilation if produced
+                if let Some(ref merged_path) = resp.merged_path {
+                    let m_file_name = Path::new(merged_path)
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("merged.mp4");
+                    let m_size = std::fs::metadata(merged_path).map(|m| m.len()).unwrap_or(0);
+                    let total_dur: f64 = resp.clips.iter().map(|c| c.duration_sec).sum();
+
+                    let _ = crate::db::clips::insert_or_update_clipped_video(
+                        conn,
+                        req_clone.video_id,
+                        Some(src_title),
+                        src_path,
+                        merged_path,
+                        m_file_name,
+                        &format!("{} - 拼接合集", src_title),
+                        0,
+                        (total_dur * 1000.0) as i64,
+                        Some(total_dur),
+                        m_size,
+                        true,
+                        now_ms,
+                    );
+                }
+            }
+        }
+
+        Ok(resp)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn list_clipped_video_groups(
+    db: State<'_, Database>,
+    filter: Option<ClippedVideoFilter>,
+) -> Result<Vec<MasterVideoClipsGroup>, String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| format!("DB lock error: {}", e))?;
+        let f = filter.unwrap_or_default();
+        crate::db::clips::list_clipped_videos_grouped(&conn, &f)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn list_clipped_videos(
+    db: State<'_, Database>,
+    filter: Option<ClippedVideoFilter>,
+) -> Result<Vec<ClippedVideo>, String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| format!("DB lock error: {}", e))?;
+        let f = filter.unwrap_or_default();
+        crate::db::clips::list_clipped_videos(&conn, &f)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn delete_clipped_video(
+    db: State<'_, Database>,
+    id: i64,
+    delete_disk_file: bool,
+) -> Result<(), String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| format!("DB lock error: {}", e))?;
+        crate::db::clips::delete_clipped_video(&conn, id, delete_disk_file)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn batch_delete_master_clips(
+    db: State<'_, Database>,
+    source_video_path: String,
+    delete_disk_file: bool,
+) -> Result<usize, String> {
+    let db_clone = (*db).clone();
+    tokio::task::spawn_blocking(move || {
+        let conn_arc = db_clone.get_connection();
+        let conn = conn_arc.lock().map_err(|e| format!("DB lock error: {}", e))?;
+        crate::db::clips::batch_delete_master_clips(&conn, &source_video_path, delete_disk_file)
     })
     .await
     .map_err(|e| e.to_string())?

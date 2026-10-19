@@ -30,6 +30,7 @@ use commands::{
     apply_ai_tags_to_video, generate_video_ai_analysis, get_video_ai_analysis, get_videos_ai_status,
     open_app_bin_dir, open_app_models_dir, check_local_whisper_status,
     clip_video_segments, recommend_video_segments,
+    list_clipped_video_groups, list_clipped_videos, delete_clipped_video, batch_delete_master_clips,
 };
 use db::Database;
 use std::path::PathBuf;
@@ -161,6 +162,10 @@ pub fn run() {
             apply_ai_tags_to_video,
             clip_video_segments,
             recommend_video_segments,
+            list_clipped_video_groups,
+            list_clipped_videos,
+            delete_clipped_video,
+            batch_delete_master_clips,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

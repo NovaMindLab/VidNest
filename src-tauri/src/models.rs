@@ -366,6 +366,10 @@ pub struct ClipResultItem {
     pub output_path: String,
     pub duration_sec: f64,
     pub file_size: u64,
+    #[serde(default)]
+    pub start_ms: i64,
+    #[serde(default)]
+    pub end_ms: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -400,6 +404,46 @@ pub struct RecommendSegmentsResponse {
     pub message: String,
     #[serde(default)]
     pub highlights: Vec<SegmentRecommendation>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ClippedVideo {
+    pub id: i64,
+    pub video_id: Option<i64>,
+    pub source_video_title: Option<String>,
+    pub source_video_path: String,
+    pub file_path: String,
+    pub file_name: String,
+    pub title: String,
+    pub start_ms: i64,
+    pub end_ms: i64,
+    pub duration: Option<f64>,
+    pub file_size: u64,
+    pub is_merged: bool,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MasterVideoClipsGroup {
+    pub source_video_path: String,
+    pub source_video_title: String,
+    pub video_id: Option<i64>,
+    pub total_clips: usize,
+    pub total_duration: f64,
+    pub total_size: u64,
+    pub latest_created_at: i64,
+    pub clips: Vec<ClippedVideo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ClippedVideoFilter {
+    pub search: Option<String>,
+    pub source_video_path: Option<String>,
+    pub is_merged_only: Option<bool>,
+    pub sort_by: Option<String>, // "created_desc", "created_asc", "duration_desc", "title_asc"
 }
 
 

@@ -180,6 +180,30 @@ pub const MIGRATIONS: &[Migration] = &[
         ALTER TABLE videos ADD COLUMN last_played_at INTEGER;
         "#,
     },
+    Migration {
+        version: 5,
+        name: "v5_clipped_videos",
+        sql: r#"
+        CREATE TABLE IF NOT EXISTS clipped_videos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            video_id INTEGER REFERENCES videos(id) ON DELETE SET NULL,
+            source_video_title TEXT,
+            source_video_path TEXT NOT NULL,
+            file_path TEXT NOT NULL UNIQUE,
+            file_name TEXT NOT NULL,
+            title TEXT NOT NULL,
+            start_ms INTEGER NOT NULL DEFAULT 0,
+            end_ms INTEGER NOT NULL DEFAULT 0,
+            duration REAL,
+            file_size INTEGER NOT NULL DEFAULT 0,
+            is_merged INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_clipped_videos_created ON clipped_videos(created_at);
+        CREATE INDEX IF NOT EXISTS idx_clipped_videos_source ON clipped_videos(source_video_path);
+        "#,
+    },
 ];
 
 pub fn apply_all(conn: &Connection) -> Result<(), String> {
@@ -250,6 +274,11 @@ mod tests {
             .expect("Query migrations");
         assert_eq!(count_v4, 1);
 
+        let count_v5: i64 = conn
+            .query_row("SELECT COUNT(*) FROM schema_migrations WHERE version = 5", [], |r| r.get(0))
+            .expect("Query migrations");
+        assert_eq!(count_v5, 1);
+
         // Verify tables exist
         let tables_exist: bool = conn
             .query_row(
@@ -259,6 +288,15 @@ mod tests {
             )
             .expect("Query tables");
         assert!(tables_exist);
+
+        let clips_exist: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='clipped_videos')",
+                [],
+                |r| r.get(0),
+            )
+            .expect("Query clipped_videos table");
+        assert!(clips_exist);
 
         let tags_exist: bool = conn
             .query_row(

@@ -8,6 +8,7 @@ export default {
     "core": "Core Features",
     "library": "Media Library",
     "clipper": "Video Clipper",
+    "clips": "Clipped Videos",
     "dedup": "Deduplication",
     "audios": "Extracted Audios",
     "downloads": "Download Center",
@@ -18,6 +19,7 @@ export default {
   "header": {
     "libraryTitle": "Local Video Asset Library",
     "clipperTitle": "Video Segment & Smart Clipper Studio",
+    "clipsTitle": "Clipped Videos & Segments Management Hub",
     "dedupTitle": "Video Deduplication & Cleanup Hub",
     "audiosTitle": "Extracted Audio Assets Center",
     "downloadsTitle": "yt-dlp Video Download Center",
