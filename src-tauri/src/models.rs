@@ -446,6 +446,41 @@ pub struct ClippedVideoFilter {
     pub sort_by: Option<String>, // "created_desc", "created_asc", "duration_desc", "title_asc"
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplaceVideoAudioRequest {
+    pub video_id: Option<i64>,
+    pub video_path: String,
+    pub audio_path: String,
+    pub output_dir: Option<String>,
+    pub custom_title: Option<String>,
+    /// Mode: "replace" (default) or "mix"
+    #[serde(default)]
+    pub mode: Option<String>,
+    /// Background music volume (default 1.0)
+    #[serde(default)]
+    pub bgm_volume: Option<f32>,
+    /// Original audio volume for mix mode (default 0.3)
+    #[serde(default)]
+    pub original_volume: Option<f32>,
+    /// Whether to loop the audio if it is shorter than the video (default true)
+    #[serde(default)]
+    pub loop_audio: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplaceVideoAudioResponse {
+    pub success: bool,
+    pub output_path: String,
+    pub file_name: String,
+    pub file_size: u64,
+    pub duration: Option<f64>,
+    pub message: String,
+    pub clipped_video: Option<ClippedVideo>,
+}
+
+
 
 
 

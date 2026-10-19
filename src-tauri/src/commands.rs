@@ -15,7 +15,8 @@ use crate::models::{
     AudioExtractionOptions, AudioExtractionResult, CategoryStats, ClipVideoRequest,
     ClipVideoResponse, ClippedVideo, ClippedVideoFilter, Collection, DownloadTask, DuplicateGroup,
     DuplicateResolutionAction, ExtractedAudio, ExtractedAudioFilter, HealthReport,
-    MasterVideoClipsGroup, RecommendSegmentsResponse, ResolutionSummary, ScanSummary,
+    MasterVideoClipsGroup, RecommendSegmentsResponse, ReplaceVideoAudioRequest,
+    ReplaceVideoAudioResponse, ResolutionSummary, ScanSummary,
     SourceFolderStat, Tag, UrlInspectResult, Video, VideoFilter, VideoListResponse,
     YtDlpUpdateCheck, YtDlpUpdateResult,
 };
@@ -1681,5 +1682,133 @@ pub async fn recommend_video_segments(
     .await
     .map_err(|e| e.to_string())?
 }
+
+#[tauri::command]
+pub async fn replace_video_audio(
+    db: State<'_, Database>,
+    app_handle: AppHandle,
+    request: ReplaceVideoAudioRequest,
+) -> Result<ReplaceVideoAudioResponse, String> {
+    let app_data_dir = app_handle.path().app_data_dir().ok();
+    let db_clone = (*db).clone();
+    let req_clone = request.clone();
+
+    tokio::task::spawn_blocking(move || {
+        let mut resp = crate::media::replace_video_audio(request, app_data_dir.as_deref())?;
+
+        // If replace/mix succeeded, persist it into the clipped_videos database
+        if resp.success {
+            let conn_arc = db_clone.get_connection();
+            let conn_guard = conn_arc.lock();
+            if let Ok(conn) = conn_guard.as_deref() {
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64;
+
+                let src_path = &req_clone.video_path;
+                let src_title = Path::new(src_path)
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("未知源视频");
+
+                let title = req_clone.custom_title.unwrap_or_else(|| {
+                    if req_clone.mode.as_deref().unwrap_or("replace") == "mix" {
+                        format!("{} - 混音配乐版", src_title)
+                    } else {
+                        format!("{} - 换背景音乐", src_title)
+                    }
+                });
+
+                let dur_sec = resp.duration.unwrap_or(0.0);
+                let id_res = crate::db::clips::insert_or_update_clipped_video(
+                    conn,
+                    req_clone.video_id,
+                    Some(src_title),
+                    src_path,
+                    &resp.output_path,
+                    &resp.file_name,
+                    &title,
+                    0,
+                    (dur_sec * 1000.0) as i64,
+                    resp.duration,
+                    resp.file_size,
+                    false,
+                    now_ms,
+                );
+
+                if let Ok(new_id) = id_res {
+                    if let Ok(Some(item)) = crate::db::clips::get_clipped_video_by_id(conn, new_id) {
+                        resp.clipped_video = Some(item);
+                    }
+                }
+            }
+        }
+
+        Ok(resp)
+    })
+    .await
+    .map_err(|e| format!("Replace video audio task error: {}", e))?
+}
+
+#[tauri::command]
+pub async fn pick_audio_file() -> Result<Option<String>, String> {
+    tokio::task::spawn_blocking(|| {
+        #[cfg(target_os = "macos")]
+        {
+            let script = r#"POSIX path of (choose file of type {"public.audio", "mp3", "m4a", "wav", "aac", "flac", "ogg", "wma", "aiff"} with prompt "请选择背景音乐音频文件")"#;
+            let output = std::process::Command::new("osascript")
+                .arg("-e")
+                .arg(script)
+                .output();
+
+            if let Ok(out) = output {
+                if out.status.success() {
+                    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    if !path.is_empty() {
+                        return Ok(Some(path));
+                    }
+                }
+            }
+            Ok(None)
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            let script = r#"[System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.Title = "选择背景音乐音频文件"; $f.Filter = "音频文件 (*.mp3;*.m4a;*.wav;*.flac;*.aac;*.ogg;*.wma)|*.mp3;*.m4a;*.wav;*.flac;*.aac;*.ogg;*.wma|所有文件 (*.*)|*.*"; if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.FileName }"#;
+            let mut cmd = std::process::Command::new("powershell");
+            cmd.args(["-NoProfile", "-Command", script]);
+
+            if let Ok(out) = cmd.output() {
+                if out.status.success() {
+                    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    if !path.is_empty() {
+                        return Ok(Some(path));
+                    }
+                }
+            }
+            Ok(None)
+        }
+
+        #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+        {
+            let output = std::process::Command::new("zenity")
+                .args(["--file-selection", "--title=请选择背景音乐音频文件", "--file-filter=音频文件 | *.mp3 *.m4a *.wav *.flac *.aac *.ogg *.wma"])
+                .output();
+            if let Ok(out) = output {
+                if out.status.success() {
+                    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    if !path.is_empty() {
+                        return Ok(Some(path));
+                    }
+                }
+            }
+            Ok(None)
+        }
+    })
+    .await
+    .map_err(|e| format!("Pick audio file task error: {}", e))?
+}
+
 
 

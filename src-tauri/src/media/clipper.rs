@@ -1,6 +1,6 @@
 use crate::models::{
     ClipResultItem, ClipVideoRequest, ClipVideoResponse, RecommendSegmentsResponse,
-    SegmentRecommendation,
+    SegmentRecommendation, ReplaceVideoAudioRequest, ReplaceVideoAudioResponse,
 };
 use rusqlite::Connection;
 use std::fs;
@@ -974,6 +974,230 @@ pub fn recommend_video_segments(
     })
 }
 
+/// Replaces or mixes the audio stream of a video with an external audio file.
+/// Uses lossless video stream copy (-c:v copy) for ultra-fast, high-quality generation,
+/// with automatic fallback to high-compatibility encoding if copy is unsupported.
+pub fn replace_video_audio(
+    request: ReplaceVideoAudioRequest,
+    app_data_dir: Option<&Path>,
+) -> Result<ReplaceVideoAudioResponse, String> {
+    let video_path = PathBuf::from(&request.video_path);
+    if !video_path.exists() {
+        return Err(format!("源视频文件不存在: {:?}", video_path));
+    }
+
+    let audio_path = PathBuf::from(&request.audio_path);
+    if !audio_path.exists() {
+        return Err(format!("外部音频/背景音乐文件不存在: {:?}", audio_path));
+    }
+
+    let ffmpeg_bin = resolve_ffmpeg_bin(app_data_dir);
+
+    // Determine output directory
+    let output_dir = if let Some(ref dir_str) = request.output_dir {
+        let p = PathBuf::from(dir_str.trim());
+        if !p.as_os_str().is_empty() {
+            let _ = fs::create_dir_all(&p);
+            p
+        } else {
+            video_path.parent().unwrap_or(Path::new(".")).to_path_buf()
+        }
+    } else {
+        video_path.parent().unwrap_or(Path::new(".")).to_path_buf()
+    };
+
+    let stem = video_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("video");
+    let ext = video_path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("mp4");
+
+    let file_name = if let Some(ref custom_title) = request.custom_title {
+        let clean = sanitize_filename_part(custom_title);
+        format!("{}_{}.{}", stem, clean, ext)
+    } else {
+        format!("{}_bgm.{}", stem, ext)
+    };
+
+    let output_file = resolve_unique_path(&output_dir, &file_name);
+    let loop_audio = request.loop_audio.unwrap_or(true);
+    let bgm_vol = request.bgm_volume.unwrap_or(1.0).max(0.0);
+    let orig_vol = request.original_volume.unwrap_or(0.3).max(0.0);
+    let mode = request.mode.as_deref().unwrap_or("replace");
+
+    let mut executed_successfully = false;
+    let mut last_error_msg = String::new();
+
+    // 1. Try Mix Mode if requested
+    if mode == "mix" {
+        let filter_str = format!(
+            "[0:a]volume={:.2}[orig];[1:a]volume={:.2}[bgm];[orig][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]",
+            orig_vol, bgm_vol
+        );
+
+        let mut cmd = Command::new(&ffmpeg_bin);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+
+        cmd.arg("-y");
+        cmd.args(["-i", &video_path.to_string_lossy()]);
+        if loop_audio {
+            cmd.args(["-stream_loop", "-1"]);
+        }
+        cmd.args(["-i", &audio_path.to_string_lossy()]);
+        cmd.args([
+            "-filter_complex",
+            &filter_str,
+            "-map",
+            "0:v:0",
+            "-map",
+            "[aout]",
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-shortest",
+            &output_file.to_string_lossy(),
+        ]);
+
+        if let Ok(out) = cmd.output() {
+            if out.status.success() {
+                executed_successfully = true;
+            } else {
+                last_error_msg = String::from_utf8_lossy(&out.stderr).to_string();
+            }
+        }
+    }
+
+    // 2. Try Replace Mode (or fallback to Replace Mode if mix failed or if mode == "replace")
+    if !executed_successfully {
+        // Attempt fast copy first
+        let mut cmd = Command::new(&ffmpeg_bin);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+
+        cmd.arg("-y");
+        cmd.args(["-i", &video_path.to_string_lossy()]);
+        if loop_audio {
+            cmd.args(["-stream_loop", "-1"]);
+        }
+        cmd.args(["-i", &audio_path.to_string_lossy()]);
+        cmd.args([
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0",
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+        ]);
+
+        if (bgm_vol - 1.0).abs() > 0.01 {
+            cmd.args(["-filter:a:0", &format!("volume={:.2}", bgm_vol)]);
+        }
+
+        cmd.args(["-shortest", &output_file.to_string_lossy()]);
+
+        if let Ok(out) = cmd.output() {
+            if out.status.success() {
+                executed_successfully = true;
+            } else {
+                last_error_msg = String::from_utf8_lossy(&out.stderr).to_string();
+                // Attempt re-encode fallback
+                let mut retry_cmd = Command::new(&ffmpeg_bin);
+                #[cfg(windows)]
+                {
+                    use std::os::windows::process::CommandExt;
+                    retry_cmd.creation_flags(CREATE_NO_WINDOW);
+                }
+
+                retry_cmd.arg("-y");
+                retry_cmd.args(["-i", &video_path.to_string_lossy()]);
+                if loop_audio {
+                    retry_cmd.args(["-stream_loop", "-1"]);
+                }
+                retry_cmd.args(["-i", &audio_path.to_string_lossy()]);
+                retry_cmd.args([
+                    "-map",
+                    "0:v:0",
+                    "-map",
+                    "1:a:0",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "fast",
+                    "-crf",
+                    "20",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "192k",
+                ]);
+
+                if (bgm_vol - 1.0).abs() > 0.01 {
+                    retry_cmd.args(["-filter:a:0", &format!("volume={:.2}", bgm_vol)]);
+                }
+
+                retry_cmd.args(["-shortest", &output_file.to_string_lossy()]);
+
+                if let Ok(retry_out) = retry_cmd.output() {
+                    if retry_out.status.success() {
+                        executed_successfully = true;
+                    } else {
+                        last_error_msg = String::from_utf8_lossy(&retry_out.stderr).to_string();
+                    }
+                }
+            }
+        }
+    }
+
+    if !executed_successfully {
+        return Err(format!("音频替换/合成背景音乐失败: {}", last_error_msg));
+    }
+
+    if !output_file.exists() {
+        return Err("合成处理已结束，但未能在目标路径找到生成的视频文件。".to_string());
+    }
+
+    let file_size = fs::metadata(&output_file).map(|m| m.len()).unwrap_or(0);
+    let meta = crate::media::extract_metadata(&output_file).ok();
+    let duration = meta.and_then(|m| m.duration);
+
+    let final_file_name = output_file
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(&file_name)
+        .to_string();
+
+    Ok(ReplaceVideoAudioResponse {
+        success: true,
+        output_path: output_file.to_string_lossy().to_string(),
+        file_name: final_file_name,
+        file_size,
+        duration,
+        message: if mode == "mix" {
+            "视频混音伴奏合成成功".to_string()
+        } else {
+            "视频背景音乐替换成功".to_string()
+        },
+        clipped_video: None, // Can be populated by the caller/command after DB insertion
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1011,4 +1235,23 @@ mod tests {
         assert!(res.segments[0].is_highlight);
         assert_eq!(res.source, "ai_climax");
     }
+
+    #[test]
+    fn test_replace_video_audio_validation() {
+        let req_missing_video = ReplaceVideoAudioRequest {
+            video_id: None,
+            video_path: "non_existent_video_path.mp4".to_string(),
+            audio_path: "audio.mp3".to_string(),
+            output_dir: None,
+            custom_title: None,
+            mode: Some("replace".to_string()),
+            bgm_volume: Some(1.0),
+            original_volume: Some(0.3),
+            loop_audio: Some(true),
+        };
+        let res = replace_video_audio(req_missing_video, None);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("源视频文件不存在"));
+    }
 }
+

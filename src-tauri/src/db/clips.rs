@@ -297,6 +297,48 @@ pub fn batch_delete_master_clips(
     Ok(deleted_count)
 }
 
+/// Fetches a single clipped video record by ID.
+pub fn get_clipped_video_by_id(
+    conn: &Connection,
+    id: i64,
+) -> Result<Option<ClippedVideo>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, video_id, source_video_title, source_video_path, file_path, file_name, title,
+                    start_ms, end_ms, duration, file_size, is_merged, created_at
+             FROM clipped_videos WHERE id = ?1",
+        )
+        .map_err(|e| format!("Failed to prepare get_clipped_video_by_id: {}", e))?;
+
+    let mut rows = stmt
+        .query_map([id], |row| {
+            let is_merged_int: i32 = row.get(11)?;
+            let file_size_i64: i64 = row.get(10)?;
+            Ok(ClippedVideo {
+                id: row.get(0)?,
+                video_id: row.get(1)?,
+                source_video_title: row.get(2)?,
+                source_video_path: row.get(3)?,
+                file_path: row.get(4)?,
+                file_name: row.get(5)?,
+                title: row.get(6)?,
+                start_ms: row.get(7)?,
+                end_ms: row.get(8)?,
+                duration: row.get(9)?,
+                file_size: file_size_i64.max(0) as u64,
+                is_merged: is_merged_int != 0,
+                created_at: row.get(12)?,
+            })
+        })
+        .map_err(|e| format!("Failed to execute get_clipped_video_by_id: {}", e))?;
+
+    if let Some(res) = rows.next() {
+        res.map(Some).map_err(|e| e.to_string())
+    } else {
+        Ok(None)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

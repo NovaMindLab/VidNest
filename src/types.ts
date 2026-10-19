@@ -463,4 +463,27 @@ export interface ClippedVideoFilter {
   sortBy?: 'created_desc' | 'created_asc' | 'duration_desc' | 'title_asc' | string;
 }
 
+export interface ReplaceVideoAudioRequest {
+  videoId?: number | null;
+  videoPath: string;
+  audioPath: string;
+  outputDir?: string | null;
+  customTitle?: string | null;
+  mode?: 'replace' | 'mix';
+  bgmVolume?: number;
+  originalVolume?: number;
+  loopAudio?: boolean;
+}
+
+export interface ReplaceVideoAudioResponse {
+  success: boolean;
+  outputPath: string;
+  fileName: string;
+  fileSize: number;
+  duration?: number | null;
+  message: string;
+  clippedVideo?: ClippedVideo | null;
+}
+
+
 

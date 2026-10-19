@@ -13,7 +13,7 @@ pub use transcode::{
 };
 
 pub mod clipper;
-pub use clipper::{clip_video_segments, recommend_video_segments};
+pub use clipper::{clip_video_segments, recommend_video_segments, replace_video_audio};
 
 
 #[cfg(windows)]
