@@ -555,6 +555,15 @@ onUnmounted(() => {
     <!-- Studio Header & Video Selector -->
     <header class="studio-header-card">
       <div class="video-info-group">
+        <button
+          class="btn-back-to-library"
+          title="返回媒体库列表"
+          @click="emit('navigateLibrary')"
+        >
+          <span class="back-arrow">←</span>
+          <span>返回媒体库</span>
+        </button>
+
         <div class="video-thumb-preview" @click="openVideoPicker">
           <img
             v-if="activeVideo?.thumbnail_data"
@@ -1132,6 +1141,34 @@ onUnmounted(() => {
   gap: 1rem;
   min-width: 0;
   flex: 1;
+}
+
+.btn-back-to-library {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-color, #e6edf3);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.btn-back-to-library:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateX(-2px);
+  color: #60a5fa;
+}
+
+.btn-back-to-library .back-arrow {
+  font-size: 1rem;
+  line-height: 1;
 }
 
 .video-thumb-preview {
