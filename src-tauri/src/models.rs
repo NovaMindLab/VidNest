@@ -386,14 +386,20 @@ pub struct SegmentRecommendation {
     pub end_ms: i64,
     pub reason: String,
     pub confidence: f32,
+    #[serde(default)]
+    pub is_highlight: bool,
+    #[serde(default)]
+    pub score: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecommendSegmentsResponse {
     pub segments: Vec<SegmentRecommendation>,
-    pub source: String, // "ai_topics" | "subtitles" | "silence_detect" | "pacing"
+    pub source: String,
     pub message: String,
+    #[serde(default)]
+    pub highlights: Vec<SegmentRecommendation>,
 }
 
 

@@ -52,12 +52,21 @@ const activePreviewSegmentId = ref<string | null>(null);
 const segments = ref<VideoClipSegment[]>([]);
 const selectedSegmentId = ref<string | null>(null);
 
-// AI Recommendation state
+// AI Recommendation & Climax Highlight state
 const isAnalyzingAi = ref<boolean>(false);
 const showAiModal = ref<boolean>(false);
 const aiRecommendations = ref<SegmentRecommendation[]>([]);
+const aiHighlights = ref<SegmentRecommendation[]>([]);
+const aiModalTab = ref<'highlights' | 'chapters'>('highlights');
 const aiSource = ref<string>('');
 const aiMessage = ref<string>('');
+
+const currentAiDisplayList = computed(() => {
+  if (aiModalTab.value === 'highlights') {
+    return aiHighlights.value.length > 0 ? aiHighlights.value : aiRecommendations.value;
+  }
+  return aiRecommendations.value;
+});
 
 // Export settings state
 const exportMode = ref<'separate' | 'merge' | 'both'>('separate');
@@ -332,20 +341,31 @@ function updateSegmentEnd(seg: VideoClipSegment, val: string) {
 // AI Smart Recommendation Logic
 // -------------------------------------------------------------
 
-async function requestAiRecommendation() {
+async function requestAiRecommendation(initialTab?: 'highlights' | 'chapters' | Event | unknown) {
   if (!activeVideo.value) return;
   isAnalyzingAi.value = true;
   aiMessage.value = '';
+  const tab = initialTab === 'highlights' || initialTab === 'chapters' ? initialTab : undefined;
+  if (tab) {
+    aiModalTab.value = tab;
+  }
 
   try {
     const res = await invoke<RecommendSegmentsResponse>('recommend_video_segments', {
       videoId: activeVideo.value.id,
       videoPath: activeVideo.value.file_path,
+      mode: 'all',
     });
 
     aiRecommendations.value = res.segments || [];
+    aiHighlights.value = res.highlights || [];
     aiSource.value = res.source;
     aiMessage.value = res.message;
+    if (tab) {
+      aiModalTab.value = tab;
+    } else if (aiHighlights.value.length > 0) {
+      aiModalTab.value = 'highlights';
+    }
     showAiModal.value = true;
   } catch (err: unknown) {
     showToast('AI 推荐分段获取失败: ' + String(err));
@@ -355,8 +375,9 @@ async function requestAiRecommendation() {
 }
 
 function applyAllAiRecommendations() {
-  if (aiRecommendations.value.length === 0) return;
-  segments.value = aiRecommendations.value.map((rec, i) => ({
+  const targetList = currentAiDisplayList.value;
+  if (targetList.length === 0) return;
+  segments.value = targetList.map((rec, i) => ({
     id: `ai_seg_${Date.now()}_${i + 1}`,
     title: rec.title,
     startMs: rec.startMs,
@@ -364,7 +385,21 @@ function applyAllAiRecommendations() {
   }));
   selectedSegmentId.value = segments.value[0]?.id || null;
   showAiModal.value = false;
-  showToast(`已成功采纳 ${segments.value.length} 个 AI 智能阶段分段！`);
+  showToast(`已成功采纳 ${segments.value.length} 个 ${aiModalTab.value === 'highlights' ? '核心高能高潮' : 'AI 智能'} 分段！`);
+}
+
+function applyOnlyHighlightsAndMerge() {
+  if (aiHighlights.value.length === 0) return;
+  segments.value = aiHighlights.value.map((rec, i) => ({
+    id: `climax_seg_${Date.now()}_${i + 1}`,
+    title: rec.title,
+    startMs: rec.startMs,
+    endMs: rec.endMs,
+  }));
+  selectedSegmentId.value = segments.value[0]?.id || null;
+  exportMode.value = 'merge';
+  showAiModal.value = false;
+  showToast(`🔥 已采纳 ${aiHighlights.value.length} 个高潮片段，已自动切换为「拼接成片」！`);
 }
 
 function adoptSingleAiRecommendation(rec: SegmentRecommendation) {
@@ -379,8 +414,17 @@ function adoptSingleAiRecommendation(rec: SegmentRecommendation) {
   showToast(`已采纳: ${rec.title}`);
 }
 
+function previewRecommendation(rec: SegmentRecommendation) {
+  seekToSec(rec.startMs / 1000.0);
+  if (videoRef.value && videoRef.value.paused) {
+    videoRef.value.play().catch(() => {});
+  }
+}
+
 const aiSourceLabel = computed(() => {
   switch (aiSource.value) {
+    case 'ai_climax':
+      return '🔥 多模态声学爆发与语义核心高潮';
     case 'ai_topics':
       return '🧠 AI 深度语义主题章节 (精准要点)';
     case 'subtitles':
@@ -605,10 +649,20 @@ onUnmounted(() => {
       <!-- Top Action Bar -->
       <div class="studio-top-actions">
         <button
+          class="btn-act climax-gradient-btn"
+          :disabled="!activeVideo || isAnalyzingAi"
+          :title="'结合声学能量爆发与 Whisper 情绪语义台词，精准截取全片高潮与高能精彩亮点'"
+          @click="requestAiRecommendation('highlights')"
+        >
+          <span class="climax-fire-icon">🔥</span>
+          <span>{{ isAnalyzingAi ? '正在提取高潮...' : '🔥 提取高潮亮点' }}</span>
+        </button>
+
+        <button
           class="btn-act ai-gradient-btn"
           :disabled="!activeVideo || isAnalyzingAi"
-          :title="'根据 AI 语义要点、语音停顿或静音检测自动推荐分段'"
-          @click="requestAiRecommendation"
+          :title="'根据 AI 深度语义要点、语音停顿或静音检测自动推荐全片结构化阶段'"
+          @click="requestAiRecommendation('chapters')"
         >
           <span class="ai-sparkle-icon">✨</span>
           <span>{{ isAnalyzingAi ? 'AI 正在分析阶段...' : 'AI 智能推荐分段' }}</span>
@@ -766,11 +820,15 @@ onUnmounted(() => {
             <h5>暂无划分的视频阶段</h5>
             <p>可点击下方按钮手动添加，或点击右上角「AI 智能推荐分段」一键自动划分</p>
             <div class="empty-action-btns">
-              <button class="btn-act ai-gradient-btn" @click="requestAiRecommendation">
-                ✨ AI 智能推荐分段
+              <button class="btn-act climax-gradient-btn" @click="requestAiRecommendation('highlights')">
+                <span class="climax-fire-icon">🔥</span>
+                <span>提取高潮亮点</span>
+              </button>
+              <button class="btn-act ai-gradient-btn" @click="requestAiRecommendation('chapters')">
+                <span>✨ AI 智能推荐分段</span>
               </button>
               <button class="btn-act ghost-btn" @click="addNewSegment()">
-                ➕ 手动添加切片
+                <span>➕ 手动添加切片</span>
               </button>
             </div>
           </div>
@@ -919,28 +977,64 @@ onUnmounted(() => {
       <div class="ai-recommend-dialog">
         <div class="modal-dialog-header">
           <div class="dialog-title">
-            <span class="sparkle-ic">✨</span>
-            <h4>AI 智能推荐分段建议</h4>
+            <span class="sparkle-ic">{{ aiModalTab === 'highlights' ? '🔥' : '✨' }}</span>
+            <h4>{{ aiModalTab === 'highlights' ? 'AI 精准高潮高能片段提取' : 'AI 智能结构化阶段建议' }}</h4>
           </div>
           <button class="btn-close-dialog" @click="showAiModal = false">✕</button>
         </div>
 
+        <!-- Mode Switch Tabs -->
+        <div class="ai-tabs-nav-bar">
+          <button
+            class="ai-tab-btn"
+            :class="{ active: aiModalTab === 'highlights' }"
+            @click="aiModalTab = 'highlights'"
+          >
+            🔥 精选高能高潮 ({{ aiHighlights.length }})
+          </button>
+          <button
+            class="ai-tab-btn"
+            :class="{ active: aiModalTab === 'chapters' }"
+            @click="aiModalTab = 'chapters'"
+          >
+            📑 完整结构化阶段 ({{ aiRecommendations.length }})
+          </button>
+        </div>
+
         <div class="modal-dialog-body">
-          <div class="ai-strategy-chip">
-            <span class="strategy-badge">{{ aiSourceLabel }}</span>
+          <div class="ai-strategy-chip" :class="{ 'climax-style': aiModalTab === 'highlights' }">
+            <div class="strategy-header">
+              <span class="strategy-badge">{{ aiSourceLabel }}</span>
+              <span v-if="aiModalTab === 'highlights'" class="climax-hint-badge">
+                ⚡ 基于声学能量 RMS 爆发峰值 + Whisper 情绪台词自然对齐
+              </span>
+            </div>
             <p class="strategy-message">{{ aiMessage }}</p>
           </div>
 
-          <div class="recommendations-list">
+          <div v-if="currentAiDisplayList.length === 0" class="empty-recs-tip">
+            暂无当前标签分段，可尝试切换标签页查看完整阶段。
+          </div>
+
+          <div v-else class="recommendations-list">
             <div
-              v-for="(rec, idx) in aiRecommendations"
+              v-for="(rec, idx) in currentAiDisplayList"
               :key="rec.id"
               class="recommendation-item"
+              :class="{ 'is-climax-item': rec.isHighlight }"
             >
               <div class="rec-left">
                 <span class="rec-idx">#{{ idx + 1 }}</span>
                 <div class="rec-info">
-                  <h5 class="rec-title">{{ rec.title }}</h5>
+                  <div class="rec-title-row">
+                    <h5 class="rec-title">{{ rec.title }}</h5>
+                    <span v-if="rec.isHighlight" class="highlight-fire-badge">
+                      🔥 高潮高能
+                    </span>
+                    <span v-if="rec.score !== undefined && rec.score !== null" class="score-pill">
+                      ⚡ 能量分: {{ (rec.score * 100).toFixed(0) }}
+                    </span>
+                  </div>
                   <div class="rec-meta">
                     <span class="time-range">
                       {{ msToTimeStr(rec.startMs) }} ~ {{ msToTimeStr(rec.endMs) }}
@@ -953,13 +1047,22 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <button
-                class="btn-adopt-rec"
-                :title="'将此片段添加至编辑列表'"
-                @click="adoptSingleAiRecommendation(rec)"
-              >
-                + 采纳
-              </button>
+              <div class="rec-actions">
+                <button
+                  class="btn-preview-rec"
+                  title="跳转播放此片段"
+                  @click="previewRecommendation(rec)"
+                >
+                  ▶ 预览
+                </button>
+                <button
+                  class="btn-adopt-rec"
+                  :title="'将此片段添加至编辑列表'"
+                  @click="adoptSingleAiRecommendation(rec)"
+                >
+                  + 采纳
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -968,8 +1071,16 @@ onUnmounted(() => {
           <button class="btn-cancel" @click="showAiModal = false">
             取消
           </button>
+          <button
+            v-if="aiHighlights.length > 0"
+            class="btn-climax-merge-quick"
+            title="清空当前列表，仅载入全部高潮片段，并将导出模式自动切换为拼接合并"
+            @click="applyOnlyHighlightsAndMerge"
+          >
+            🔥 仅采纳高潮并拼接成片 ({{ aiHighlights.length }})
+          </button>
           <button class="btn-apply-all ai-glow" @click="applyAllAiRecommendations">
-            ✨ 一键全部采纳 (替换并覆盖当前时间轴)
+            ✨ 一键采纳当前Tab全部分段
           </button>
         </div>
       </div>
@@ -1293,6 +1404,32 @@ onUnmounted(() => {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none !important;
+}
+
+.climax-gradient-btn {
+  background: linear-gradient(135deg, #ef4444, #f97316, #eab308);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);
+}
+
+.climax-gradient-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.6);
+}
+
+.climax-fire-icon {
+  display: inline-block;
+  font-size: 1rem;
+  animation: pulse-fire 1.8s infinite ease-in-out;
+}
+
+@keyframes pulse-fire {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.22);
+  }
 }
 
 .ai-gradient-btn {
@@ -1960,12 +2097,60 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
-/* AI Recommendations */
+/* AI Recommendations & Climax Tabs */
+.ai-tabs-nav-bar {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 1.25rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.ai-tab-btn {
+  padding: 0.55rem 1rem;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s ease;
+  border-radius: 6px 6px 0 0;
+}
+
+.ai-tab-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.ai-tab-btn.active {
+  color: #fb923c;
+  background: rgba(251, 146, 60, 0.12);
+  border-bottom: 2px solid #f97316;
+}
+
 .ai-strategy-chip {
   background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(59, 130, 246, 0.08));
   border: 1px solid rgba(139, 92, 246, 0.3);
   border-radius: 8px;
   padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.ai-strategy-chip.climax-style {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(245, 158, 11, 0.1));
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.strategy-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .strategy-badge {
@@ -1974,10 +2159,30 @@ onUnmounted(() => {
   color: #c084fc;
 }
 
+.ai-strategy-chip.climax-style .strategy-badge {
+  color: #fb923c;
+}
+
+.climax-hint-badge {
+  font-size: 0.7rem;
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.2);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
 .strategy-message {
-  margin: 0.25rem 0 0 0;
+  margin: 0;
   font-size: 0.75rem;
   color: #94a3b8;
+  line-height: 1.4;
+}
+
+.empty-recs-tip {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: #94a3b8;
+  font-size: 0.85rem;
 }
 
 .recommendations-list {
@@ -1995,6 +2200,17 @@ onUnmounted(() => {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
   padding: 0.65rem 0.85rem;
+  transition: all 0.15s ease;
+}
+
+.recommendation-item.is-climax-item {
+  border-color: rgba(249, 115, 22, 0.35);
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.06), rgba(255, 255, 255, 0.02));
+}
+
+.recommendation-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
 .rec-left {
@@ -2010,11 +2226,22 @@ onUnmounted(() => {
   color: #818cf8;
 }
 
+.recommendation-item.is-climax-item .rec-idx {
+  color: #f97316;
+}
+
 .rec-info {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.25rem;
   min-width: 0;
+}
+
+.rec-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .rec-title {
@@ -2024,12 +2251,33 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+.highlight-fire-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #ef4444, #f97316);
+  padding: 1px 6px;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.3);
+}
+
+.score-pill {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.15);
+  padding: 1px 5px;
+  border-radius: 4px;
 }
 
 .rec-meta {
   display: flex;
   gap: 0.4rem;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .time-range {
@@ -2051,6 +2299,33 @@ onUnmounted(() => {
   color: #c084fc;
 }
 
+.recommendation-item.is-climax-item .reason-tag {
+  color: #fb923c;
+}
+
+.rec-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.btn-preview-rec {
+  padding: 0.35rem 0.65rem;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #cbd5e1;
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-preview-rec:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
 .btn-adopt-rec {
   padding: 0.35rem 0.75rem;
   border-radius: 5px;
@@ -2060,11 +2335,30 @@ onUnmounted(() => {
   font-size: 0.75rem;
   cursor: pointer;
   flex-shrink: 0;
+  transition: all 0.2s;
 }
 
 .btn-adopt-rec:hover {
   background: rgba(99, 102, 241, 0.35);
   color: #fff;
+}
+
+.btn-climax-merge-quick {
+  padding: 0.5rem 1.1rem;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #ef4444, #f97316);
+  border: none;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(239, 68, 68, 0.3);
+  transition: all 0.2s;
+}
+
+.btn-climax-merge-quick:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 14px rgba(239, 68, 68, 0.5);
 }
 
 /* Video Picker Modal */

@@ -1499,6 +1499,7 @@ pub async fn recommend_video_segments(
     app_handle: AppHandle,
     video_id: Option<i64>,
     video_path: Option<String>,
+    mode: Option<String>,
 ) -> Result<RecommendSegmentsResponse, String> {
     let app_data_dir = app_handle.path().app_data_dir().ok();
     let db_clone = (*db).clone();
@@ -1535,6 +1536,7 @@ pub async fn recommend_video_segments(
             duration_ms,
             conn_ref,
             app_data_dir.as_deref(),
+            mode.as_deref(),
         )
     })
     .await

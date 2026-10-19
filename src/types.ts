@@ -416,12 +416,15 @@ export interface SegmentRecommendation {
   endMs: number;
   reason: string;
   confidence: number;
+  isHighlight?: boolean;
+  score?: number | null;
 }
 
 export interface RecommendSegmentsResponse {
   segments: SegmentRecommendation[];
-  source: 'ai_topics' | 'subtitles' | 'silence_detect' | 'pacing' | string;
+  source: 'ai_climax' | 'ai_topics' | 'subtitles' | 'audio_peaks' | 'silence_detect' | 'pacing' | string;
   message: string;
+  highlights?: SegmentRecommendation[];
 }
 
 
