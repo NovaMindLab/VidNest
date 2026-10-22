@@ -1,0 +1,28 @@
+# Created using generate-package-manifests.mjs
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.locale.1.6.0.schema.json
+
+PackageIdentifier: NovaMindLab.VidNest
+PackageVersion: 2.9.5
+PackageLocale: zh-CN
+Publisher: NovaMindLab
+PublisherUrl: https://github.com/NovaMindLab/VidNest
+PublisherSupportUrl: https://github.com/NovaMindLab/VidNest/issues
+PackageName: VidNest (巢视) 本地视频智能中枢
+PackageUrl: https://github.com/NovaMindLab/VidNest
+License: MIT
+LicenseUrl: https://github.com/NovaMindLab/VidNest/blob/main/LICENSE
+Copyright: Copyright (c) 2026 NovaMindLab
+ShortDescription: 极速本地优先多媒体资产管理中心与 yt-dlp 4K 视频下载引擎。
+Description: |-
+  VidNest (巢视) 是一款企业级纯本地优先的智能视频管理、字幕转写与音视频裁剪工作台。基于 Tauri 2 + Rust + Vue 构建，提供 100% 隐私安全、FTS5 毫秒检索与离线 Whisper AI 理解。
+Moniker: vidnest
+Tags:
+  - 视频管理
+  - 视频下载
+  - 视频裁剪
+  - yt-dlp
+  - 本地优先
+  - tauri
+ReleaseNotesUrl: https://github.com/NovaMindLab/VidNest/releases/tag/v2.9.5
+ManifestType: locale
+ManifestVersion: 1.6.0

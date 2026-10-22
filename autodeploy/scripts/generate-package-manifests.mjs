@@ -406,17 +406,49 @@ ManifestType: defaultLocale
 ManifestVersion: ${CONFIG.manifestVersion}
 `;
 
+  const localeZhYaml = `# Created using generate-package-manifests.mjs
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.locale.${CONFIG.manifestVersion}.schema.json
+
+PackageIdentifier: ${CONFIG.packageId}
+PackageVersion: ${version}
+PackageLocale: zh-CN
+Publisher: ${CONFIG.publisher}
+PublisherUrl: ${CONFIG.homepage}
+PublisherSupportUrl: ${CONFIG.homepage}/issues
+PackageName: VidNest (巢视) 本地视频智能中枢
+PackageUrl: ${CONFIG.homepage}
+License: ${CONFIG.license}
+LicenseUrl: ${CONFIG.licenseUrl}
+Copyright: Copyright (c) 2026 ${CONFIG.publisher}
+ShortDescription: 极速本地优先多媒体资产管理中心与 yt-dlp 4K 视频下载引擎。
+Description: |-
+  VidNest (巢视) 是一款企业级纯本地优先的智能视频管理、字幕转写与音视频裁剪工作台。基于 Tauri 2 + Rust + Vue 构建，提供 100% 隐私安全、FTS5 毫秒检索与离线 Whisper AI 理解。
+Moniker: vidnest
+Tags:
+  - 视频管理
+  - 视频下载
+  - 视频裁剪
+  - yt-dlp
+  - 本地优先
+  - tauri
+ReleaseNotesUrl: ${CONFIG.homepage}/releases/tag/v${version}
+ManifestType: locale
+ManifestVersion: ${CONFIG.manifestVersion}
+`;
+
   const fileInstaller = path.join(wingetDir, `${CONFIG.packageId}.installer.yaml`);
   const fileVersion = path.join(wingetDir, `${CONFIG.packageId}.yaml`);
   const fileLocale = path.join(wingetDir, `${CONFIG.packageId}.locale.${CONFIG.defaultLocale}.yaml`);
+  const fileLocaleZh = path.join(wingetDir, `${CONFIG.packageId}.locale.zh-CN.yaml`);
 
   fs.writeFileSync(fileInstaller, installerYaml, 'utf8');
   fs.writeFileSync(fileVersion, versionYaml, 'utf8');
   fs.writeFileSync(fileLocale, localeYaml, 'utf8');
+  fs.writeFileSync(fileLocaleZh, localeZhYaml, 'utf8');
 
   return {
     dir: wingetDir,
-    files: [fileInstaller, fileVersion, fileLocale],
+    files: [fileInstaller, fileVersion, fileLocale, fileLocaleZh],
   };
 }
 

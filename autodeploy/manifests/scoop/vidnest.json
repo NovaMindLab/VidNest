@@ -1,10 +1,10 @@
 {
-  "version": "2.9.0",
+  "version": "2.9.5",
   "description": "Local Video Intelligence - Local video analysis, indexing and AI summarization tool",
   "homepage": "https://github.com/NovaMindLab/VidNest",
   "license": "MIT",
-  "url": "https://github.com/NovaMindLab/VidNest/releases/download/v2.9.0/Local.Video.Intelligence_2.9.0_x64_portable.zip",
-  "hash": "43f1a004149cb16107e664b2b53c8a3bd2a8e9e7268875efdb97616bd81f3456",
+  "url": "https://github.com/NovaMindLab/VidNest/releases/download/v2.9.5/Local.Video.Intelligence_2.9.5_x64_portable.zip",
+  "hash": "87f30de8639ac491c3e35b012f47769fbc8733f2a1380c0d576aad6ec12b103e",
   "bin": "Local Video Intelligence.exe",
   "shortcuts": [
     [

@@ -22,8 +22,8 @@
     "name": "VidNest",
     "operatingSystem": "macOS, Windows 10/11, Linux, Android",
     "applicationCategory": "MultimediaApplication",
-    "softwareVersion": "0.1.0",
-    "fileSize": "68MB",
+    "softwareVersion": "2.9.5",
+    "fileSize": "132MB",
     "offers": {
       "@type": "Offer",
       "price": "0",
@@ -763,6 +763,26 @@
       .highlights-grid { grid-template-columns: 1fr; }
       .nav-links { display: none; }
     }
+
+    .lang-toggle-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 0.42rem 0.8rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .lang-toggle-btn:hover {
+      border-color: var(--accent-blue);
+      background: var(--bg-card-hover);
+      color: #60a5fa;
+    }
   </style>
 </head>
 <body>
@@ -786,9 +806,13 @@
     </a>
 
     <nav class="nav-links">
-      <a href="#matrix" class="nav-link">全平台安装包</a>
-      <a href="#cli" class="nav-link">包管理器 (CLI)</a>
-      <a href="share.html" class="nav-link">移动端体验</a>
+      <a href="#matrix" class="nav-link" id="navMatrixLink">全平台安装包</a>
+      <a href="#cli" class="nav-link" id="navCliLink">包管理器 (CLI)</a>
+      <a href="share.html" class="nav-link" id="navShareLink">移动端体验</a>
+      <button id="langToggleBtn" class="lang-toggle-btn" onclick="toggleLanguage()" title="切换语言 / Switch Language">
+        <span class="lang-icon">🌐</span>
+        <span id="currentLangText">🇨🇳 简体中文</span>
+      </button>
       <a href="https://github.com/NovaMindLab/VidNest" target="_blank" rel="noopener" class="nav-btn-gh">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
           <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
@@ -802,11 +826,11 @@
   <main class="hero-section">
     <div class="hero-badge-pill">
       <span class="pulse-dot"></span>
-      <span>v0.1.0 稳定版已就绪 · Tauri 2 + Rust 强力驱动</span>
+      <span id="heroBadgeText">v2.9.5 稳定版已就绪 · Tauri 2 + Rust 强力驱动</span>
     </div>
 
-    <h1 class="hero-h1">极速本地视频智能管理中心</h1>
-    <p class="hero-desc">
+    <h1 class="hero-h1" id="heroH1">极速本地视频智能管理中心</h1>
+    <p class="hero-desc" id="heroDesc">
       为影视收藏家与极客打造的 Local-First 视频资产中心。集成 yt-dlp 4K 极速解析、SQLite FTS5 秒级检索与极致原生性能。
     </p>
 
@@ -832,13 +856,13 @@
       <div class="hero-download-sub">
         <span id="heroPackageDetail">正在计算匹配架构与安装包...</span>
         <span class="hero-sub-divider">|</span>
-        <span>SHA-256 签名保护</span>
+        <span id="subShaText">SHA-256 签名保护</span>
         <span class="hero-sub-divider">|</span>
-        <span>Sigstore 存证</span>
+        <span id="subSigText">Sigstore 存证</span>
       </div>
 
       <a href="#matrix" class="other-platforms-link">
-        <span>查看所有平台与历史架构清单 (macOS, Windows, Linux, Android) &darr;</span>
+        <span id="otherPlatformsText">查看所有平台与历史架构清单 (macOS, Windows, Linux, Android) &darr;</span>
       </a>
     </div>
   </main>
@@ -851,8 +875,8 @@
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
         </svg>
       </div>
-      <h3 class="highlight-title">本地优先 0 泄露</h3>
-      <p class="highlight-desc">所有视频元数据、封面与索引数据均存放于本地，无需担心云端上传与隐私外泄。</p>
+      <h3 class="highlight-title" id="feat1Title">本地优先 0 泄露</h3>
+      <p class="highlight-desc" id="feat1Desc">所有视频元数据、封面与索引数据均存放于本地，无需担心云端上传与隐私外泄。</p>
     </div>
 
     <div class="highlight-card">
@@ -861,8 +885,8 @@
           <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
         </svg>
       </div>
-      <h3 class="highlight-title">yt-dlp 4K 极速引擎</h3>
-      <p class="highlight-desc">内置 yt-dlp 独立托管更新机制，智能解析 Bilibili/YouTube 等全网高清视频与音频提取。</p>
+      <h3 class="highlight-title" id="feat2Title">yt-dlp 4K 极速引擎</h3>
+      <p class="highlight-desc" id="feat2Desc">内置 yt-dlp 独立托管更新机制，智能解析 Bilibili/YouTube 等全网高清视频与音频提取。</p>
     </div>
 
     <div class="highlight-card">
@@ -872,8 +896,8 @@
           <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
         </svg>
       </div>
-      <h3 class="highlight-title">SQLite FTS5 秒搜</h3>
-      <p class="highlight-desc">支持超万级媒体文件毫秒级分词搜索，拼音检索与元数据毫秒过滤响应。</p>
+      <h3 class="highlight-title" id="feat3Title">SQLite FTS5 秒搜</h3>
+      <p class="highlight-desc" id="feat3Desc">支持超万级媒体文件毫秒级分词搜索，拼音检索与元数据毫秒过滤响应。</p>
     </div>
 
     <div class="highlight-card">
@@ -884,16 +908,16 @@
           <line x1="12" y1="17" x2="12" y2="21"></line>
         </svg>
       </div>
-      <h3 class="highlight-title">Tauri 2 极致轻量</h3>
-      <p class="highlight-desc">仅几十兆的内存开销与小巧安装包，告别臃肿的 Electron 虚拟机，丝滑省电。</p>
+      <h3 class="highlight-title" id="feat4Title">Tauri 2 极致轻量</h3>
+      <p class="highlight-desc" id="feat4Desc">仅几十兆的内存开销与小巧安装包，告别臃肿的 Electron 虚拟机，丝滑省电。</p>
     </div>
   </section>
 
   <!-- Collapsible All-Platforms Matrix Section -->
   <section id="matrix" class="matrix-section">
     <div class="section-header">
-      <h2 class="section-h2">全平台架构安装包清单</h2>
-      <span class="version-indicator">当前发布版本: v0.1.0</span>
+      <h2 class="section-h2" id="matrixSectionTitle">全平台架构安装包清单</h2>
+      <span class="version-indicator" id="matrixVersionText">当前发布版本: v2.9.5</span>
     </div>
 
     <div class="accordion-group">
@@ -921,17 +945,17 @@
               <div class="arch-info">
                 <div class="arch-name-row">
                   <span class="arch-badge">推荐</span>
-                  <span class="arch-file-title">VidNest_0.1.0_aarch64.dmg</span>
+                  <span class="arch-file-title">Local.Video.Intelligence_2.9.5_aarch64.dmg</span>
                 </div>
-                <span class="arch-desc">适用于 Apple Silicon (M1 / M2 / M3 / M4) 原生架构 · 约 68 MB</span>
+                <span class="arch-desc" id="descMacArm">适用于 Apple Silicon (M1 / M2 / M3 / M4) 原生架构 · 约 132 MB</span>
               </div>
-              <a href="https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest_0.1.0_aarch64.dmg" class="btn-download-sm">
+              <a href="https://github.com/NovaMindLab/VidNest/releases/download/v2.9.5/Local.Video.Intelligence_2.9.5_aarch64.dmg" class="btn-download-sm">
                 下载 DMG
               </a>
             </div>
             <div class="hash-bar">
               <span class="hash-label">SHA-256:</span>
-              <span class="hash-value" id="hashMacArm">e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</span>
+              <span class="hash-value" id="hashMacArm">058bffc4652c5958b2714e0ef7c3f5491a847bb2ad92b248f9be245061eb434f</span>
               <button type="button" class="btn-copy-hash" onclick="copyHash('hashMacArm')">复制哈希</button>
             </div>
           </div>
@@ -941,17 +965,17 @@
             <div class="arch-card-main">
               <div class="arch-info">
                 <div class="arch-name-row">
-                  <span class="arch-file-title">VidNest_0.1.0_x64.dmg</span>
+                  <span class="arch-file-title">Local.Video.Intelligence_arm64.zip</span>
                 </div>
-                <span class="arch-desc">适用于 Intel 处理器 Mac · 约 72 MB</span>
+                <span class="arch-desc" id="descMacZip">macOS 便携绿色归档包 · 约 132 MB</span>
               </div>
-              <a href="https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest_0.1.0_x64.dmg" class="btn-download-sm">
-                下载 DMG
+              <a href="https://github.com/NovaMindLab/VidNest/releases/download/v2.9.5/Local.Video.Intelligence_arm64.zip" class="btn-download-sm">
+                下载 ZIP
               </a>
             </div>
             <div class="hash-bar">
               <span class="hash-label">SHA-256:</span>
-              <span class="hash-value" id="hashMacIntel">b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9</span>
+              <span class="hash-value" id="hashMacIntel">bb316417bbc7c69b0b477d3e4aa76488b39aee8dd47127649930b6cb973efb5a</span>
               <button type="button" class="btn-copy-hash" onclick="copyHash('hashMacIntel')">复制哈希</button>
             </div>
           </div>
@@ -992,17 +1016,17 @@
               <div class="arch-info">
                 <div class="arch-name-row">
                   <span class="arch-badge">官方安装器</span>
-                  <span class="arch-file-title">VidNest_0.1.0_x64-setup.exe</span>
+                  <span class="arch-file-title">Local.Video.Intelligence_2.9.5_x64-setup.exe</span>
                 </div>
-                <span class="arch-desc">NSIS 自动化安装向导，支持静默参数 /S · 约 62 MB</span>
+                <span class="arch-desc" id="descWinExe">NSIS 自动化安装向导，支持静默参数 /S · 约 129 MB</span>
               </div>
-              <a href="https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest_0.1.0_x64-setup.exe" class="btn-download-sm">
+              <a href="https://github.com/NovaMindLab/VidNest/releases/download/v2.9.5/Local.Video.Intelligence_2.9.5_x64-setup.exe" class="btn-download-sm">
                 下载 EXE
               </a>
             </div>
             <div class="hash-bar">
               <span class="hash-label">SHA-256:</span>
-              <span class="hash-value" id="hashWinExe">f2ca1bb6c7e907d06dafe4687e579fce76b37e4e93b7605022da52e6ccc26fd2</span>
+              <span class="hash-value" id="hashWinExe">24987d3c0e6a778420d4e6b5e388e2b0a9827b7c3bbc0451a1eb5beac4c61e0a</span>
               <button type="button" class="btn-copy-hash" onclick="copyHash('hashWinExe')">复制哈希</button>
             </div>
           </div>
@@ -1053,17 +1077,17 @@
               <div class="arch-info">
                 <div class="arch-name-row">
                   <span class="arch-badge">跨发行版推荐</span>
-                  <span class="arch-file-title">VidNest_0.1.0_amd64.AppImage</span>
+                  <span class="arch-file-title">Local.Video.Intelligence_2.9.5_amd64.AppImage</span>
                 </div>
-                <span class="arch-desc">执行 <code>chmod +x *.AppImage</code> 即可免安装启动 · 约 75 MB</span>
+                <span class="arch-desc" id="descLinuxApp">执行 <code>chmod +x *.AppImage</code> 即可免安装启动 · 约 216 MB</span>
               </div>
-              <a href="https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest_0.1.0_amd64.AppImage" class="btn-download-sm">
+              <a href="https://github.com/NovaMindLab/VidNest/releases/download/v2.9.5/Local.Video.Intelligence_2.9.5_amd64.AppImage" class="btn-download-sm">
                 下载 AppImage
               </a>
             </div>
             <div class="hash-bar">
               <span class="hash-label">SHA-256:</span>
-              <span class="hash-value" id="hashLinuxApp">a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef0</span>
+              <span class="hash-value" id="hashLinuxApp">dffc5c2ca721016f6c79cbdbf7ad06bd8fc436b3ba1ec05e7d630fb35bdffa48</span>
               <button type="button" class="btn-copy-hash" onclick="copyHash('hashLinuxApp')">复制哈希</button>
             </div>
           </div>
@@ -1073,17 +1097,17 @@
             <div class="arch-card-main">
               <div class="arch-info">
                 <div class="arch-name-row">
-                  <span class="arch-file-title">vidnest_0.1.0_amd64.deb</span>
+                  <span class="arch-file-title">Local.Video.Intelligence_2.9.5_amd64.deb</span>
                 </div>
-                <span class="arch-desc">Debian / Ubuntu / Linux Mint 原生软件包 · 约 65 MB</span>
+                <span class="arch-desc" id="descLinuxDeb">Debian / Ubuntu / Linux Mint 原生软件包 · 约 144 MB</span>
               </div>
-              <a href="https://github.com/NovaMindLab/VidNest/releases/latest/download/vidnest_0.1.0_amd64.deb" class="btn-download-sm">
+              <a href="https://github.com/NovaMindLab/VidNest/releases/download/v2.9.5/Local.Video.Intelligence_2.9.5_amd64.deb" class="btn-download-sm">
                 下载 DEB
               </a>
             </div>
             <div class="hash-bar">
               <span class="hash-label">SHA-256:</span>
-              <span class="hash-value" id="hashLinuxDeb">123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0</span>
+              <span class="hash-value" id="hashLinuxDeb">df82cfa6acf5db6df50529cf798c182c9e045077132bcf7037d98c01410a46c3</span>
               <button type="button" class="btn-copy-hash" onclick="copyHash('hashLinuxDeb')">复制哈希</button>
             </div>
           </div>
@@ -1180,22 +1204,159 @@
     </div>
   </footer>
 
+  
   <script>
     (function () {
-      // 1. User-Agent OS Detection Engine
+      // 1. Multilingual Dictionary
+      const I18N = {
+        'zh-CN': {
+          htmlLang: 'zh-CN',
+          langBtnText: '🇨🇳 简体中文',
+          docTitle: '下载 VidNest - 极速本地视频智能管理中心 (官网)',
+          navMatrix: '全平台安装包',
+          navCli: '包管理器 (CLI)',
+          navShare: '移动端体验',
+          heroBadge: 'v2.9.5 稳定版已就绪 · Tauri 2 + Rust 强力驱动',
+          heroH1: '极速本地视频智能管理中心',
+          heroDesc: '为影视收藏家与极客打造的 Local-First 视频资产中心。集成 yt-dlp 4K 极速解析、SQLite FTS5 秒级检索与极致原生性能。',
+          subSha: 'SHA-256 签名保护',
+          subSig: 'Sigstore 存证',
+          otherPlatforms: '查看所有平台与历史架构清单 (macOS, Windows, Linux, Android) ↓',
+          feat1Title: '本地优先 0 泄露',
+          feat1Desc: '所有视频元数据、封面与索引数据均存放于本地，无需担心云端上传与隐私外泄。',
+          feat2Title: 'yt-dlp 4K 极速引擎',
+          feat2Desc: '内置 yt-dlp 独立托管更新机制，智能解析 Bilibili/YouTube 等全网高清视频与音频提取。',
+          feat3Title: 'SQLite FTS5 秒搜',
+          feat3Desc: '支持超万级媒体文件毫秒级分词搜索，拼音检索与元数据毫秒过滤响应。',
+          feat4Title: 'Tauri 2 极致轻量',
+          feat4Desc: '仅几十兆的内存开销与小巧安装包，告别臃肿的 Electron 虚拟机，丝滑省电。',
+          matrixTitle: '全平台架构安装包清单',
+          matrixVersion: '当前发布版本: v2.9.5',
+          detectMacArm: '已匹配：macOS (Apple Silicon M系列架构)',
+          detectMacIntel: '已匹配：macOS (Intel x86_64 架构)',
+          detectWin: '已匹配：Windows 10/11 (64-bit 架构)',
+          detectLinux: '已匹配：Linux 64-bit 系统',
+          detectAndroid: '已匹配：Android 移动端系统',
+          detectIos: '检测到 iOS 移动端设备',
+          detectOther: '欢迎使用 VidNest 全平台桌面客户端',
+          btnMacArm: '下载 macOS (Apple Silicon 原生版)',
+          btnMacIntel: '下载 macOS (Intel 兼容版)',
+          btnWin: '下载 Windows 安装包 (64-bit)',
+          btnLinux: '下载 Linux AppImage (便携版)',
+          btnAndroid: '下载 Android Universal 安装包',
+          btnDesktop: '查看桌面端全平台下载',
+          btnChoose: '选择适合您系统的安装包',
+          toastHashSuccess: '已成功复制 SHA-256 哈希值',
+          toastHashFail: '复制失败，请手动选中复制',
+          toastCliSuccess: '已复制安装命令到剪贴板',
+          toastCliFail: '复制失败，请手动复制'
+        },
+        'en-US': {
+          htmlLang: 'en',
+          langBtnText: '🇺🇸 English',
+          docTitle: 'Download VidNest - Local-First AI Video Intelligence & Management Hub',
+          navMatrix: 'All Platforms',
+          navCli: 'Package Managers (CLI)',
+          navShare: 'Mobile Experience',
+          heroBadge: 'v2.9.5 Stable Release · Powered by Tauri 2 + Rust',
+          heroH1: 'Local-First AI Video Intelligence Hub',
+          heroDesc: 'Next-generation private desktop workspace for video intelligence, understanding, and asset management. Built with yt-dlp 4K streaming, SQLite FTS5 sub-millisecond search, and lightweight native performance.',
+          subSha: 'SHA-256 Protected',
+          subSig: 'Sigstore Provenance',
+          otherPlatforms: 'View all platforms & architectures (macOS, Windows, Linux, Android) ↓',
+          feat1Title: 'Local-First & 100% Private',
+          feat1Desc: 'All metadata, thumbnails, and indexing files stay strictly on your local machine. No cloud telemetry or privacy risks.',
+          feat2Title: 'yt-dlp 4K Stream Engine',
+          feat2Desc: 'Self-hosted yt-dlp engine with auto-updates. Seamlessly extracts 4K video, audio, and subtitles from 1000+ sites.',
+          feat3Title: 'SQLite FTS5 Sub-ms Search',
+          feat3Desc: 'Full-text search engine responding in <10ms across 10,000+ media files with compound filters for bitrate, resolution, and tags.',
+          feat4Title: 'Tauri 2 Lightweight Core',
+          feat4Desc: 'Under 80MB memory footprint with tiny installer packages. Goodbye bloated Electron apps, hello silky smoothness.',
+          matrixTitle: 'Multi-Platform Installation Matrix',
+          matrixVersion: 'Current Release: v2.9.5',
+          detectMacArm: 'Matched: macOS (Apple Silicon M-Series)',
+          detectMacIntel: 'Matched: macOS (Intel x86_64)',
+          detectWin: 'Matched: Windows 10/11 (64-bit)',
+          detectLinux: 'Matched: Linux 64-bit',
+          detectAndroid: 'Matched: Android Mobile',
+          detectIos: 'Detected: iOS Mobile Device',
+          detectOther: 'Welcome to VidNest Desktop Client',
+          btnMacArm: 'Download macOS (Apple Silicon DMG)',
+          btnMacIntel: 'Download macOS (Intel x64 DMG)',
+          btnWin: 'Download Windows Setup (64-bit EXE)',
+          btnLinux: 'Download Linux AppImage (Portable)',
+          btnAndroid: 'Download Android Universal APK',
+          btnDesktop: 'View All Desktop Downloads',
+          btnChoose: 'Choose an installer for your system',
+          toastHashSuccess: 'SHA-256 hash copied to clipboard',
+          toastHashFail: 'Failed to copy hash, please copy manually',
+          toastCliSuccess: 'Installation command copied to clipboard',
+          toastCliFail: 'Failed to copy command, please copy manually'
+        }
+      };
+
+      let currentLang = 'zh-CN';
+
+      function initLanguage() {
+        const saved = localStorage.getItem('vidnest_lang');
+        if (saved && (saved === 'zh-CN' || saved === 'en-US')) {
+          currentLang = saved;
+        } else {
+          const sys = (navigator.language || '').toLowerCase();
+          currentLang = sys.startsWith('zh') ? 'zh-CN' : 'en-US';
+        }
+        applyLanguage(currentLang);
+      }
+
+      function applyLanguage(lang) {
+        currentLang = lang;
+        const dict = I18N[lang] || I18N['zh-CN'];
+        document.documentElement.lang = dict.htmlLang;
+        document.title = dict.docTitle;
+
+        const el = (id) => document.getElementById(id);
+        if (el('currentLangText')) el('currentLangText').textContent = dict.langBtnText;
+        if (el('navMatrixLink')) el('navMatrixLink').textContent = dict.navMatrix;
+        if (el('navCliLink')) el('navCliLink').textContent = dict.navCli;
+        if (el('navShareLink')) el('navShareLink').textContent = dict.navShare;
+        if (el('heroBadgeText')) el('heroBadgeText').textContent = dict.heroBadge;
+        if (el('heroH1')) el('heroH1').textContent = dict.heroH1;
+        if (el('heroDesc')) el('heroDesc').textContent = dict.heroDesc;
+        if (el('subShaText')) el('subShaText').textContent = dict.subSha;
+        if (el('subSigText')) el('subSigText').textContent = dict.subSig;
+        if (el('otherPlatformsText')) el('otherPlatformsText').textContent = dict.otherPlatforms;
+
+        if (el('feat1Title')) el('feat1Title').textContent = dict.feat1Title;
+        if (el('feat1Desc')) el('feat1Desc').textContent = dict.feat1Desc;
+        if (el('feat2Title')) el('feat2Title').textContent = dict.feat2Title;
+        if (el('feat2Desc')) el('feat2Desc').textContent = dict.feat2Desc;
+        if (el('feat3Title')) el('feat3Title').textContent = dict.feat3Title;
+        if (el('feat3Desc')) el('feat3Desc').textContent = dict.feat3Desc;
+        if (el('feat4Title')) el('feat4Title').textContent = dict.feat4Title;
+        if (el('feat4Desc')) el('feat4Desc').textContent = dict.feat4Desc;
+
+        if (el('matrixSectionTitle')) el('matrixSectionTitle').textContent = dict.matrixTitle;
+        if (el('matrixVersionText')) el('matrixVersionText').textContent = dict.matrixVersion;
+
+        // Re-render hero button with current language
+        refreshHeroDownloadInfo();
+      }
+
+      window.toggleLanguage = function () {
+        const next = currentLang === 'zh-CN' ? 'en-US' : 'zh-CN';
+        localStorage.setItem('vidnest_lang', next);
+        applyLanguage(next);
+      };
+
+      // 2. OS & Architecture Detection
       const ua = navigator.userAgent.toLowerCase();
-      const platform = (navigator.platform || '').toLowerCase();
-      let detectedOS = 'other';
-      let archHint = 'x64';
+      const isMac = /macintosh|mac os x/i.test(ua);
+      const isWin = /windows|win32/i.test(ua);
+      const isLinux = /linux/i.test(ua) && !/android/i.test(ua);
+      const isAndroid = /android/i.test(ua);
+      const isIOS = /iphone|ipad|ipod/i.test(ua);
 
-      const isMac = /macintosh|mac os x/.test(ua) || platform.includes('mac');
-      const isWin = /windows|win32/.test(ua) || platform.includes('win');
-      const isLinux = /linux/.test(ua) && !/android/.test(ua);
-      const isAndroid = /android/.test(ua);
-      const isIOS = /iphone|ipad|ipod/.test(ua);
-
-      // macOS Apple Silicon vs Intel probe via WebGL unmasked renderer
-      let isAppleSilicon = false;
+      let isAppleSilicon = true;
       if (isMac) {
         try {
           const canvas = document.createElement('canvas');
@@ -1210,62 +1371,61 @@
             }
           }
         } catch (e) {
-          // Default Apple Silicon for modern macOS
           isAppleSilicon = true;
         }
       }
 
-      // DOM Elements
-      const detectedOsText = document.getElementById('detectedOsText');
-      const heroPrimaryBtnLabel = document.getElementById('heroPrimaryBtnLabel');
-      const heroPrimaryDownloadBtn = document.getElementById('heroPrimaryDownloadBtn');
-      const heroPackageDetail = document.getElementById('heroPackageDetail');
+      function refreshHeroDownloadInfo() {
+        const dict = I18N[currentLang] || I18N['zh-CN'];
+        const detectedOsText = document.getElementById('detectedOsText');
+        const heroPrimaryBtnLabel = document.getElementById('heroPrimaryBtnLabel');
+        const heroPrimaryDownloadBtn = document.getElementById('heroPrimaryDownloadBtn');
+        const heroPackageDetail = document.getElementById('heroPackageDetail');
 
-      if (isMac) {
-        detectedOS = 'macOS';
-        if (isAppleSilicon) {
-          detectedOsText.textContent = '已匹配：macOS (Apple Silicon M系列架构)';
-          heroPrimaryBtnLabel.textContent = '下载 macOS (Apple Silicon 原生版)';
-          heroPrimaryDownloadBtn.href = 'https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest_0.1.0_aarch64.dmg';
-          heroPackageDetail.textContent = 'VidNest_0.1.0_aarch64.dmg · 68 MB · ARM64';
+        if (!detectedOsText) return;
+
+        if (isMac) {
+          if (isAppleSilicon) {
+            detectedOsText.textContent = dict.detectMacArm;
+            heroPrimaryBtnLabel.textContent = dict.btnMacArm;
+            heroPrimaryDownloadBtn.href = 'https://github.com/NovaMindLab/VidNest/releases/download/v2.9.5/Local.Video.Intelligence_2.9.5_aarch64.dmg';
+            heroPackageDetail.textContent = 'Local.Video.Intelligence_2.9.5_aarch64.dmg · 132 MB · ARM64';
+          } else {
+            detectedOsText.textContent = dict.detectMacIntel;
+            heroPrimaryBtnLabel.textContent = dict.btnMacIntel;
+            heroPrimaryDownloadBtn.href = 'https://github.com/NovaMindLab/VidNest/releases/download/v2.9.5/Local.Video.Intelligence_arm64.zip';
+            heroPackageDetail.textContent = 'Local.Video.Intelligence_arm64.zip · 132 MB · Universal';
+          }
+          openSpecificAccordion('accMac');
+        } else if (isWin) {
+          detectedOsText.textContent = dict.detectWin;
+          heroPrimaryBtnLabel.textContent = dict.btnWin;
+          heroPrimaryDownloadBtn.href = 'https://github.com/NovaMindLab/VidNest/releases/download/v2.9.5/Local.Video.Intelligence_2.9.5_x64-setup.exe';
+          heroPackageDetail.textContent = 'Local.Video.Intelligence_2.9.5_x64-setup.exe · 129 MB · NSIS';
+          openSpecificAccordion('accWin');
+        } else if (isLinux) {
+          detectedOsText.textContent = dict.detectLinux;
+          heroPrimaryBtnLabel.textContent = dict.btnLinux;
+          heroPrimaryDownloadBtn.href = 'https://github.com/NovaMindLab/VidNest/releases/download/v2.9.5/Local.Video.Intelligence_2.9.5_amd64.AppImage';
+          heroPackageDetail.textContent = 'Local.Video.Intelligence_2.9.5_amd64.AppImage · 216 MB · x86_64';
+          openSpecificAccordion('accLnx');
+        } else if (isAndroid) {
+          detectedOsText.textContent = dict.detectAndroid;
+          heroPrimaryBtnLabel.textContent = dict.btnAndroid;
+          heroPrimaryDownloadBtn.href = 'https://github.com/NovaMindLab/VidNest/releases/latest';
+          heroPackageDetail.textContent = 'VidNest Mobile · GitHub Releases';
+          openSpecificAccordion('accAnd');
+        } else if (isIOS) {
+          detectedOsText.textContent = dict.detectIos;
+          heroPrimaryBtnLabel.textContent = dict.btnDesktop;
+          heroPrimaryDownloadBtn.href = '#matrix';
+          heroPackageDetail.textContent = 'VidNest Desktop for macOS, Windows & Linux';
         } else {
-          detectedOsText.textContent = '已匹配：macOS (Intel x86_64 架构)';
-          heroPrimaryBtnLabel.textContent = '下载 macOS (Intel 兼容版)';
-          heroPrimaryDownloadBtn.href = 'https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest_0.1.0_x64.dmg';
-          heroPackageDetail.textContent = 'VidNest_0.1.0_x64.dmg · 72 MB · Intel x64';
+          detectedOsText.textContent = dict.detectOther;
+          heroPrimaryBtnLabel.textContent = dict.btnChoose;
+          heroPrimaryDownloadBtn.href = '#matrix';
+          heroPackageDetail.textContent = 'macOS (Apple Silicon / Intel), Windows, Linux';
         }
-        openSpecificAccordion('accMac');
-      } else if (isWin) {
-        detectedOS = 'Windows';
-        detectedOsText.textContent = '已匹配：Windows 10/11 (64-bit 架构)';
-        heroPrimaryBtnLabel.textContent = '下载 Windows 安装包 (64-bit)';
-        heroPrimaryDownloadBtn.href = 'https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest_0.1.0_x64-setup.exe';
-        heroPackageDetail.textContent = 'VidNest_0.1.0_x64-setup.exe · 62 MB · NSIS';
-        openSpecificAccordion('accWin');
-      } else if (isLinux) {
-        detectedOS = 'Linux';
-        detectedOsText.textContent = '已匹配：Linux 64-bit 系统';
-        heroPrimaryBtnLabel.textContent = '下载 Linux AppImage (便携版)';
-        heroPrimaryDownloadBtn.href = 'https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest_0.1.0_amd64.AppImage';
-        heroPackageDetail.textContent = 'VidNest_0.1.0_amd64.AppImage · 75 MB · x86_64';
-        openSpecificAccordion('accLnx');
-      } else if (isAndroid) {
-        detectedOS = 'Android';
-        detectedOsText.textContent = '已匹配：Android 移动端系统';
-        heroPrimaryBtnLabel.textContent = '下载 Android Universal 安装包';
-        heroPrimaryDownloadBtn.href = 'https://github.com/NovaMindLab/VidNest/releases/latest/download/VidNest_0.1.0_Universal.apk';
-        heroPackageDetail.textContent = 'VidNest_0.1.0_Universal.apk · 35 MB · 双架构 APK';
-        openSpecificAccordion('accAnd');
-      } else if (isIOS) {
-        detectedOsText.textContent = '检测到 iOS 移动端设备';
-        heroPrimaryBtnLabel.textContent = '查看桌面端全平台下载';
-        heroPrimaryDownloadBtn.href = '#matrix';
-        heroPackageDetail.textContent = 'VidNest 桌面端支持 macOS、Windows 与 Linux';
-      } else {
-        detectedOsText.textContent = '欢迎使用 VidNest 全平台桌面客户端';
-        heroPrimaryBtnLabel.textContent = '选择适合您系统的安装包';
-        heroPrimaryDownloadBtn.href = '#matrix';
-        heroPackageDetail.textContent = '支持 macOS (Apple Silicon / Intel)、Windows、Linux 与 Android';
       }
 
       function openSpecificAccordion(id) {
@@ -1283,7 +1443,7 @@
         }
       };
 
-      // 2. CLI Tabs switcher
+      // 3. CLI Tabs switcher
       const cliCommands = {
         brew: 'brew install --cask vidnest',
         winget: 'winget install NovaMindLab.VidNest',
@@ -1299,7 +1459,7 @@
         cliEl.textContent = cliCommands[key] || '';
       };
 
-      // 3. Copy Utilities
+      // 4. Copy Utilities
       function showToast(msg) {
         const toast = document.getElementById('toast');
         toast.textContent = msg;
@@ -1313,10 +1473,11 @@
         const el = document.getElementById(id);
         if (!el) return;
         const text = el.textContent.trim();
+        const dict = I18N[currentLang] || I18N['zh-CN'];
         navigator.clipboard.writeText(text).then(function () {
-          showToast('已成功复制 SHA-256 哈希值');
+          showToast(dict.toastHashSuccess);
         }).catch(function () {
-          showToast('复制失败，请手动选中复制');
+          showToast(dict.toastHashFail);
         });
       };
 
@@ -1324,12 +1485,16 @@
         const el = document.getElementById('cliCommandText');
         if (!el) return;
         const text = el.textContent.trim();
+        const dict = I18N[currentLang] || I18N['zh-CN'];
         navigator.clipboard.writeText(text).then(function () {
-          showToast('已复制安装命令到剪贴板');
+          showToast(dict.toastCliSuccess);
         }).catch(function () {
-          showToast('复制失败，请手动复制');
+          showToast(dict.toastCliFail);
         });
       };
+
+      // Initialize language on load
+      initLanguage();
     })();
   </script>
 </body>

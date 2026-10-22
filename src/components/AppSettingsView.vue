@@ -273,7 +273,7 @@ onMounted(() => {
                 @click="setLocaleMode('auto')"
               >
                 <span class="pill-flag">🌐</span>
-                <span class="pill-text">{{ t('settings.theme.auto') }}</span>
+                <span class="pill-text">{{ t('settings.language.auto') }}</span>
               </button>
 
               <button
