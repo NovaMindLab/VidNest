@@ -1,0 +1,21 @@
+# Created using generate-package-manifests.mjs
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+
+PackageIdentifier: NovaMindLab.VidNest
+PackageVersion: 2.9.6
+MinimumOSVersion: 10.0.0.0
+InstallerType: nullsoft
+InstallModes:
+  - interactive
+  - silent
+InstallerSwitches:
+  Silent: /S
+  SilentWithProgress: /S
+UpgradeBehavior: install
+Installers:
+  - Architecture: x64
+    InstallerType: nullsoft
+    InstallerUrl: https://github.com/NovaMindLab/VidNest/releases/download/v2.9.6/Local.Video.Intelligence_2.9.6_x64-setup.exe
+    InstallerSha256: E691A35DB3C3BE74E69FD918F9D3571A6B727265A2A6CB8316F2198C52D12297
+ManifestType: installer
+ManifestVersion: 1.6.0

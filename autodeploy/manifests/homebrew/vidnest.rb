@@ -1,8 +1,8 @@
 cask "vidnest" do
-  version "2.9.5"
-  sha256 "99c96d07d6007d4544f456d79233060d813c46064476bd022480d0ec6cb7f4d8"
+  version "2.9.6"
+  sha256 "7145214162b4f942ed0fd7fe41e1ca561046faeb6a631f8ccf3d337c94bafe76"
 
-  url "https://github.com/NovaMindLab/VidNest/releases/download/v2.9.5/Local.Video.Intelligence_2.9.5_universal.dmg"
+  url "https://github.com/NovaMindLab/VidNest/releases/download/v2.9.6/Local.Video.Intelligence_2.9.6_universal.dmg"
   name "VidNest"
   name "Local Video Intelligence"
   desc "Local-first video analysis, indexing, and intelligent summarization desktop app."
